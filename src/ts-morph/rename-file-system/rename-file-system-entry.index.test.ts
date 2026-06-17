@@ -6,7 +6,7 @@ import { renameFileSystemEntry } from "./rename-file-system-entry";
 import { getFileText } from "../_test-utils/get-file-text";
 
 describe("renameFileSystemEntry Index File Cases", () => {
-	it("index.ts ファイル自体をリネームする", async () => {
+	it("renames the index.ts file itself", async () => {
 		const project = createInMemoryProject();
 		const oldIndexPath = "/src/utils/index.ts";
 		const newIndexPath = "/src/utils/main.ts";
@@ -26,13 +26,13 @@ describe("renameFileSystemEntry Index File Cases", () => {
 
 		expectFileMoved(project, oldIndexPath, newIndexPath);
 		const updatedComponent = project.getSourceFileOrThrow(componentPath);
-		// index.ts をリネームした場合、ディレクトリ参照はリネーム後のファイル名になるべき
+		// When index.ts is renamed, a directory-style reference should point to the renamed filename
 		expect(updatedComponent.getFullText()).toContain(
 			"import { utilFromIndex } from '../utils/main';",
 		);
 	});
 
-	it("ディレクトリリネーム時に、内部からの '.' や外部からの '..' による index.ts 参照が正しく更新される", async () => {
+	it("correctly updates index.ts references using '.' from inside and '..' from outside during a directory rename", async () => {
 		const project = createInMemoryProject();
 		const oldDirPath = "/src/featureA";
 		const newDirPath = "/src/featureRenamed";
@@ -64,13 +64,13 @@ describe("renameFileSystemEntry Index File Cases", () => {
 			"import { featureValue } from '.';",
 		);
 
-		// service.ts の '../featureA' 参照は '../featureRenamed/index' に更新されるはず
+		// The '../featureA' reference in service.ts should be updated to '../featureRenamed/index'
 		expect(updatedService.getFullText()).toContain(
 			"import { featureValue } from '../featureRenamed/index';",
 		);
 	});
 
-	it("index.ts でデフォルトエクスポートされた変数をパスエイリアス付きディレクトリ名でインポートしている場合、index.ts リネーム時にパスが正しく更新される", async () => {
+	it("correctly updates the path when a default-exported variable from index.ts is imported via a path-alias directory name and index.ts is renamed", async () => {
 		const project = createInMemoryProject();
 		const featureDir = "/src/myFeature";
 		const oldIndexPath = path.join(featureDir, "index.ts");
@@ -94,13 +94,13 @@ describe("renameFileSystemEntry Index File Cases", () => {
 
 		const updatedImporterContent = getFileText(project, importerPath);
 		expectFileMoved(project, oldIndexPath, newIndexPath);
-		// パスエイリアス参照がリネーム後のファイルパスに更新されることを期待。
+		// Expect the path-alias reference to be updated to the renamed file path.
 		expect(updatedImporterContent).toContain(
 			"import MyFeature from './myFeature/mainComponent';",
 		);
 	});
 
-	it("index.ts でデフォルトエクスポートされた関数をパスエイリアス付きディレクトリ名でインポートしている場合、index.ts リネーム時にパスが正しく更新される", async () => {
+	it("correctly updates the path when a default-exported function from index.ts is imported via a path-alias directory name and index.ts is renamed", async () => {
 		const project = createInMemoryProject();
 		const featureDir = "/src/anotherFeature";
 		const oldIndexPath = path.join(featureDir, "index.ts");
@@ -124,7 +124,7 @@ describe("renameFileSystemEntry Index File Cases", () => {
 
 		const updatedImporterContent = getFileText(project, importerPath);
 		expectFileMoved(project, oldIndexPath, newIndexPath);
-		// パスエイリアス参照がリネーム後のファイルパスに更新されることを期待。
+		// Expect the path-alias reference to be updated to the renamed file path.
 		expect(updatedImporterContent).toContain(
 			"import CoreFunc from './anotherFeature/coreFunction';",
 		);

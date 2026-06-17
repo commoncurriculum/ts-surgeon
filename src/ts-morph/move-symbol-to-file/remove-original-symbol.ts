@@ -3,11 +3,11 @@ import logger from "../../utils/logger";
 import { getDeclarationIdentifier } from "./get-declaration-identifier";
 
 /**
- * 指定された宣言ノード (Statement) をソースファイルから削除します。
- * 削除対象が複数指定された場合、それらすべてを削除します。
+ * Removes the specified declaration nodes (Statements) from the source file.
+ * If multiple declarations are provided, all of them are removed.
  *
- * @param sourceFile - 対象のソースファイル。
- * @param declarationsToRemove - 削除する宣言ノードの配列。
+ * @param sourceFile - The target source file.
+ * @param declarationsToRemove - Array of declaration nodes to remove.
  */
 export function removeOriginalSymbol(
 	sourceFile: SourceFile,

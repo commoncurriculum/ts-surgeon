@@ -19,7 +19,7 @@ beforeAll(setup, 600_000);
 afterEach(reset);
 
 describe("hono E2E (read-only tools)", () => {
-	it("find_references: getPattern の参照を 1 件以上返す", async (ctx) => {
+	it("find_references: returns at least one reference for getPattern", async (ctx) => {
 		requirePrepared(ctx);
 		const { absFilePath, position } = locateSymbolPosition(
 			HONO,
@@ -37,7 +37,7 @@ describe("hono E2E (read-only tools)", () => {
 		expect(textOf(result).toLowerCase()).toContain("reference");
 	});
 
-	it("get_type_at_position: getPattern の型情報を取得できる", async (ctx) => {
+	it("get_type_at_position: retrieves type information for getPattern", async (ctx) => {
 		requirePrepared(ctx);
 		const { absFilePath, position } = locateSymbolPosition(
 			HONO,
@@ -57,7 +57,7 @@ describe("hono E2E (read-only tools)", () => {
 		expect(text).toContain("getPattern");
 	});
 
-	it("find_unused_exports: エラーなく候補を列挙する", async (ctx) => {
+	it("find_unused_exports: lists candidates without error", async (ctx) => {
 		requirePrepared(ctx);
 		const result = await harness.callTool("find_unused_exports_by_tsmorph", {
 			tsconfigPath: tsconfigPathOf(HONO),
@@ -72,8 +72,8 @@ describe("hono E2E (read-only tools)", () => {
 	});
 });
 
-describe("hono E2E (mutating tools, 差分緑検証)", () => {
-	it("rename_symbol: getPattern を往復リネームすると元に戻る & 型/テスト緑", async (ctx) => {
+describe("hono E2E (mutating tools, differential-green verification)", () => {
+	it("rename_symbol: round-trip rename of getPattern restores original & types/tests stay green", async (ctx) => {
 		requirePrepared(ctx);
 		const tsconfigPath = tsconfigPathOf(HONO);
 		const tmpName = "getPattern_e2e_tmp";
@@ -91,7 +91,7 @@ describe("hono E2E (mutating tools, 差分緑検証)", () => {
 
 		expectNoRegression();
 
-		// 往復で元に戻す
+		// Round-trip: rename back to original
 		const back = locateSymbolPosition(HONO, URL_FILE, tmpName);
 		const r2 = await harness.callTool("rename_symbol_by_tsmorph", {
 			tsconfigPath,
@@ -105,7 +105,7 @@ describe("hono E2E (mutating tools, 差分緑検証)", () => {
 		expect(isWorkingTreeClean(HONO)).toBe(true);
 	});
 
-	it("move_symbol_to_file: getPattern を別ファイルに移動しても型/テスト緑", async (ctx) => {
+	it("move_symbol_to_file: moving getPattern to another file keeps types/tests green", async (ctx) => {
 		requirePrepared(ctx);
 		const targetFilePath = absPath(HONO, "src/utils/_e2e-get-pattern.ts");
 
@@ -124,12 +124,13 @@ describe("hono E2E (mutating tools, 差分緑検証)", () => {
 		expectNoRegression();
 	});
 
-	// 移動元ファイルに移動シンボルへの参照が残る（= 差し戻し import が必要）ケース。
-	// splitPath は同ファイルの splitRoutingPath から参照されるため、移動先からの
-	// 逆向き import が必要になる。旧実装は fixMissingImports() で
-	// "children of the old and new trees were expected to have the same count" を
-	// 投げて失敗していた（add-back-imports-to-original-file.ts で修正済み）。
-	it("move_symbol_to_file: 移動元に参照が残る splitPath を移動しても型/テスト緑", async (ctx) => {
+	// Case where the original file still contains a reference to the moved symbol
+	// (i.e. a back-import is required). splitPath is referenced by splitRoutingPath
+	// in the same file, so a reverse import from the destination is needed.
+	// The old implementation threw
+	// "children of the old and new trees were expected to have the same count"
+	// inside fixMissingImports() (fixed in add-back-imports-to-original-file.ts).
+	it("move_symbol_to_file: moving splitPath (which has remaining references in the source file) keeps types/tests green", async (ctx) => {
 		requirePrepared(ctx);
 		const targetFilePath = absPath(HONO, "src/utils/_e2e-split.ts");
 
@@ -148,7 +149,7 @@ describe("hono E2E (mutating tools, 差分緑検証)", () => {
 		expectNoRegression();
 	});
 
-	it("change_signature: tryDecode に末尾引数を追加しても型/テスト緑", async (ctx) => {
+	it("change_signature: adding a trailing argument to tryDecode keeps types/tests green", async (ctx) => {
 		requirePrepared(ctx);
 		const { absFilePath, position } = locateSymbolPosition(
 			HONO,

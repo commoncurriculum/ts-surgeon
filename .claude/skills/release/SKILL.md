@@ -1,6 +1,6 @@
 ---
 name: release
-description: Tag a new version and trigger the npm publish workflow for @sirosuzume/mcp-tsmorph-refactor. Use when the user says "リリース", "release", "タグを打って", "v1.x.y にバージョンを上げて", "npm に出して" or similar.
+description: Tag a new version and trigger the npm publish workflow for @sirosuzume/mcp-tsmorph-refactor. Use when the user says "release", "tag it", "bump to v1.x.y", "publish to npm", or similar.
 ---
 
 # Release a new version

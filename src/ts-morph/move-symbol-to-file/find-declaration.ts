@@ -7,11 +7,12 @@ import {
 } from "ts-morph";
 
 /**
- * SourceFile 内から指定された名前と（オプションで）種類に一致する最初のトップレベル宣言を見つける。
+ * Finds the first top-level declaration in a SourceFile that matches the given name and (optionally) kind.
  *
- * 同名の宣言が複数存在する場合（例: 型と値、関数オーバーロード）、ファイル内で最初に出現するものが返される。
- * VariableStatement 内に複数の VariableDeclaration がある場合、指定された名前に一致する Declaration を含む
- * 最初の VariableStatement が返される。
+ * If multiple declarations with the same name exist (e.g., a type and a value, or function overloads),
+ * the one that appears first in the file is returned.
+ * If a VariableStatement contains multiple VariableDeclarations, the first VariableStatement
+ * that contains a Declaration matching the given name is returned.
  */
 export function findTopLevelDeclarationByName(
 	sourceFile: SourceFile,
@@ -30,7 +31,7 @@ export function findTopLevelDeclarationByName(
 		let foundMatch = false;
 
 		if (Node.isVariableStatement(statement)) {
-			// `const a = 1, b = 2;` のようなケースで内部の各宣言をチェック
+			// Check each inner declaration for cases like `const a = 1, b = 2;`
 			for (const varDecl of statement.getDeclarations()) {
 				if (varDecl.getName() === name) {
 					foundMatch = true;
@@ -66,7 +67,7 @@ export function getIdentifierFromDeclaration(
 		Node.isTypeAliasDeclaration(declaration) ||
 		Node.isEnumDeclaration(declaration)
 	) {
-		// デフォルトエクスポートされた無名関数/クラスは getNameNode() がない場合がある
+		// Default-exported anonymous functions/classes may not have a getNameNode()
 		if (declaration.isDefaultExport() && !declaration.getNameNode()) {
 			return undefined;
 		}

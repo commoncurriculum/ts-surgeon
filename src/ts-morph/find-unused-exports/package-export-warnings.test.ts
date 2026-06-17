@@ -5,14 +5,14 @@ import { findUnusedExports } from "./find-unused-exports";
 import { collectPackageExportWarnings } from "./package-export-warnings";
 
 /**
- * 最小 monorepo fixture:
+ * Minimal monorepo fixture:
  *
- * /packages/lib-src   exports → ./src/index.ts (ソース直参照。cross-package 参照が解決できる)
- * /packages/lib-dist  exports → ./dist/*       (built dist 公開。cross-package 参照が解決できない)
- * /apps/consumer      両方を import して消費
+ * /packages/lib-src   exports → ./src/index.ts (direct source reference; cross-package references resolve correctly)
+ * /packages/lib-dist  exports → ./dist/*       (built dist published; cross-package references cannot be resolved)
+ * /apps/consumer      imports and consumes both
  *
- * `@scope/lib-src` だけ paths alias で解決できるようにし、`@scope/lib-dist` は
- * 実際の monorepo と同様「スキャン対象ソースに解決されない」状態を再現する。
+ * `@scope/lib-src` is made resolvable via a paths alias; `@scope/lib-dist` is intentionally
+ * left unresolvable to the scanned sources, mirroring a real monorepo setup.
  */
 function setupMonorepoFixture(): Project {
 	const project = createInMemoryProject({
@@ -65,19 +65,19 @@ function setupMonorepoFixture(): Project {
 	return project;
 }
 
-describe("packageWarnings (built dist 公開パッケージの構造的警告)", () => {
-	it("dist を exports で公開するパッケージ: 消費済み export が候補に出て (false positive 再現)、パッケージ警告が付く", () => {
+describe("packageWarnings (structural warnings for packages that publish built dist)", () => {
+	it("package that publishes dist via exports: consumed export appears as a candidate (false positive reproduced) and a package warning is attached", () => {
 		const project = setupMonorepoFixture();
 		const result = findUnusedExports(project);
 
-		// false positive の再現: foo は consumer から消費されているが候補に出る
+		// false positive reproduction: foo is consumed by the consumer but still appears as a candidate
 		const fooEntry = result.unusedExports.find((e) => e.name === "foo");
 		expect(fooEntry).toBeDefined();
 		expect(fooEntry?.filePath).toBe("/packages/lib-dist/src/index.ts");
-		// consumer 側の import がテキストには現れている (= textHits シグナル)
+		// the consumer's import appears in the text (= textHits signal)
 		expect(fooEntry?.textOccurrences).toBeGreaterThanOrEqual(1);
 
-		// 構造的警告: lib-dist のみ
+		// structural warning: only for lib-dist
 		expect(result.packageWarnings).toEqual([
 			{
 				packageJsonPath: "/packages/lib-dist/package.json",
@@ -88,21 +88,21 @@ describe("packageWarnings (built dist 公開パッケージの構造的警告)",
 		]);
 	});
 
-	it("exports がソースを直接指すパッケージ: 参照が解決され、真の未使用候補が出ても警告は付かない", () => {
+	it("package whose exports point directly at source: cross-package references resolve, and truly unused candidates appear without a warning", () => {
 		const project = setupMonorepoFixture();
 		const result = findUnusedExports(project);
 
-		// fromSrc は cross-package 参照が解決されるので候補に出ない
+		// fromSrc is resolved cross-package, so it does not appear as a candidate
 		expect(result.unusedExports.map((e) => e.name)).not.toContain("fromSrc");
-		// srcOnlyDead は真の未使用として候補に出る
+		// srcOnlyDead is truly unused and appears as a candidate
 		expect(result.unusedExports.map((e) => e.name)).toContain("srcOnlyDead");
-		// それでも lib-src に警告は付かない (exports がスキャン対象ソースに解決できるため)
+		// lib-src does not get a warning because its exports resolve to scanned sources
 		expect(result.packageWarnings.map((w) => w.packageName)).not.toContain(
 			"@scope/lib-src",
 		);
 	});
 
-	it("単一パッケージのプロジェクトでは exports が dist を指していても警告しない (cross-package 参照が存在しない)", () => {
+	it("a single-package project does not produce a warning even if exports points at dist (no cross-package references exist)", () => {
 		const project = createInMemoryProject();
 		const fs = project.getFileSystem();
 		fs.writeFileSync(
@@ -124,7 +124,7 @@ describe("packageWarnings (built dist 公開パッケージの構造的警告)",
 		expect(result.packageWarnings).toEqual([]);
 	});
 
-	it("package.json がどこにも無いプロジェクトでは警告しない", () => {
+	it("a project with no package.json anywhere produces no warnings", () => {
 		const project = createInMemoryProject();
 		project.createSourceFile("/a.ts", "export function unused(): void {}");
 		project.createSourceFile("/b.ts", "const x = 1;");
@@ -133,7 +133,7 @@ describe("packageWarnings (built dist 公開パッケージの構造的警告)",
 		expect(result.packageWarnings).toEqual([]);
 	});
 
-	describe("collectPackageExportWarnings (単体)", () => {
+	describe("collectPackageExportWarnings (unit)", () => {
 		function setupTwoPackages(libDistManifest: string): Project {
 			const project = createInMemoryProject();
 			const fs = project.getFileSystem();
@@ -156,7 +156,7 @@ describe("packageWarnings (built dist 公開パッケージの構造的警告)",
 		];
 		const candidates = ["/packages/lib-dist/src/index.ts"];
 
-		it("候補が 1 件も無いパッケージには警告しない", () => {
+		it("a package with no candidates does not produce a warning", () => {
 			const project = setupTwoPackages(
 				JSON.stringify({
 					name: "@scope/lib-dist",
@@ -166,7 +166,7 @@ describe("packageWarnings (built dist 公開パッケージの構造的警告)",
 			expect(collectPackageExportWarnings(project, scanned, [])).toEqual([]);
 		});
 
-		it("exports が無くても main が dist を指していれば警告する", () => {
+		it("produces a warning when main points at dist even without an exports field", () => {
 			const project = setupTwoPackages(
 				JSON.stringify({ name: "@scope/lib-dist", main: "dist/index.js" }),
 			);
@@ -183,7 +183,7 @@ describe("packageWarnings (built dist 公開パッケージの構造的警告)",
 			});
 		});
 
-		it("subpath パターン (`./*` → `./dist/*.js`) も dist 公開として警告する", () => {
+		it("a subpath pattern (`./*` → `./dist/*.js`) is also warned as a dist publication", () => {
 			const project = setupTwoPackages(
 				JSON.stringify({
 					name: "@scope/lib-dist",
@@ -199,7 +199,7 @@ describe("packageWarnings (built dist 公開パッケージの構造的警告)",
 			expect(warnings[0]?.externalEntryTargets).toEqual(["./dist/*.js"]);
 		});
 
-		it("subpath パターンがスキャン対象ソース配下 (`./src/*`) を指す場合は警告しない", () => {
+		it("a subpath pattern pointing under scanned sources (`./src/*`) does not produce a warning", () => {
 			const project = setupTwoPackages(
 				JSON.stringify({
 					name: "@scope/lib-dist",
@@ -211,7 +211,7 @@ describe("packageWarnings (built dist 公開パッケージの構造的警告)",
 			).toEqual([]);
 		});
 
-		it("exports の条件分岐に 1 つでもソース解決可能な leaf があっても、dist leaf があれば警告する", () => {
+		it("a warning is produced when at least one dist leaf exists even if another leaf resolves to source", () => {
 			const project = setupTwoPackages(
 				JSON.stringify({
 					name: "@scope/lib-dist",
@@ -229,7 +229,7 @@ describe("packageWarnings (built dist 公開パッケージの構造的警告)",
 			expect(warnings[0]?.externalEntryTargets).toEqual(["./dist/index.js"]);
 		});
 
-		it("コード以外のエントリ (`./package.json` 等) は無視する", () => {
+		it("non-code entries (`./package.json` etc.) are ignored", () => {
 			const project = setupTwoPackages(
 				JSON.stringify({
 					name: "@scope/lib-dist",
@@ -244,14 +244,14 @@ describe("packageWarnings (built dist 公開パッケージの構造的警告)",
 			).toEqual([]);
 		});
 
-		it("package.json が JSON として不正でもクラッシュせず警告なしで続行する", () => {
+		it("malformed package.json does not crash and produces no warning", () => {
 			const project = setupTwoPackages("{ this is not json");
 			expect(
 				collectPackageExportWarnings(project, scanned, candidates),
 			).toEqual([]);
 		});
 
-		it("name の無い package.json は packageName が undefined になる", () => {
+		it("packageName is undefined when package.json has no name field", () => {
 			const project = setupTwoPackages(
 				JSON.stringify({ exports: { ".": "./dist/index.js" } }),
 			);

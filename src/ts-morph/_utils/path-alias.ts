@@ -1,11 +1,11 @@
 /**
- * モジュール指定子が tsconfig の paths で定義されたエイリアスに一致するかを厳密に判定する。
+ * Strictly determines whether a module specifier matches an alias defined in tsconfig paths.
  *
- * - エイリアスがワイルドカード (`@/*`) の場合は `*` を除いた prefix での前方一致
- * - ワイルドカードなし (`@app`) の場合は完全一致のみ
+ * - For wildcard aliases (`@/*`): prefix match against the prefix with `*` removed
+ * - For non-wildcard aliases (`@app`): exact match only
  *
- * 緩い `startsWith(aliasKey.replace("*", ""))` 方式だと
- * `@foo` で定義されたエイリアスが `@foobar/baz` を誤判定するため、ここでは厳密に揃える。
+ * The loose `startsWith(aliasKey.replace("*", ""))` approach would cause an alias
+ * defined as `@foo` to incorrectly match `@foobar/baz`, so strict matching is used here.
  */
 export function isPathAlias(
 	moduleSpecifier: string,

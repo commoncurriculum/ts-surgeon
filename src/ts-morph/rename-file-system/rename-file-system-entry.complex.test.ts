@@ -6,7 +6,7 @@ import { renameFileSystemEntry } from "./rename-file-system-entry";
 import { getFileText } from "../_test-utils/get-file-text";
 
 describe("renameFileSystemEntry Complex Cases", () => {
-	it("内部参照を持つフォルダをリネームする", async () => {
+	it("renames a folder with internal cross-references", async () => {
 		const project = createInMemoryProject();
 		const oldDirPath = "/src/internal-feature";
 		const newDirPath = "/src/cool-feature";
@@ -33,7 +33,7 @@ describe("renameFileSystemEntry Complex Cases", () => {
 		);
 	});
 
-	it("複数のファイルを同時にリネームし、それぞれの参照が正しく更新される", async () => {
+	it("renames multiple files simultaneously with each reference correctly updated", async () => {
 		const project = createInMemoryProject();
 		const oldFile1 = "/src/utils/file1.ts";
 		const newFile1 = "/src/utils/renamed1.ts";
@@ -66,7 +66,7 @@ describe("renameFileSystemEntry Complex Cases", () => {
 		);
 	});
 
-	it("ファイルとディレクトリを同時にリネームし、それぞれの参照が正しく更新される", async () => {
+	it("renames a file and a directory simultaneously with each reference correctly updated", async () => {
 		const project = createInMemoryProject();
 		const oldFile = "/src/utils/fileA.ts";
 		const newFile = "/src/utils/fileRenamed.ts";
@@ -99,7 +99,7 @@ describe("renameFileSystemEntry Complex Cases", () => {
 		expect(updatedRef).toContain("import { valComp } from './widgets/comp';");
 	});
 
-	it("ディレクトリ rename 後、旧ディレクトリ階層の空サブディレクトリが残らない (issue #27)", async () => {
+	it("after directory rename, no empty subdirectories from the old hierarchy remain (issue #27)", async () => {
 		const project = createInMemoryProject();
 		const oldDirPath = "/src/foo";
 		const newDirPath = "/src/bar";
@@ -120,25 +120,25 @@ describe("renameFileSystemEntry Complex Cases", () => {
 			dryRun: false,
 		});
 
-		// 1. 新しいディレクトリツリーは存在する
+		// 1. New directory tree exists
 		expect(project.getDirectory(newDirPath)).toBeDefined();
 		expect(
 			project.getSourceFile(`${newDirPath}/sub-b/nested/index.ts`),
 		).toBeDefined();
 
-		// 2. 旧ディレクトリは project tree から消えている (issue #27 の本質)
+		// 2. Old directory is gone from the project tree (the essence of issue #27)
 		expect(project.getDirectory(oldDirPath)).toBeUndefined();
 		expect(project.getDirectory(`${oldDirPath}/sub-a`)).toBeUndefined();
 		expect(project.getDirectory(`${oldDirPath}/sub-b`)).toBeUndefined();
 		expect(project.getDirectory(`${oldDirPath}/sub-b/nested`)).toBeUndefined();
 	});
 
-	it("ディレクトリ rename は shell mv セマンティクス: untracked ファイルも一緒に移動する", async () => {
-		// 旧実装 (per-file sourceFile.move + cleanup) は untracked を旧 dir に残していたが、
-		// perf 改善のため Directory.move() (FS-level atomic rename) を採用した結果、
-		// shell の `mv` と同じく untracked / 想定外ファイルも全部 new dir に運ばれる。
-		// 注意: src/ 配下に手書き README や generated dist/ を置いている等のケースで
-		// 挙動が変わるため、利用側はそれを想定したディレクトリ構成にすること。
+	it("directory rename has shell mv semantics: untracked files are moved together", async () => {
+		// The old implementation (per-file sourceFile.move + cleanup) left untracked files in the old dir,
+		// but after adopting Directory.move() (FS-level atomic rename) for performance,
+		// untracked and unexpected files are all moved to the new dir, just like shell `mv`.
+		// Note: if you place handwritten READMEs or generated dist/ under src/, the behavior changes,
+		// so callers should design their directory structure with this in mind.
 		const project = createInMemoryProject();
 		const oldDirPath = "/src/foo";
 		const newDirPath = "/src/bar";
@@ -157,17 +157,17 @@ describe("renameFileSystemEntry Complex Cases", () => {
 			dryRun: false,
 		});
 
-		// 旧ディレクトリは完全消失
+		// Old directory completely gone
 		expect(fs.directoryExistsSync(oldDirPath)).toBe(false);
 		expect(fs.directoryExistsSync(`${oldDirPath}/sub-a`)).toBe(false);
-		// untracked も含めて新ディレクトリ配下に移動
+		// Untracked files also moved under the new directory
 		expect(fs.directoryExistsSync(`${newDirPath}/sub-a`)).toBe(true);
 		expect(fs.readFileSync(`${newDirPath}/sub-a/README.md`)).toContain(
 			"moved together",
 		);
 	});
 
-	it("ファイル名をスワップする（一時ファイル経由）", async () => {
+	it("swaps file names (via a temporary file)", async () => {
 		const project = createInMemoryProject();
 		const fileA = "/src/fileA.ts";
 		const fileB = "/src/fileB.ts";

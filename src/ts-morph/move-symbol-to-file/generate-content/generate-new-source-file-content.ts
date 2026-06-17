@@ -10,12 +10,12 @@ import {
 	calculateRequiredImportMap,
 } from "./build-new-file-import-section";
 
-// --- 型定義 ---
-// --- 内部ヘルパー関数 ---
+// --- Type definitions ---
+// --- Internal helper functions ---
 
 /**
- * Statement を取得し、必要なら export キーワードを追加して文字列を返す。
- * isInternalOnly が true の場合は export キーワードを付けない。
+ * Gets a Statement and returns it as a string, adding the export keyword if necessary.
+ * If isInternalOnly is true, the export keyword is not added.
  */
 function getPotentiallyExportedStatement(
 	stmt: Statement,
@@ -37,11 +37,11 @@ function getPotentiallyExportedStatement(
 	return stmtText;
 }
 
-// --- エクスポートされるヘルパー関数 ---
+// --- Exported helper functions ---
 
 /**
- * 移動対象の宣言と、それに付随する内部依存 (`moveToNewFile` タイプ) の
- * 宣言文字列 (適切な export キーワード付き) の配列を生成する。
+ * Generates an array of declaration strings (with appropriate export keywords) for the
+ * target declaration and its accompanying internal dependencies (of type `moveToNewFile`).
  */
 export function prepareDeclarationStrings(
 	targetDeclaration: Statement,
@@ -66,17 +66,17 @@ export function prepareDeclarationStrings(
 	return declarationStrings;
 }
 
-// --- メイン関数 (新規ファイル作成用) ---
+// --- Main function (for creating a new file) ---
 
 /**
- * 移動対象の宣言と依存関係から、新しいファイルの完全な内容を生成する。
+ * Generates the full content of a new file from the target declaration and its dependencies.
  *
- * @param targetDeclaration 移動対象のシンボルの Statement
- * @param classifiedDependencies 分類済みの内部依存関係の配列
- * @param originalFilePath 元のファイルの絶対パス
- * @param newFilePath 新しいファイルの絶対パス
- * @param neededExternalImports 事前に収集された外部インポート情報
- * @returns 新しいファイルのソースコード文字列
+ * @param targetDeclaration Statement of the symbol being moved
+ * @param classifiedDependencies Array of classified internal dependencies
+ * @param originalFilePath Absolute path of the original file
+ * @param newFilePath Absolute path of the new file
+ * @param neededExternalImports Pre-collected external import information
+ * @returns Source code string for the new file
  */
 export function generateNewSourceFileContent(
 	targetDeclaration: Statement,

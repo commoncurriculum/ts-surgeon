@@ -5,7 +5,7 @@ import { renameFileSystemEntry } from "./rename-file-system-entry";
 import { getFileText } from "../_test-utils/get-file-text";
 
 describe("renameFileSystemEntry Special Cases", () => {
-	it("dryRun: true の場合、ファイルシステム（メモリ上）の変更を行わず、変更予定リストを返す", async () => {
+	it("dryRun: true does not modify the file system (in-memory) and returns the list of planned changes", async () => {
 		const project = createInMemoryProject();
 		const oldUtilPath = "/src/utils/old-util.ts";
 		const newUtilPath = "/src/utils/new-util.ts";
@@ -33,7 +33,7 @@ describe("renameFileSystemEntry Special Cases", () => {
 		expect(result.changedFiles).not.toContain(oldUtilPath);
 	});
 
-	it("どのファイルからも参照されていないファイルをリネームする", async () => {
+	it("renames a file not referenced by any other file", async () => {
 		const project = createInMemoryProject();
 		const oldPath = "/src/utils/unreferenced.ts";
 		const newPath = "/src/utils/renamed-unreferenced.ts";
@@ -52,7 +52,7 @@ describe("renameFileSystemEntry Special Cases", () => {
 		expect(result.changedFiles).toEqual([newPath]);
 	});
 
-	it("デフォルトインポートのパスが正しく更新される", async () => {
+	it("default import path is correctly updated", async () => {
 		const project = createInMemoryProject();
 		const oldDefaultPath = "/src/utils/defaultExport.ts";
 		const newDefaultPath = "/src/utils/renamedDefaultExport.ts";
@@ -80,7 +80,7 @@ describe("renameFileSystemEntry Special Cases", () => {
 		);
 	});
 
-	it("デフォルトエクスポートされた変数 (export default variableName) のパスが正しく更新される", async () => {
+	it("path of a default-exported variable (export default variableName) is correctly updated", async () => {
 		const project = createInMemoryProject();
 		const oldVarDefaultPath = "/src/utils/variableDefaultExport.ts";
 		const newVarDefaultPath = "/src/utils/renamedVariableDefaultExport.ts";
@@ -110,7 +110,7 @@ describe("renameFileSystemEntry Special Cases", () => {
 });
 
 describe("renameFileSystemEntry Extension Preservation", () => {
-	it("import文のパスに .js 拡張子が含まれている場合、リネーム後も維持される", async () => {
+	it("preserves .js extension in import paths after rename", async () => {
 		const project = createInMemoryProject();
 		const oldJsPath = "/src/utils/legacy-util.js";
 		const newJsPath = "/src/utils/modern-util.js";
@@ -153,7 +153,7 @@ console.log(legacyValue, helperValue);
 });
 
 describe("renameFileSystemEntry with index.ts re-exports", () => {
-	it("index.ts が 'export * from \"./moduleB\"' 形式で moduleB.ts を再エクスポートし、moduleB.ts をリネームした場合", async () => {
+	it("index.ts re-exports moduleB.ts via 'export * from \"./moduleB\"' and moduleB.ts is renamed", async () => {
 		const project = createInMemoryProject();
 		const utilsDir = "/src/utils";
 		const moduleBOriginalPath = `${utilsDir}/moduleB.ts`;
@@ -197,7 +197,7 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 		);
 	});
 
-	it("index.ts が 'export { specificExport } from \"./moduleC\"' 形式で moduleC.ts を再エクスポートし、moduleC.ts をリネームした場合", async () => {
+	it("index.ts re-exports moduleC.ts via 'export { specificExport } from \"./moduleC\"' and moduleC.ts is renamed", async () => {
 		const project = createInMemoryProject();
 		const utilsDir = "/src/utils";
 		const moduleCOriginalPath = `${utilsDir}/moduleC.ts`;
@@ -248,7 +248,7 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 		);
 	});
 
-	it("index.ts が再エクスポートを行い、その utils ディレクトリ全体をリネームした場合", async () => {
+	it("index.ts performs re-exports and the entire utils directory is renamed", async () => {
 		const project = createInMemoryProject();
 		const oldUtilsDir = "/src/utils";
 		const newUtilsDir = "/src/newUtils";
@@ -308,7 +308,7 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 });
 
 describe("renameFileSystemEntry with type-only namespace import (issue #26)", () => {
-	it("`import type * as X from '@/...'` (type-only namespace import + path-alias) も rename で更新されること", async () => {
+	it("`import type * as X from '@/...'` (type-only namespace import + path-alias) is updated by rename", async () => {
 		const project = createInMemoryProject();
 		const oldTargetPath = "/src/types/request.ts";
 		const newTargetPath = "/src/typings/request.ts";
@@ -337,9 +337,9 @@ export const b: CreateRequest = { id: "y" };
 
 		const updatedUsageContent = getFileText(project, usagePath);
 
-		// 旧パスは namespace import (A) / named import (B) 両方から消えていること
+		// Old path must be gone from both the namespace import (A) and named import (B)
 		expect(updatedUsageContent).not.toContain("@/types/request");
-		// 新パスは 2 つの import 文両方に現れていること
+		// New path must appear in both import statements
 		expect(updatedUsageContent).toContain(
 			'import type * as Req from "./typings/request"',
 		);
@@ -348,7 +348,7 @@ export const b: CreateRequest = { id: "y" };
 		);
 	});
 
-	it("`import type * as X from './relative'` (type-only namespace import + 相対パス) が rename で更新されること (回帰防止)", async () => {
+	it("`import type * as X from './relative'` (type-only namespace import + relative path) is updated by rename (regression guard)", async () => {
 		const project = createInMemoryProject();
 		const oldTargetPath = "/src/types/request.ts";
 		const newTargetPath = "/src/typings/request.ts";
@@ -383,7 +383,7 @@ export const a: Req.CreateRequest = { id: "x" };
 });
 
 describe("renameFileSystemEntry with index.ts re-exports (actual bug reproduction)", () => {
-	it("index.tsが複数のモジュールを再エクスポートし、そのうちの1つをリネームした際、インポート元のパスがindex.tsを指し続けること", async () => {
+	it("when index.ts re-exports multiple modules and one is renamed, the import source path continues to point at index.ts", async () => {
 		const project = createInMemoryProject();
 		const utilsDir = "/src/utils";
 		const moduleAOriginalPath = `${utilsDir}/moduleA.ts`;
@@ -414,22 +414,22 @@ describe("renameFileSystemEntry with index.ts re-exports (actual bug reproductio
 			dryRun: false,
 		});
 
-		// 1. moduleA.ts がリネームされていること
+		// 1. moduleA.ts was renamed
 		expectFileMoved(project, moduleAOriginalPath, moduleARenamedPath);
 		expect(getFileText(project, moduleARenamedPath)).toBe(
 			"export const funcA = () => 'original_A';",
 		);
 
-		// 2. index.ts が正しく更新されていること
+		// 2. index.ts was correctly updated
 		const indexTsContent = getFileText(project, indexTsPath);
 		expect(indexTsContent).toContain('export * from "./moduleARenamed";');
 		expect(indexTsContent).toContain('export * from "./moduleB";');
 		expect(indexTsContent).not.toContain('export * from "./moduleA";');
 
-		// 3. MyComponent.ts のインポートパスが変更されていないこと
+		// 3. MyComponent.ts import path was not changed
 		const updatedComponentContent = getFileText(project, componentPath);
 		expect(updatedComponentContent).toBe(originalComponentContent);
-		// さらに具体的に確認
+		// More specific confirmation
 		expect(updatedComponentContent).toContain(
 			"import { funcA, funcB } from '@/utils';",
 		);

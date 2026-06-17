@@ -23,7 +23,7 @@ const setupTest = (
 };
 
 describe("classifyDependencies", () => {
-	it("exportされておらず、移動対象からのみ参照される依存は moveToNewFile に分類される", () => {
+	it("a dependency that is not exported and is only referenced from the move target is classified as moveToNewFile", () => {
 		const { sourceFile, targetDeclaration, internalDependencies } = setupTest(
 			`
 				function helper() { return 1; }
@@ -46,7 +46,7 @@ describe("classifyDependencies", () => {
 		]);
 	});
 
-	it("exportされており、移動対象から参照される依存は importFromOriginal に分類される", () => {
+	it("a dependency that is exported and referenced from the move target is classified as importFromOriginal", () => {
 		const { sourceFile, targetDeclaration, internalDependencies } = setupTest(
 			`
 				export function sharedHelper() { return 2; }
@@ -73,7 +73,7 @@ describe("classifyDependencies", () => {
 		]);
 	});
 
-	it("exportされておらず、移動対象以外からも参照される依存は addExport に分類される", () => {
+	it("a dependency that is not exported and is also referenced from outside the move target is classified as addExport", () => {
 		const { sourceFile, targetDeclaration, internalDependencies } = setupTest(
 			`
 				function util() { return 3; }
@@ -97,7 +97,7 @@ describe("classifyDependencies", () => {
 		]);
 	});
 
-	it("内部依存関係がない場合は空配列を返す", () => {
+	it("returns an empty array when there are no internal dependencies", () => {
 		const { targetDeclaration, internalDependencies } = setupTest(
 			"export const main = 123;",
 			"main",
@@ -110,7 +110,7 @@ describe("classifyDependencies", () => {
 		).toEqual([]);
 	});
 
-	it("複数の依存関係が混在する場合、それぞれ正しく分類される", () => {
+	it("correctly classifies each dependency when multiple dependency types are mixed", () => {
 		const { sourceFile, targetDeclaration, internalDependencies } = setupTest(
 			`
 				function privateHelper() { return 'A'; }

@@ -7,12 +7,14 @@ function readyMarkerPath(target: TargetRepo): string {
 }
 
 /**
- * 対象リポジトリを固定 commit で clone し、依存をインストールする。
- * 既に準備済み（.ready マーカあり）なら何もせず checkout ディレクトリを返す。
+ * Clones the target repository at a pinned commit and installs its dependencies.
+ * If already prepared (a .ready marker exists), returns the checkout directory immediately.
  *
- * - 特定 commit のみを取得する shallow fetch（GitHub は SHA 指定の fetch を許可）
- * - 依存は frozen-lockfile + ignore-scripts で固定・postinstall 不実行
- * - .ready マーカは checkout 外に置き、scenario 間の git clean で消えないようにする
+ * - Shallow fetch of only the specific commit (GitHub allows SHA-targeted fetches).
+ * - Dependencies are installed with frozen-lockfile + ignore-scripts to pin the
+ *   lockfile and skip postinstall scripts.
+ * - The .ready marker lives outside the checkout directory so git clean between
+ *   scenarios does not remove it.
  */
 export function prepareTarget(target: TargetRepo): string {
 	const dir = targetCheckoutDir(target);
@@ -25,7 +27,7 @@ export function prepareTarget(target: TargetRepo): string {
 	const pkgManager = target.installArgv[0];
 	if (!commandExists(pkgManager)) {
 		throw new Error(
-			`[e2e] パッケージマネージャ '${pkgManager}' が見つかりません（${target.name} の準備に必要）。`,
+			`[e2e] Package manager '${pkgManager}' not found (required to prepare ${target.name}).`,
 		);
 	}
 
@@ -44,7 +46,7 @@ export function prepareTarget(target: TargetRepo): string {
 		const { ok, output } = run(step.cmd, step.args, dir);
 		if (!ok) {
 			throw new Error(
-				`[e2e] ${target.name}: '${step.cmd} ${step.args.join(" ")}' に失敗しました。\n${output}`,
+				`[e2e] ${target.name}: '${step.cmd} ${step.args.join(" ")}' failed.\n${output}`,
 			);
 		}
 	}
@@ -52,7 +54,7 @@ export function prepareTarget(target: TargetRepo): string {
 	const { ok, output } = run(pkgManager, target.installArgv.slice(1), dir);
 	if (!ok) {
 		throw new Error(
-			`[e2e] ${target.name}: 依存インストール '${target.installArgv.join(" ")}' に失敗しました。\n${output}`,
+			`[e2e] ${target.name}: dependency install '${target.installArgv.join(" ")}' failed.\n${output}`,
 		);
 	}
 

@@ -2,55 +2,55 @@ import { describe, it, expect } from "vitest";
 import { calculateRelativePath } from "./calculate-relative-path";
 
 describe("calculateRelativePath", () => {
-	it("同じディレクトリ内の index.ts を参照する場合、'.' を返す", () => {
+	it("returns '.' when referencing index.ts in the same directory", () => {
 		const fromPath = "/src/components/Button.tsx";
 		const toPath = "/src/components/index.ts";
 		expect(calculateRelativePath(fromPath, toPath)).toBe(".");
 	});
 
-	it("親ディレクトリの index.ts を参照する場合、'..' を返す", () => {
+	it("returns '..' when referencing index.ts in the parent directory", () => {
 		const fromPath = "/src/components/core/Icon.tsx";
 		const toPath = "/src/components/index.ts";
 		expect(calculateRelativePath(fromPath, toPath)).toBe("..");
 	});
 
-	it("二階層親の index.ts を参照する場合、'../..' を返す", () => {
+	it("returns '../..' when referencing index.ts two levels up", () => {
 		const fromPath = "/src/components/core/primitive/Box.tsx";
 		const toPath = "/src/components/index.ts";
-		expect(calculateRelativePath(fromPath, toPath)).toBe("../.."); // 期待値
+		expect(calculateRelativePath(fromPath, toPath)).toBe("../.."); // expected value
 	});
 
-	it("三階層親の index.ts を参照する場合、'../../..' を返す", () => {
+	it("returns '../../..' when referencing index.ts three levels up", () => {
 		const fromPath = "/src/components/core/primitive/utils/helper.ts";
 		const toPath = "/src/components/index.ts";
-		expect(calculateRelativePath(fromPath, toPath)).toBe("../../.."); // 期待値
+		expect(calculateRelativePath(fromPath, toPath)).toBe("../../.."); // expected value
 	});
 
-	it("同じディレクトリ内の別のファイルを参照する場合、'./filename' を返す", () => {
+	it("returns './filename' when referencing a different file in the same directory", () => {
 		const fromPath = "/src/utils/format.ts";
 		const toPath = "/src/utils/parse.tsx";
 		expect(calculateRelativePath(fromPath, toPath)).toBe("./parse");
 	});
 
-	it("サブディレクトリのファイルを参照する場合、'./subdir/filename' を返す", () => {
+	it("returns './subdir/filename' when referencing a file in a subdirectory", () => {
 		const fromPath = "/src/hooks/useCounter.ts";
 		const toPath = "/src/hooks/internal/state.ts";
 		expect(calculateRelativePath(fromPath, toPath)).toBe("./internal/state");
 	});
 
-	it("親ディレクトリのファイルを参照する場合、'../filename' を返す", () => {
+	it("returns '../filename' when referencing a file in the parent directory", () => {
 		const fromPath = "/src/components/Button.tsx";
 		const toPath = "/src/utils/common.ts";
 		expect(calculateRelativePath(fromPath, toPath)).toBe("../utils/common");
 	});
 
-	it("パスに拡張子が含まれていても削除される", () => {
+	it("removes the extension even when the path contains one", () => {
 		const fromPath = "/src/a.ts";
 		const toPath = "/src/b.tsx";
 		expect(calculateRelativePath(fromPath, toPath)).toBe("./b");
 	});
 
-	it("参照先が index ではない親ディレクトリの場合、'../dir' を返す", () => {
+	it("returns '../dir' when referencing a non-index file in a parent directory path", () => {
 		const fromPath = "/src/components/core/Icon.tsx";
 		const toPath = "/src/hooks/useFetch.ts";
 		expect(calculateRelativePath(fromPath, toPath)).toBe(
@@ -58,7 +58,7 @@ describe("calculateRelativePath", () => {
 		);
 	});
 
-	it("removeExtensions: false の場合、拡張子を維持する", () => {
+	it("preserves the extension when removeExtensions is false", () => {
 		const fromPath = "/src/a.ts";
 		const toPath = "/src/b.jsx";
 		expect(
@@ -66,9 +66,9 @@ describe("calculateRelativePath", () => {
 		).toBe("./b.jsx");
 	});
 
-	it("removeExtensions: false の場合、simplifyIndex: true でも index は省略されない", () => {
+	it("does not omit index even with simplifyIndex: true when removeExtensions is false", () => {
 		const fromPath = "/src/components/core/Icon.tsx";
-		const toPath = "/src/components/index.js"; // .js 拡張子付き
+		const toPath = "/src/components/index.js"; // with .js extension
 		expect(
 			calculateRelativePath(fromPath, toPath, {
 				removeExtensions: false,
@@ -80,10 +80,10 @@ describe("calculateRelativePath", () => {
 				removeExtensions: false,
 				simplifyIndex: false,
 			}),
-		).toBe("../index.js"); // simplifyIndex: false でも同じ
+		).toBe("../index.js"); // same result with simplifyIndex: false
 	});
 
-	it("removeExtensions: true, simplifyIndex: false の場合、拡張子は削除するが index は省略しない", () => {
+	it("removes the extension but does not omit index when removeExtensions is true and simplifyIndex is false", () => {
 		const fromPath = "/src/components/core/primitive/utils/helper.ts";
 		const toPath = "/src/components/index.ts";
 		expect(
@@ -94,20 +94,20 @@ describe("calculateRelativePath", () => {
 		).toBe("../../../index");
 	});
 
-	it("removeExtensions にカスタム配列を指定した場合、指定された拡張子のみ削除する", () => {
+	it("removes only the specified extensions when removeExtensions is given a custom array", () => {
 		const fromPath = "/src/dir/file.ts";
 		const toPathTsx = "/src/dir/other.tsx";
 		const toPathJson = "/src/dir/data.json";
-		const toPathCss = "/src/dir/styles.css"; // これは削除されないはず
+		const toPathCss = "/src/dir/styles.css"; // should not be removed
 
-		const options = { removeExtensions: [".ts", ".tsx"] }; // .json は削除対象外
+		const options = { removeExtensions: [".ts", ".tsx"] }; // .json is not a removal target
 
 		expect(calculateRelativePath(fromPath, toPathTsx, options)).toBe("./other");
 		expect(calculateRelativePath(fromPath, toPathJson, options)).toBe(
 			"./data.json",
-		); // 維持される
+		); // preserved
 		expect(calculateRelativePath(fromPath, toPathCss, options)).toBe(
 			"./styles.css",
-		); // 維持される
+		); // preserved
 	});
 });

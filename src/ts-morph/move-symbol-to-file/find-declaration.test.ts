@@ -17,32 +17,32 @@ import {
 
 // --- Test Data ---
 const commonTestSource = `
-import DefaultIface from './default-iface'; // 無視されるべき
+import DefaultIface from './default-iface'; // should be ignored
 
-// 通常の宣言
+// regular declarations
 function funcA() {}
 const varA = 1;
 class ClassA {}
 type TypeA = string;
 interface IfaceA {}
 
-// エクスポートされた宣言
+// exported declarations
 export function funcB() {}
 export const varB = 2;
 export class ClassB {}
 export type TypeB = number;
-export interface IfaceB<T> {} // ジェネリクス付き
+export interface IfaceB<T> {} // with generics
 
-// デフォルトエクスポート
+// default export
 export default function defaultFunc() {}
-// export default class DefaultClass {} // 同名は不可なのでコメントアウト
-// export default const defaultVar = 3; // デフォルトエクスポート変数（あまり一般的ではない）
+// export default class DefaultClass {} // commented out because duplicate names are not allowed
+// export default const defaultVar = 3; // default-export variable (not common)
 
-// 同じ名前の宣言 (種類違い)
+// declarations with the same name (different kinds)
 const funcC = "hello";
-function funcC() {} // 再宣言 (関数が優先されるはず)
+function funcC() {} // re-declaration (function should take precedence)
 
-// VariableStatement 内の複数宣言
+// multiple declarations inside a VariableStatement
 export const multiVar1 = 1, multiVar2 = 2;
 `;
 
@@ -58,74 +58,79 @@ type TestCase = [
 const testCases: TestCase[] = [
 	// description, nameToFind, kindToFind, expectedResult { kind, name } or undefined
 	[
-		"関数 funcB を種類指定で見つける",
+		"find function funcB with kind specified",
 		"funcB",
 		SyntaxKind.FunctionDeclaration,
 		{ kind: SyntaxKind.FunctionDeclaration, name: "funcB" },
 	],
 	[
-		"変数 varB を種類指定で見つける",
+		"find variable varB with kind specified",
 		"varB",
 		SyntaxKind.VariableStatement,
 		{ kind: SyntaxKind.VariableStatement, name: "varB" },
 	],
 	[
-		"クラス ClassB を種類指定で見つける",
+		"find class ClassB with kind specified",
 		"ClassB",
 		SyntaxKind.ClassDeclaration,
 		{ kind: SyntaxKind.ClassDeclaration, name: "ClassB" },
 	],
 	[
-		"型 TypeB を種類指定で見つける",
+		"find type TypeB with kind specified",
 		"TypeB",
 		SyntaxKind.TypeAliasDeclaration,
 		{ kind: SyntaxKind.TypeAliasDeclaration, name: "TypeB" },
 	],
 	[
-		"インターフェース IfaceB を種類指定で見つける",
+		"find interface IfaceB with kind specified",
 		"IfaceB",
 		SyntaxKind.InterfaceDeclaration,
 		{ kind: SyntaxKind.InterfaceDeclaration, name: "IfaceB" },
 	],
 	[
-		"関数 funcA を種類指定なしで見つける",
+		"find function funcA without kind specified",
 		"funcA",
 		undefined,
 		{ kind: SyntaxKind.FunctionDeclaration, name: "funcA" },
 	],
 	[
-		"変数 varA を種類指定なしで見つける",
+		"find variable varA without kind specified",
 		"varA",
 		undefined,
 		{ kind: SyntaxKind.VariableStatement, name: "varA" },
 	],
 	[
-		"複数宣言の multiVar1 を種類指定で見つける",
+		"find multiVar1 from multiple declarations with kind specified",
 		"multiVar1",
 		SyntaxKind.VariableStatement,
 		{ kind: SyntaxKind.VariableStatement, name: "multiVar1" },
 	],
 	[
-		"複数宣言の multiVar2 を種類指定で見つける",
+		"find multiVar2 from multiple declarations with kind specified",
 		"multiVar2",
 		SyntaxKind.VariableStatement,
 		{ kind: SyntaxKind.VariableStatement, name: "multiVar2" },
 	],
-	// ["デフォルト関数を 'default' で見つける", "default", SyntaxKind.FunctionDeclaration, { kind: SyntaxKind.FunctionDeclaration, name: "defaultFunc" }], // デフォルト名での検索は一旦保留
+	// ["find default function by 'default'", "default", SyntaxKind.FunctionDeclaration, { kind: SyntaxKind.FunctionDeclaration, name: "defaultFunc" }], // searching by default name is deferred for now
 	[
-		"デフォルト関数を実際の名前(defaultFunc)で見つける",
+		"find default function by its actual name (defaultFunc)",
 		"defaultFunc",
 		SyntaxKind.FunctionDeclaration,
 		{ kind: SyntaxKind.FunctionDeclaration, name: "defaultFunc" },
 	],
 	[
-		"種類が異なる場合 (関数funcBをクラスとして検索)",
+		"when kind differs (searching funcB as a class)",
 		"funcB",
 		SyntaxKind.ClassDeclaration,
 		undefined,
 	],
-	["存在しない名前(nonExistent)の場合", "nonExistent", undefined, undefined],
-	// ["同名宣言 funcC (関数が優先されるはず)", "funcC", undefined, { kind: SyntaxKind.FunctionDeclaration, name: "funcC" }], // 同名宣言の挙動は実装次第
+	[
+		"when name does not exist (nonExistent)",
+		"nonExistent",
+		undefined,
+		undefined,
+	],
+	// ["same-name declaration funcC (function should take precedence)", "funcC", undefined, { kind: SyntaxKind.FunctionDeclaration, name: "funcC" }], // behavior for duplicate names depends on implementation
 ];
 
 describe("findTopLevelDeclarationByName", () => {
@@ -147,13 +152,13 @@ describe("findTopLevelDeclarationByName", () => {
 			);
 
 			if (expectedResult) {
-				// 見つかることを期待する場合
+				// expect to find a match
 				expect(foundDeclaration).toBeDefined();
 				expect(foundDeclaration?.getKind()).toBe(expectedResult.kind);
 
-				// 名前の一致をチェック
+				// check name match
 				if (expectedResult.kind === SyntaxKind.VariableStatement) {
-					// VariableStatement の場合は、指定された名前の VariableDeclaration が含まれるかチェック
+					// For VariableStatement, check that it contains a VariableDeclaration with the specified name
 					const varDecls = (
 						foundDeclaration as VariableStatement
 					)?.getDeclarations();
@@ -163,7 +168,7 @@ describe("findTopLevelDeclarationByName", () => {
 					expect(specificVarDecl).toBeDefined();
 				} else {
 					// Function, Class, Interface, TypeAlias
-					// デフォルトエクスポートでgetName()がundefinedになる場合も考慮 (今は実際の名前で検索)
+					// Account for cases where getName() may be undefined for default exports (currently searching by actual name)
 					// ANY TYPE HERE IS INTENTIONAL FOR NOW - will be fixed if test fails
 					expect(
 						(
@@ -176,12 +181,12 @@ describe("findTopLevelDeclarationByName", () => {
 					).toBe(expectedResult.name);
 				}
 			} else {
-				// 見つからないことを期待する場合
+				// expect not to find a match
 				expect(foundDeclaration).toBeUndefined();
 			}
 		},
 	);
-	// TODO: デフォルトエクスポートの 'default' 名検索、同名宣言に関するテストを別途追加
+	// TODO: add separate tests for searching default exports by 'default' name and for same-name declarations
 });
 
 describe("getIdentifierFromDeclaration", () => {
@@ -229,41 +234,43 @@ describe("getIdentifierFromDeclaration", () => {
 			expected: "myVar",
 		},
 		{
-			description: "VariableStatement (複数宣言、最初の識別子)",
+			description:
+				"VariableStatement (multiple declarations, first identifier)",
 			code: "let var1 = 1, var2 = 2;",
 			expected: "var1",
 		},
 		{
-			description: "export された FunctionDeclaration",
+			description: "exported FunctionDeclaration",
 			code: "export function myFunction() {}",
 			expected: "myFunction",
 		},
 		{
-			description: "export default 名前付き FunctionDeclaration",
+			description: "export default named FunctionDeclaration",
 			code: "export default function myFunction() {}",
 			expected: "myFunction",
 		},
 		{
-			description: "export default 匿名 FunctionDeclaration (識別子なし)",
+			description:
+				"export default anonymous FunctionDeclaration (no identifier)",
 			code: "export default function() {}",
 			expected: undefined,
 		},
 		{
-			description: "ExportAssignment (オブジェクトリテラル、識別子なし)",
+			description: "ExportAssignment (object literal, no identifier)",
 			code: "export default { a: 1 };",
 			expected: undefined,
 		},
 		{
-			description: "サポート外 (ImportDeclaration)",
+			description: "unsupported (ImportDeclaration)",
 			code: "import { x } from './other';",
 			expected: undefined,
 		},
-	])("$description の場合は $expected を返す", ({ code, expected }) => {
+	])("returns $expected for $description", ({ code, expected }) => {
 		const identifier = getIdentifierFromDeclaration(getFirstStatement(code));
 		expect(identifier?.getText()).toBe(expected);
 	});
 
-	it("ExportAssignment (識別子) の識別子を返す", () => {
+	it("returns the identifier for ExportAssignment (identifier)", () => {
 		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"test.ts",
@@ -275,7 +282,7 @@ describe("getIdentifierFromDeclaration", () => {
 		);
 	});
 
-	it("undefined が入力された場合は undefined を返す", () => {
+	it("returns undefined when undefined is given as input", () => {
 		expect(getIdentifierFromDeclaration(undefined)).toBeUndefined();
 	});
 });

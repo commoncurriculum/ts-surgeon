@@ -2,38 +2,38 @@ import type { FileSystemHost, Project } from "ts-morph";
 import logger from "../../utils/logger";
 
 export interface PackageExportWarning {
-	/** 警告対象パッケージの package.json の絶対パス */
+	/** Absolute path to the package.json of the warned package */
 	packageJsonPath: string;
-	/** package.json の `name` (無名パッケージは undefined) */
+	/** `name` field from package.json (undefined for unnamed packages) */
 	packageName: string | undefined;
 	/**
-	 * package.json のエントリポイント (`exports` / `main` / `module` / `types`) のうち、
-	 * スキャン対象ソースに解決できなかった相対パス (例: `./dist/index.js`)。
+	 * Relative paths from package.json entry points (`exports` / `main` / `module` / `types`)
+	 * that could not be resolved to a scanned source file (e.g. `./dist/index.js`).
 	 */
 	externalEntryTargets: string[];
-	/** このパッケージ配下で報告された unused export 候補の数 */
+	/** Number of unused export candidates reported from this package */
 	candidateCount: number;
 }
 
 /**
- * 「built dist を公開しているパッケージ」由来の系統的 false positive を構造的に検出する。
+ * Structurally detects systematic false positives that originate from packages publishing built dist.
  *
- * monorepo で、あるパッケージの package.json エントリポイント (`exports` / `main` /
- * `module` / `types`) がスキャン対象ソース外 (例: `./dist/index.js`) を指す場合、
- * 他パッケージからの import はビルド成果物 (または node_modules) 側に解決され、
- * src 側のシンボルへの参照として観測できない。その結果、実際には消費されている
- * export がそのパッケージだけ一括で未使用候補になる。
+ * In a monorepo, when a package's package.json entry points (`exports` / `main` /
+ * `module` / `types`) point outside the scanned sources (e.g. `./dist/index.js`),
+ * imports from other packages resolve to the build artifact (or node_modules) side,
+ * making references to src-side symbols invisible. As a result, every export of that
+ * package appears as an unused candidate even when it is actually consumed.
  *
- * この関数は次の条件をすべて満たすパッケージごとに警告を 1 件返す:
- * 1. スキャン対象ファイルが 2 つ以上のパッケージ (package.json) にまたがっている
- *    (単一パッケージでは cross-package 参照自体が存在せず、この形の偽陽性は起きない)
- * 2. そのパッケージ配下に unused export 候補が 1 件以上ある
- * 3. package.json のエントリポイントのうち、解析対象のソースファイルに解決できない
- *    ものが 1 つ以上ある (`./dist/index.js` → `./dist/index.ts` 等の拡張子読み替えを
- *    試した上で、project 内の非宣言ファイルに到達できないもの)
+ * This function returns one warning per package that satisfies all of the following:
+ * 1. The scanned files span two or more packages (package.json owners)
+ *    (a single package has no cross-package references, so this form of false positive cannot occur)
+ * 2. The package has at least one unused export candidate
+ * 3. At least one of the package.json entry points cannot be resolved to an analyzed source file
+ *    (after trying extension substitutions like `./dist/index.js` → `./dist/index.ts`,
+ *    the path does not reach any non-declaration file in the project)
  *
- * package.json の探索は各ソースファイルから上方向に最も近いものを採用する。
- * 読み取り失敗・JSON 不正は警告なしとして無視する (検出はベストエフォート)。
+ * Each source file's owning package.json is found by walking upward to the nearest one.
+ * Read failures and malformed JSON are silently ignored (detection is best-effort).
  */
 export function collectPackageExportWarnings(
 	project: Project,
@@ -46,7 +46,7 @@ export function collectPackageExportWarnings(
 	const packageOf = (filePath: string): string | undefined =>
 		findOwningPackageJson(dirnameOf(filePath), fs, dirToPackageJson);
 
-	// 条件 1: スキャン対象が複数パッケージにまたがるか
+	// Condition 1: do the scanned files span multiple packages?
 	const scannedPackages = new Set<string>();
 	for (const filePath of scannedFilePaths) {
 		const pkg = packageOf(filePath);
@@ -54,7 +54,7 @@ export function collectPackageExportWarnings(
 	}
 	if (scannedPackages.size < 2) return [];
 
-	// 条件 2: パッケージごとの候補数
+	// Condition 2: candidate count per package
 	const candidateCountByPackage = new Map<string, number>();
 	for (const filePath of candidateFilePaths) {
 		const pkg = packageOf(filePath);
@@ -65,8 +65,9 @@ export function collectPackageExportWarnings(
 		);
 	}
 
-	// 条件 3 の判定に使う「解析対象として見えているソース」の集合。
-	// 宣言ファイル (.d.ts) は参照解決先になっても src のシンボルと別物なので含めない。
+	// Set of visible sources used for condition 3.
+	// Declaration files (.d.ts) are excluded because even if they are a resolution target,
+	// they are not the same as src symbols.
 	const visibleSourcePaths = new Set<string>();
 	for (const sf of project.getSourceFiles()) {
 		if (sf.isInNodeModules()) continue;
@@ -106,7 +107,7 @@ function dirnameOf(filePath: string): string {
 }
 
 /**
- * dir から上方向に最も近い package.json を探す (結果は dir 単位でキャッシュ)。
+ * Walks upward from `dir` to find the nearest package.json (results are cached per directory).
  */
 function findOwningPackageJson(
 	dir: string,
@@ -129,7 +130,7 @@ function findOwningPackageJson(
 		try {
 			exists = fs.fileExistsSync(candidate);
 		} catch {
-			// 読めないディレクトリはベストエフォートで無視
+			// Unreadable directories are silently skipped (best-effort)
 		}
 		if (exists) {
 			found = candidate;
@@ -163,18 +164,19 @@ function readManifest(
 	} catch (error) {
 		logger.debug(
 			{ err: error, packageJsonPath },
-			"package.json の読み取りに失敗したためパッケージ警告の判定をスキップします",
+			"Failed to read package.json; skipping package warning check for this file",
 		);
 		return undefined;
 	}
 }
 
-/** JS/TS のコードを指していそうなパスだけをエントリポイントとして扱う (`./package.json` 等は除外)。 */
+/** Only treat paths that look like JS/TS code as entry points (e.g. exclude `./package.json`). */
 const CODE_TARGET_RE = /\.[mc]?[jt]sx?$/;
 
 /**
- * package.json から、外部 consumer のモジュール解決先になり得る相対パスを列挙する。
- * `exports` は conditions / subpaths でネストするため、文字列 leaf を再帰的に集める。
+ * Enumerates relative paths from package.json that could be the module resolution target
+ * for external consumers. `exports` can nest conditions / subpaths, so string leaves are
+ * collected recursively.
  */
 function collectEntryTargets(manifest: PackageManifest): string[] {
 	const targets: string[] = [];
@@ -205,12 +207,12 @@ function collectEntryTargets(manifest: PackageManifest): string[] {
 }
 
 /**
- * エントリポイント相対パスが、解析対象として見えているソースファイルに解決できるか。
+ * Determines whether an entry point relative path resolves to a visible analyzed source file.
  *
- * - ビルド出力を指すパス (`./dist/index.js` 等) はソースとの拡張子読み替え
- *   (`.js` → `.ts`/`.tsx`, `.d.ts` → `.ts` 等) を試した上で判定する。
- * - `*` を含む subpath パターンは個別解決できないため、`*` より前のプレフィックス配下に
- *   見えているソースが 1 つでもあれば「解決できる」とみなす。
+ * - Paths pointing to build output (`./dist/index.js` etc.) are checked after trying
+ *   extension substitutions (`.js` → `.ts`/`.tsx`, `.d.ts` → `.ts`, etc.).
+ * - Subpath patterns containing `*` cannot be resolved individually; if any visible source
+ *   starts with the prefix before `*`, the path is considered resolvable.
  */
 function resolvesToVisibleSource(
 	target: string,
@@ -235,7 +237,7 @@ function resolvesToVisibleSource(
 	return false;
 }
 
-/** ビルド出力のパスから、対応し得るソースファイルパスの候補を列挙する。 */
+/** Enumerates possible source file paths that could correspond to a given build output path. */
 function sourceCandidatesFor(absolutePath: string): string[] {
 	const candidates = [absolutePath];
 	if (absolutePath.endsWith(".d.ts")) {

@@ -60,10 +60,10 @@ const moveSymbolSchema = z.object({
 type MoveSymbolArgs = z.infer<typeof moveSymbolSchema>;
 
 /**
- * MCPサーバーに 'move_symbol_to_file_by_tsmorph' ツールを登録します。
- * このツールは、指定されたシンボルをファイル間で移動し、関連する参照を更新します。
+ * Registers the 'move_symbol_to_file_by_tsmorph' tool on the MCP server.
+ * This tool moves a specified symbol between files and updates all related references.
  *
- * @param server McpServer インスタンス
+ * @param server McpServer instance
  */
 export function registerMoveSymbolToFileTool(server: McpServer): void {
 	server.tool(

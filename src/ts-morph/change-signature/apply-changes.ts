@@ -8,14 +8,15 @@ import type { FunctionLikeWithParameters } from "./find-function-declaration";
 import type { ChangeSignatureOperation } from "./types";
 
 /**
- * 既存呼び出しの引数テキスト配列に対して、操作列を適用して新しい引数配列を計算する。
+ * Applies a sequence of operations to the argument text array of an existing call site,
+ * returning the new argument array.
  *
- * - add: argumentForCallers が指定されていれば、index 位置に挿入する。
- *   index が現在の引数数を超えていれば呼び出しに必要な引数が欠けているのでエラー。
- *   argumentForCallers 未指定の場合は呼び出し側に変更を入れない (末尾追加で
- *   optional/defaulted パラメータを想定したケース)。
- * - remove: index が範囲内ならその位置を削除。範囲外なら無変更 (省略された optional 引数のため)。
- * - reorder: 呼び出しの引数数が newOrder の長さと一致しない場合はエラー。
+ * - add: if argumentForCallers is specified, inserts it at the given index position.
+ *   If the index exceeds the current argument count, the call is missing required arguments — error.
+ *   If argumentForCallers is omitted, the call site is left unchanged (trailing add with
+ *   optional/defaulted parameter assumed).
+ * - remove: if the index is in range, removes that position. If out of range, no-op (omitted optional argument).
+ * - reorder: if the argument count does not match the length of newOrder, error.
  */
 export function computeNewArgumentTexts(
 	currentArgTexts: readonly string[],
@@ -28,7 +29,7 @@ export function computeNewArgumentTexts(
 			const insertAt = op.index ?? args.length;
 			if (insertAt > args.length) {
 				throw new Error(
-					`add 操作: index=${insertAt} に挿入しようとしましたが、呼び出しは ${args.length} 個の引数しか渡していません。末尾 optional を省略している呼び出しがあるため、追加位置を末尾以外にする場合は、先に対象呼び出しに引数を補完してから再実行してください。`,
+					`add operation: tried to insert at index=${insertAt} but the call only passes ${args.length} argument(s). Some calls omit trailing optional arguments — if the insertion position is not the end, first fill in the missing arguments at those call sites and then retry.`,
 				);
 			}
 			args.splice(insertAt, 0, op.argumentForCallers);
@@ -53,10 +54,13 @@ export function computeNewArgumentTexts(
 }
 
 /**
- * 関数の Parameter 構造体配列に対して操作列を適用して、新しい構造体配列を計算する。
+ * Applies a sequence of operations to the parameter structure array of a function,
+ * returning the new structure array.
  *
- * - add の中間挿入で argumentForCallers が無いケースは、呼び出し側が壊れるためここで弾く。
- * - rest パラメータが末尾以外に配置される配列は TypeScript 上不正なので拒否する。
+ * - If argumentForCallers is missing for a mid-list add, it is rejected here because
+ *   it would break all call sites.
+ * - Arrays that place a rest parameter at a non-last position are invalid in TypeScript
+ *   and are rejected.
  */
 export function computeNewParameterStructures(
 	current: ReadonlyArray<OptionalKind<ParameterDeclarationStructure>>,
@@ -70,7 +74,7 @@ export function computeNewParameterStructures(
 			const insertAt = op.index ?? params.length;
 			if (insertAt < 0 || insertAt > params.length) {
 				throw new Error(
-					`add 操作の index=${insertAt} がパラメータ範囲 [0, ${params.length}] を超えています`,
+					`add operation: index=${insertAt} is out of parameter range [0, ${params.length}]`,
 				);
 			}
 			const isTrailing = insertAt === params.length;
@@ -79,13 +83,13 @@ export function computeNewParameterStructures(
 			if (op.argumentForCallers === undefined) {
 				if (!isTrailing) {
 					throw new Error(
-						`add 操作: 中間 index=${insertAt} に挿入する場合は argumentForCallers が必須です (呼び出し側の既存引数と新パラメータの対応が崩れるため)。`,
+						`add operation: argumentForCallers is required when inserting at a mid-list index=${insertAt} (it would break the mapping between existing call-site arguments and the new parameter).`,
 					);
 				}
 				if (!isSafelyOmittable) {
 					throw new Error(
-						"add 操作: 末尾追加でも argumentForCallers を省略する場合は、新パラメータが " +
-							"optional または defaultValue を持つ必要があります (既存呼び出しが引数不足になるため)。",
+						"add operation: when omitting argumentForCallers even for a trailing add, the new parameter must be " +
+							"optional or have a defaultValue (otherwise existing call sites would be missing an argument).",
 					);
 				}
 			}
@@ -100,7 +104,7 @@ export function computeNewParameterStructures(
 		if (op.kind === "remove") {
 			if (op.index < 0 || op.index >= params.length) {
 				throw new Error(
-					`remove 操作の index=${op.index} がパラメータ範囲 [0, ${params.length - 1}] を超えています`,
+					`remove operation: index=${op.index} is out of parameter range [0, ${params.length - 1}]`,
 				);
 			}
 			params.splice(op.index, 1);
@@ -109,14 +113,14 @@ export function computeNewParameterStructures(
 		if (op.kind === "reorder") {
 			if (op.newOrder.length !== params.length) {
 				throw new Error(
-					`reorder の newOrder 長 (${op.newOrder.length}) が現在のパラメータ数 (${params.length}) と一致しません`,
+					`reorder: newOrder length (${op.newOrder.length}) does not match the current parameter count (${params.length})`,
 				);
 			}
 			const seen = new Set<number>();
 			for (const i of op.newOrder) {
 				if (i < 0 || i >= params.length || seen.has(i)) {
 					throw new Error(
-						`reorder の newOrder=[${op.newOrder.join(",")}] が不正です (重複/範囲外)`,
+						`reorder: newOrder=[${op.newOrder.join(",")}] is invalid (duplicate or out-of-range)`,
 					);
 				}
 				seen.add(i);
@@ -129,7 +133,7 @@ export function computeNewParameterStructures(
 }
 
 /**
- * rest パラメータ (`...rest`) は末尾でなければならない (TS2369)。
+ * A rest parameter (`...rest`) must be last (TS2369).
  */
 export function validateRestParameterIsLast(
 	params: ReadonlyArray<OptionalKind<ParameterDeclarationStructure>>,
@@ -137,14 +141,14 @@ export function validateRestParameterIsLast(
 	const restIndex = params.findIndex((p) => p.isRestParameter === true);
 	if (restIndex !== -1 && restIndex !== params.length - 1) {
 		throw new Error(
-			`rest パラメータ (index=${restIndex}, name='${params[restIndex].name}') は最後の位置にある必要があります ` +
-				`(現在のパラメータ数: ${params.length})。`,
+			`rest parameter (index=${restIndex}, name='${params[restIndex].name}') must be in the last position ` +
+				`(current parameter count: ${params.length}).`,
 		);
 	}
 }
 
 /**
- * 呼び出し式の引数を一括で newArgTexts に置換する。
+ * Replaces all arguments of a call expression with newArgTexts.
  */
 export function rewriteCallArguments(
 	call: CallExpression,
@@ -160,7 +164,7 @@ export function rewriteCallArguments(
 }
 
 /**
- * 関数のパラメータを一括で newParams に置換する。
+ * Replaces all parameters of a function with newParams.
  */
 export function rewriteParameters(
 	fn: FunctionLikeWithParameters,
@@ -176,8 +180,8 @@ export function rewriteParameters(
 }
 
 /**
- * 呼び出し式の引数に SpreadElement が含まれているか判定する。
- * (`fn(...args)` のような呼び出しは静的に位置を変更できない)
+ * Returns true if a call expression contains a SpreadElement in its arguments.
+ * (Calls like `fn(...args)` cannot have their positions changed statically.)
  */
 export function callHasSpreadArgument(call: CallExpression): boolean {
 	return call.getArguments().some((a) => Node.isSpreadElement(a));

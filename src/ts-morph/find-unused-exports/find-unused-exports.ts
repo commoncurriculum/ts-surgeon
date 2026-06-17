@@ -12,65 +12,65 @@ import {
 } from "./package-export-warnings";
 
 export interface UnusedExport {
-	/** export を宣言しているファイルの絶対パス */
+	/** Absolute path of the file that declares the export */
 	filePath: string;
-	/** 識別子の 1-based 行番号 */
+	/** 1-based line number of the identifier */
 	line: number;
-	/** 識別子の 1-based 列番号 */
+	/** 1-based column number of the identifier */
 	column: number;
-	/** export 名 (`export default` の場合は元の識別子名、`export default 42` のような無名は対象外) */
+	/** Export name (for `export default` this is the original identifier name; anonymous cases like `export default 42` are excluded) */
 	name: string;
-	/** 宣言ノードの SyntaxKind 名 (FunctionDeclaration / ClassDeclaration / VariableDeclaration / EnumDeclaration / InterfaceDeclaration / TypeAliasDeclaration / ExportAssignment) */
+	/** SyntaxKind name of the declaration node (FunctionDeclaration / ClassDeclaration / VariableDeclaration / EnumDeclaration / InterfaceDeclaration / TypeAliasDeclaration / ExportAssignment) */
 	kind: string;
-	/** `export default` か (`export = x` を含む) */
+	/** Whether this is a `export default` (including `export = x`) */
 	isDefaultExport: boolean;
 	/**
-	 * 同名識別子のテキスト出現数 (**宣言ファイルは除外**、`\bname\b` 単語境界マッチ、合成 import は除外)。
-	 * - 0: 宣言ファイルの**外**には名前が一切現れない。ただし同一ファイル内での使用は別途
-	 *   `sameFileReferenceCount` を参照すること (このフィールドだけでは「宣言ごと削除して安全」は判断できない)。
-	 * - 1+: JSX 名 / 文字列リテラル / 動的参照 (`import().then`) などで触れている可能性あり。
-	 *   `find_references_by_tsmorph` で要確認。短い名前 (`a`, `id` 等) は偶然一致しやすいので注意。
+	 * Number of text occurrences of the same identifier (**declaration file excluded**, `\bname\b` word-boundary match, synthetic imports excluded).
+	 * - 0: The name does not appear anywhere outside the declaration file. However, same-file usage is tracked separately
+	 *   in `sameFileReferenceCount` (this field alone is not enough to conclude "safe to delete the whole declaration").
+	 * - 1+: The name may be referenced via JSX names / string literals / dynamic references (`import().then`) etc.
+	 *   Confirm with `find_references_by_tsmorph`. Short names (`a`, `id`, etc.) are prone to coincidental matches.
 	 */
 	textOccurrences: number;
 	/**
-	 * 宣言と同じファイル内での参照数 (宣言自身の識別子と、`export { x }` 等の再エクスポートサイトは除外)。
+	 * Number of references to the export within the same file as the declaration (excluding the declaration identifier itself and re-export sites like `export { x }`).
 	 *
-	 * この export は定義上「宣言ファイルの**外**では未参照」なので、削除アクションはこの値で決まる:
-	 * - `0`: 同一ファイル内でも使われていない = **真のデッド**。宣言ごと削除して安全
-	 *   (`textOccurrences === 0` も併せて確認するとより確実)。
-	 * - `1+`: 同一ファイル内では使用されている = **過剰 export**。宣言は生きているため、
-	 *   `export` キーワードのみ外す (宣言ごと削除すると同一ファイル内参照が壊れる)。
+	 * This export is by definition unreferenced outside its declaring file, so the safe deletion action is determined by this value:
+	 * - `0`: Not used within the same file either = **truly dead**. Safe to delete the whole declaration
+	 *   (also check `textOccurrences === 0` for highest confidence).
+	 * - `1+`: Used within the same file = **over-exported**. The declaration is still live, so only
+	 *   remove the `export` keyword (deleting the whole declaration would break the in-file references).
 	 */
 	sameFileReferenceCount: number;
 }
 
 export interface FindUnusedExportsOptions {
-	/** これらの絶対パスのファイルは「公開 API」とみなし export を報告しない */
+	/** Files at these absolute paths are treated as "public API" and their exports are not reported */
 	entryPoints?: string[];
-	/** 部分文字列のいずれかを filePath に含むファイルはスキャン対象から除外 */
+	/** Files whose filePath contains any of these substrings are excluded from scanning */
 	excludeFilePatterns?: string[];
-	/** 上限件数 (デフォルト 100)。超えた時点でスキャンを打ち切り `truncated=true` を返す */
+	/** Maximum number of results (default 100). Scanning stops when this limit is reached and `truncated=true` is returned */
 	maxResults?: number;
 	/**
-	 * `import * as ns from "./mod"` を消費するファイルに、解析専用の named import を合成注入する。
-	 * デフォルト true。namespace 経由でしか使われていない export を「使用中」と認識させ、偽陽性を減らす。
-	 * 注入されたファイルは保存しないが、Project インスタンスは書き換わるため、
-	 * 呼び出し側で同じ Project を別の目的に使い回す場合は false を渡すこと。
+	 * Inject synthetic named imports into files that consume `import * as ns from "./mod"`.
+	 * Default true. Makes exports consumed only via namespace references register as "used", reducing false positives.
+	 * Injected files are not saved, but the Project instance is mutated, so pass false if you reuse
+	 * the same Project instance for other purposes after this call.
 	 */
 	expandNamespaceImports?: boolean;
 }
 
 export interface FindUnusedExportsResult {
 	unusedExports: UnusedExport[];
-	/** maxResults に達して打ち切られたか */
+	/** Whether scanning was stopped because maxResults was reached */
 	truncated: boolean;
-	/** 実際にスキャン対象となったファイル数 (除外後) */
+	/** Number of files actually scanned (after exclusions) */
 	scannedFiles: number;
 	/**
-	 * 「built dist を公開しているパッケージ」由来の系統的 false positive の構造的警告。
-	 * 候補を出したパッケージの package.json エントリポイント (`exports` 等) が
-	 * スキャン対象ソース外を指す場合、そのパッケージの候補は他パッケージからの消費が
-	 * 見えていない可能性が高い。詳細は {@link collectPackageExportWarnings} を参照。
+	 * Structural warnings about systematic false positives from packages that publish built dist.
+	 * When a package's package.json entry points (`exports` etc.) point outside the scanned sources,
+	 * cross-package imports of that package's symbols are invisible to this analysis.
+	 * See {@link collectPackageExportWarnings} for details.
 	 */
 	packageWarnings: PackageExportWarning[];
 }
@@ -85,40 +85,40 @@ interface ExportCandidate {
 }
 
 /**
- * プロジェクト全体を走査し、宣言ファイルの外で参照されていない export を列挙する。
+ * Scans the entire project and lists exports that have no references outside their declaring file.
  *
- * ## 検出対象
- * - インライン export: `export function/class/const/let/var/enum/interface/type`
- * - `export default <Identifier>` および `export default function/class`
+ * ## What is detected
+ * - Inline exports: `export function/class/const/let/var/enum/interface/type`
+ * - `export default <Identifier>` and `export default function/class`
  * - `export = <Identifier>` (CommonJS)
  *
- * ## 「使われていない」の判定基準
- * 識別子に対する `findReferencesAsNodes()` の結果から以下を除外して 0 件なら未使用とする:
- * - 同じファイル内の参照 (内部利用は対象外)
- * - `ExportDeclaration` 配下の参照 (`export { x } from "./y"` など純粋な再エクスポート)
- * - `node_modules` 内の参照
+ * ## Criteria for "unused"
+ * From the `findReferencesAsNodes()` results for an identifier, the following are excluded before deciding "0 references = unused":
+ * - References in the same file (internal usage is not counted)
+ * - References under an `ExportDeclaration` (pure re-exports like `export { x } from "./y"`)
+ * - References inside `node_modules`
  *
- * ## namespace import 展開 (デフォルト ON)
- * `import * as ns from "./mod"` + `{ ...ns }` / `ns` escape のような動的アクセスパターンでは
- * 個別 export の識別子参照が発生しないため、本来使われている export を未使用と誤判定しがち。
- * これを軽減するため、解析開始時に namespace import 消費ファイルへ
- * `import { a as __synthetic__, b as __synthetic__ } from "./mod"` を合成注入し、
- * 全 named export に強制的に参照を作る (`expandNamespaceImports: false` で無効化可)。
+ * ## Namespace import expansion (default ON)
+ * Patterns like `import * as ns from "./mod"` + `{ ...ns }` / `ns` escaping do not generate
+ * per-identifier reference nodes, so exports that are actually used can be mis-classified as unused.
+ * To mitigate this, at analysis start a synthetic
+ * `import { a as __synthetic__, b as __synthetic__ } from "./mod"` is injected into namespace-consuming
+ * files to force references for all named exports (`expandNamespaceImports: false` to disable).
  *
- * ## 既知の限界
- * 静的解析の都合上、以下は検出できない / 偽陽性になり得る:
- * - 動的 `require` / `import()` で文字列から呼ばれる export
- * - ファイルベースルーティング (Next.js の `page.tsx` 等) の規約による暗黙参照
- * - テスト / build / config から文字列で参照される export
- * - 純粋ローカル再エクスポート (`export { x }` の `x` を別の場所で `const x` 宣言したケース) は
- *   現実装では `ExportDeclaration` として扱われるため候補から外す
- * - workspace パッケージが built dist を `exports` で公開している場合
- *   (例: `exports: { ".": "./dist/index.js" }`)、他パッケージからの参照はビルド出力
- *   (または node_modules) 側に解決されるため検出できず、そのパッケージの export が
- *   一括で偽陽性になる。この形は構造的に検出して `packageWarnings` として返す
+ * ## Known limitations
+ * Due to the nature of static analysis, the following cannot be detected or may produce false positives:
+ * - Exports called via dynamic `require` / `import()` from runtime strings
+ * - Implicit references by file-based routing conventions (Next.js `page.tsx`, etc.)
+ * - Exports referenced as strings in tests / build / config files
+ * - Pure local re-exports (`export { x }` where `x` is declared as `const x` elsewhere in the same file)
+ *   are treated as `ExportDeclaration` by the current implementation and excluded from candidates
+ * - When a workspace package publishes built dist via `exports` (e.g. `exports: { ".": "./dist/index.js" }`),
+ *   references from other packages resolve to the built output (or node_modules), not the scanned sources,
+ *   causing all exports of that package to appear unused (systematic false positive). This shape is
+ *   structurally detected and returned as `packageWarnings`
  *
- * 完璧な検出はできないため、`entryPoints` で公開 API を、`excludeFilePatterns` で
- * テスト / 規約ファイルを除外して候補を絞ることを前提とする。
+ * Since perfect detection is not possible, use `entryPoints` to exclude public API and
+ * `excludeFilePatterns` to exclude test / convention files to narrow the candidates.
  */
 export function findUnusedExports(
 	project: Project,
@@ -127,7 +127,7 @@ export function findUnusedExports(
 	const maxResults = options.maxResults ?? DEFAULT_MAX_RESULTS;
 	if (!Number.isInteger(maxResults) || maxResults < 1) {
 		throw new Error(
-			`maxResults は 1 以上の整数で指定してください (受信値: ${maxResults})`,
+			`maxResults must be an integer of 1 or greater (received: ${maxResults})`,
 		);
 	}
 
@@ -231,7 +231,7 @@ function collectExportCandidates(sf: SourceFile): ExportCandidate[] {
 		if (Node.isVariableStatement(stmt) && stmt.isExported()) {
 			for (const decl of stmt.getDeclarations()) {
 				const nameNode = decl.getNameNode();
-				// 分割代入は対象外 (BindingPattern → 個別 Identifier は再帰で扱えるが MVP では除外)
+				// Destructuring patterns are excluded (BindingPattern → individual Identifier could be handled recursively, but excluded in this MVP)
 				if (Node.isIdentifier(nameNode)) {
 					result.push({
 						name: nameNode.getText(),
@@ -278,7 +278,7 @@ function collectExportCandidates(sf: SourceFile): ExportCandidate[] {
 		}
 
 		if (Node.isExportAssignment(stmt)) {
-			// `export default <expr>` / `export = <expr>` のうち、参照可能な Identifier のみ対象
+			// Only target identifiers in `export default <expr>` / `export = <expr>` that can be referenced
 			const expr = stmt.getExpression();
 			if (Node.isIdentifier(expr)) {
 				result.push({
@@ -295,26 +295,26 @@ function collectExportCandidates(sf: SourceFile): ExportCandidate[] {
 }
 
 interface ExportUsage {
-	/** 宣言ファイルの外で (実利用として) 参照されていないか */
+	/** Whether the export has no references outside the declaring file (i.e. externally unused) */
 	externallyUnused: boolean;
-	/** 宣言と同じファイル内での参照数 (宣言自身の識別子・再エクスポートサイトは除外) */
+	/** Number of references within the same file as the declaration (excluding the declaration identifier itself and re-export sites) */
 	sameFileReferenceCount: number;
 }
 
 /**
- * 識別子の参照を解析し、「宣言ファイルの外での未使用判定」と「同一ファイル内参照数」を返す。
+ * Analyzes the references of an identifier and returns the "externally unused" verdict and same-file reference count.
  *
- * 共通の除外ルール (外部・同一ファイル両方に適用):
- * - `node_modules` 内の参照は無視する。
- * - 再エクスポートサイト (`export { x } from "./y"` や同一ファイル内の `export { x }`) は
- *   実利用ではないので無視する。
+ * Common exclusion rules (applied to both external and same-file references):
+ * - References inside `node_modules` are ignored.
+ * - Re-export sites (`export { x } from "./y"` or same-file `export { x }`) are not
+ *   considered actual usage and are ignored.
  *
- * その上で:
- * - 宣言ファイル**外**に上記以外の参照が 1 つでもあれば `externallyUnused = false`。
- * - 宣言ファイル**内**の参照 (宣言自身の識別子ノードを除く) を `sameFileReferenceCount` に数える。
+ * Then:
+ * - If at least one reference outside the declaring file remains after exclusions, `externallyUnused = false`.
+ * - References within the declaring file (excluding the declaration identifier node itself) are counted in `sameFileReferenceCount`.
  *
- * findReferences が不能 / 失敗するノード (`export = 任意式` 等、TypeChecker 解決失敗) は
- * 判断不能とみなして `null` を返し、呼び出し側で候補から除外する (false negative の可能性をログに残す)。
+ * Returns `null` when findReferences cannot / fails for the node (`export = <arbitrary expr>` etc., TypeChecker
+ * resolution failure), treating it as indeterminate and excluding it from candidates (logged as possible false negative).
  */
 function analyzeExportUsage(
 	identifier: Node,
@@ -331,21 +331,22 @@ function analyzeExportUsage(
 	try {
 		refs = findable.findReferencesAsNodes();
 	} catch (error) {
-		// TypeChecker 側の解決失敗は判断不能とみなして候補から除外する。
-		// 「未使用ではない」として返すと真陽性を隠してしまうので、解析劣化の事実をログに残す。
+		// TypeChecker resolution failure is treated as indeterminate and the candidate is excluded.
+		// Returning "not unused" would hide true positives, so the degradation is logged instead.
 		logger.warn(
 			{
 				err: error,
 				name: identifier.getText(),
 				filePath: declSourceFile.getFilePath(),
 			},
-			"findReferencesAsNodes でエラーが発生したため候補から除外します (false negative の可能性)",
+			"findReferencesAsNodes threw an error; excluding candidate from results (possible false negative)",
 		);
 		return null;
 	}
 
-	// findReferencesAsNodes は宣言自身の識別子ノードも結果に含むため、同一ファイル内参照の
-	// カウントから除外する。位置はファイル内で一意なので (file, start) で同定する。
+	// findReferencesAsNodes includes the declaration's own identifier node in its results,
+	// so we exclude it from the same-file reference count. The position is unique within the file,
+	// so we identify it by (file, start).
 	const declStart = identifier.getStart();
 
 	let externallyUnused = true;
@@ -355,7 +356,7 @@ function analyzeExportUsage(
 		if (refFile.isInNodeModules()) continue;
 		if (ref.getFirstAncestor(Node.isExportDeclaration)) continue;
 		if (refFile === declSourceFile) {
-			if (ref.getStart() === declStart) continue; // 宣言自身
+			if (ref.getStart() === declStart) continue; // the declaration itself
 			sameFileReferenceCount++;
 			continue;
 		}
@@ -367,17 +368,19 @@ function analyzeExportUsage(
 const SYNTHETIC_ALIAS_PREFIX = "__find_unused_exports_ns_ref__";
 
 /**
- * 候補名のテキスト出現数を、宣言ファイル以外のソースから単語境界一致でカウントする。
+ * Counts text occurrences of a candidate name in all source files other than the declaring file,
+ * using word-boundary matching.
  *
- * 用途: 動的参照 / JSX 名 / 文字列リテラル / 設定ファイル内記述等、findReferences では拾えない
- * 「名前ベースの参照可能性」をエージェントに知らせる補助情報。0 なら確度の高いデッド。
+ * Purpose: supplementary information for agents about "name-based reference potential" that
+ * findReferences cannot capture (dynamic references, JSX names, string literals, config files, etc.).
+ * A count of 0 is a strong signal that the export is dead.
  *
- * - `(?! as <SYNTHETIC_ALIAS_PREFIX>)` の負の look-ahead で、namespace 展開時の合成 import
- *   `import { name as __find_unused_exports_ns_ref__name }` の `name` 部分を除外
- * - node_modules / 宣言ファイル / 宣言ファイル自身はスキャン対象外
+ * - A negative look-ahead `(?! as <SYNTHETIC_ALIAS_PREFIX>)` excludes the `name` part of synthetic imports
+ *   like `import { name as __find_unused_exports_ns_ref__name }` injected during namespace expansion.
+ * - node_modules, declaration files, and the declaring file itself are excluded from scanning.
  */
-// TS の IdentifierPart に相当する文字クラス。`\b` は ASCII のみなので、Unicode 識別子
-// (例: `集計`, `λ`) を正しく境界判定するため、lookbehind/lookahead で代替する。
+// Character class equivalent to TS IdentifierPart. `\b` is ASCII-only, so for Unicode identifiers
+// (e.g. a Japanese word like `shuukei`, `λ`) we use lookbehind/lookahead instead.
 const TS_IDENT_PART_CLASS = "[\\p{L}\\p{N}_$]";
 
 function countTextOccurrences(
@@ -387,9 +390,9 @@ function countTextOccurrences(
 ): number {
 	if (name.length === 0) return 0;
 	const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	// 合成 import の `name as __find_unused_exports_ns_ref__N_name` をカウントから除外。
-	// `\s+` で whitespace 揺らぎ (ts-morph の改行挿入等) を吸収。alias 末尾の `\d+_` は
-	// expandNamespaceImports のカウンタ付き alias 形式に対応。
+	// Exclude occurrences of the form `name as __find_unused_exports_ns_ref__N_name` from synthetic imports.
+	// `\s+` absorbs whitespace variation (e.g. newlines inserted by ts-morph). The `\d+_` suffix matches
+	// the counter-prefixed alias format used by expandNamespaceImports.
 	const re = new RegExp(
 		`(?<!${TS_IDENT_PART_CLASS})${escaped}(?!${TS_IDENT_PART_CLASS})(?!\\s+as\\s+${SYNTHETIC_ALIAS_PREFIX}\\d+_)`,
 		"gu",
@@ -406,20 +409,21 @@ function countTextOccurrences(
 }
 
 /**
- * `import * as ns from "./mod"` 消費ファイルに、対象モジュールの全 named export を
- * エイリアス付きで named import として注入する。
+ * Injects all named exports of a target module as aliased named imports into files
+ * that consume it via `import * as ns from "./mod"`.
  *
- * これにより、`{ ...ns }` スプレッドや `ns.X` の動的アクセスでしか使われていない export も
- * `findReferencesAsNodes()` が拾えるようになる (= 偽陽性削減)。
+ * This causes exports that are only accessed via `{ ...ns }` spread or `ns.X` dynamic access
+ * to register as referenced by `findReferencesAsNodes()` (reducing false positives).
  *
- * 注入された import は同ファイル内で参照されないが、TS は ES モジュールのインポート副作用を
- * 維持する都合上 (unused import 警告は出るが) エラーにはならない。
- * ファイルは保存しないため永続化はされない。
+ * The injected imports are not referenced elsewhere in the same file, but TS does not error
+ * on them for ES module interop reasons (unused import warnings may appear, but no errors).
+ * Files are not saved, so the injections are not persisted.
  */
 function expandNamespaceImports(project: Project): () => void {
 	const addedImports: ImportDeclaration[] = [];
-	// alias 衝突回避: 同じ名前を異なるモジュールから合成しても重複バインディングを生まないよう、
-	// プロセス内でモノトニックに増えるカウンタを使う。textOccurrences の lookahead はカウンタ込みのプレフィックスを許容する。
+	// To avoid alias collisions: when the same name is synthesized from different modules,
+	// a monotonically increasing per-process counter prevents duplicate binding names.
+	// The lookahead in textOccurrences allows the counter-prefixed alias format.
 	let aliasCounter = 0;
 
 	for (const sourceFile of project.getSourceFiles()) {
@@ -427,8 +431,8 @@ function expandNamespaceImports(project: Project): () => void {
 		if (sourceFile.isDeclarationFile()) continue;
 
 		const targets: { moduleSpecifier: string; names: string[] }[] = [];
-		// 同一ファイル内で同じモジュールが複数回 `import * as` されるケース (`import * as a from "./m"; import * as b from "./m";`)
-		// で synthetic import を重複生成しないよう、(moduleSpecifier 解決済みパス) でデデュープ
+		// Deduplicate by resolved module source path to avoid generating duplicate synthetic imports
+		// when the same module is imported multiple times as `import * as a from "./m"; import * as b from "./m";`
 		const seenModuleSources = new Set<SourceFile>();
 
 		for (const importDecl of sourceFile.getImportDeclarations()) {
@@ -448,12 +452,12 @@ function expandNamespaceImports(project: Project): () => void {
 
 			const names: string[] = [];
 			for (const [name, decls] of targetSource.getExportedDeclarations()) {
-				// `default` は namespace 経由で参照されることが少なく、`import { default as ... }` の
-				// 合成は ts-morph の Structure 経由ではエッジケースになりやすいのでスキップ。
+				// `default` is rarely accessed via namespace and `import { default as ... }` synthesis
+				// is an edge case through ts-morph's Structure API, so skip it.
 				if (name === "default") continue;
-				// 型のみの export を value import として注入すると、合成 ImportSpecifier が "使用中" 扱いされて
-				// 型 export の偽陰性 (本当に未使用なのに報告されない) を生むのでスキップ。
-				// ※ 型は runtime 値を持たず `{ ...ns }` スプレッドの対象にならないため、合成不要。
+				// Injecting type-only exports as value imports would make the synthetic ImportSpecifier
+				// appear "used" and suppress reporting of truly unused type exports (false negative).
+				// Types have no runtime value and cannot appear in `{ ...ns }` spreads, so skip them.
 				if (decls.length === 0) continue;
 				const allTypeOnly = decls.every(
 					(d) =>
@@ -472,7 +476,7 @@ function expandNamespaceImports(project: Project): () => void {
 
 		if (targets.length === 0) continue;
 
-		// 既存コードへの影響を最小化するため、末尾に新規 ImportDeclaration として追加する
+		// Append as new ImportDeclarations at the end of the file to minimize impact on existing code
 		for (const target of targets) {
 			const decl = sourceFile.addImportDeclaration({
 				moduleSpecifier: target.moduleSpecifier,
@@ -492,7 +496,7 @@ function expandNamespaceImports(project: Project): () => void {
 			} catch (error) {
 				logger.warn(
 					{ err: error },
-					"synthetic ImportDeclaration の撤去に失敗 (Project は dirty 状態のまま)",
+					"Failed to remove synthetic ImportDeclaration (Project is left in a dirty state)",
 				);
 			}
 		}

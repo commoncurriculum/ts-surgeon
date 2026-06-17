@@ -1,14 +1,15 @@
 import { type CallExpression, type Identifier, Node } from "ts-morph";
 
 /**
- * Identifier がコール式の callee 位置にあるか判定し、該当する CallExpression を返す。
- * 該当しない場合 (代入先、型注釈、コメントなど) は undefined。
+ * Determines whether an Identifier is in the callee position of a call expression
+ * and returns the corresponding CallExpression, or undefined if not applicable
+ * (e.g. assignment target, type annotation, comment).
  *
- * 対応する形:
- *   foo()                       -> identifier 'foo' の親が CallExpression
- *   obj.foo()                   -> identifier 'foo' の親が PropertyAccess、その親が CallExpression
- *   obj?.foo()                  -> PropertyAccess (optional chain) を経由
- *   a.b.foo()                   -> 連鎖した PropertyAccess を遡る
+ * Supported forms:
+ *   foo()                       -> identifier 'foo' parent is CallExpression
+ *   obj.foo()                   -> identifier 'foo' parent is PropertyAccess, whose parent is CallExpression
+ *   obj?.foo()                  -> via PropertyAccess (optional chain)
+ *   a.b.foo()                   -> walks up chained PropertyAccess
  */
 export function getEnclosingCallExpression(
 	identifier: Identifier,
@@ -20,7 +21,7 @@ export function getEnclosingCallExpression(
 		if (!parent) return undefined;
 
 		if (Node.isPropertyAccessExpression(parent)) {
-			// identifier がプロパティ名 (右側) であれば PropertyAccess に登っていく
+			// If identifier is the property name (right-hand side), walk up into PropertyAccess
 			if (parent.getNameNode() === current) {
 				current = parent;
 				continue;
@@ -40,7 +41,7 @@ export function getEnclosingCallExpression(
 }
 
 /**
- * 参照 Node 群から呼び出し式のみを抽出する
+ * Filters a set of reference Nodes to only those that are call expressions.
  */
 export function filterCallSites(references: Node[]): CallExpression[] {
 	const calls: CallExpression[] = [];

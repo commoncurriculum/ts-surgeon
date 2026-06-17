@@ -13,9 +13,10 @@ export interface ToolHarness {
 }
 
 /**
- * 実 STDIO サーバーを介さず、登録済み MCP ツールを名前で直接呼べる軽量ハーネス。
- * register*Tool が呼ぶ server.tool(name, description, schema, handler) を捕捉する。
- * src/mcp/tools/integration.test.ts と同じ方式。
+ * Lightweight harness that calls registered MCP tools directly by name,
+ * bypassing the real STDIO server. Intercepts the
+ * server.tool(name, description, schema, handler) calls made by register*Tool.
+ * Uses the same approach as src/mcp/tools/integration.test.ts.
  */
 export function createToolHarness(): ToolHarness {
 	const tools = new Map<string, ToolHandler>();
@@ -37,7 +38,7 @@ export function createToolHarness(): ToolHarness {
 		callTool: async (name, args) => {
 			const handler = tools.get(name);
 			if (!handler) {
-				throw new Error(`[e2e] ツール '${name}' が登録されていません`);
+				throw new Error(`[e2e] Tool '${name}' is not registered`);
 			}
 			return handler(args);
 		},

@@ -14,7 +14,7 @@ export interface ReferenceLocation {
 // --- Main Function ---
 
 /**
- * 指定された位置にあるシンボルの参照箇所をプロジェクト全体から検索する
+ * Searches the entire project for all references to the symbol at the specified position.
  */
 export async function findSymbolReferences({
 	tsconfigPath,
@@ -30,10 +30,10 @@ export async function findSymbolReferences({
 }> {
 	const project = initializeProject(tsconfigPath);
 
-	// targetFilePath は絶対パスである想定
+	// targetFilePath is expected to be an absolute path
 	const identifierNode = findIdentifierNode(project, targetFilePath, position);
 
-	// findReferencesAsNodes() は定義箇所を含まない場合がある
+	// findReferencesAsNodes() may not include the definition site itself
 	const referenceNodes: Node[] = identifierNode.findReferencesAsNodes();
 
 	let definitionLocation: ReferenceLocation | null = null;
@@ -68,7 +68,7 @@ export async function findSymbolReferences({
 			refLine === definitionLocation.line &&
 			refColumn === definitionLocation.column
 		) {
-			continue; // 定義箇所と同じであればスキップ
+			continue; // skip if this reference is at the same position as the definition
 		}
 
 		if (refLine === undefined || refColumn === undefined) continue;
@@ -95,14 +95,13 @@ export async function findSymbolReferences({
 }
 
 function getLineText(sourceFile: SourceFile, lineNumber: number): string {
-	// ファイル全体のテキストを取得し、行で分割して該当行を返す
+	// Get the full text of the file and split by line, returning the requested line
 	const lines = sourceFile.getFullText().split(/\r?\n/);
-	// lineNumber は 1-based なので、インデックスは lineNumber - 1
+	// lineNumber is 1-based, so the index is lineNumber - 1
 	if (lineNumber > 0 && lineNumber <= lines.length) {
 		return lines[lineNumber - 1];
 	}
-	// 該当行が見つからない場合、エラーとするか、空文字列を返すかなどの仕様による
-	// ここではエラーを投げるのが自然かもしれない
+	// If the line is not found, throw an error
 	throw new Error(
 		`Line ${lineNumber} not found in file ${sourceFile.getFilePath()}`,
 	);

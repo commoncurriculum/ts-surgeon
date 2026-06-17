@@ -10,7 +10,7 @@ function setupProjectWithExistingDir() {
 }
 
 describe("renameFileSystemEntry Error Cases", () => {
-	it("存在しないファイルをリネームしようとするとエラーをスローする", async () => {
+	it("throws an error when trying to rename a non-existent file", async () => {
 		const project = createInMemoryProject();
 		const oldPath = "/src/nonexistent.ts";
 		const newPath = "/src/new.ts";
@@ -22,11 +22,11 @@ describe("renameFileSystemEntry Error Cases", () => {
 				dryRun: false,
 			}),
 		).rejects.toThrowError(
-			/^Rename process failed: リネーム対象が見つかりません.*See logs for details.$/,
+			/^Rename process failed: Rename target not found.*See logs for details.$/,
 		);
 	});
 
-	it("存在しないディレクトリをリネームしようとするとエラーをスローする", async () => {
+	it("throws an error when trying to rename a non-existent directory", async () => {
 		const project = createInMemoryProject();
 		const oldPath = "/src/nonexistent-dir";
 		const newPath = "/src/new-dir";
@@ -38,11 +38,11 @@ describe("renameFileSystemEntry Error Cases", () => {
 				dryRun: false,
 			}),
 		).rejects.toThrowError(
-			/^Rename process failed: リネーム対象が見つかりません.*See logs for details.$/,
+			/^Rename process failed: Rename target not found.*See logs for details.$/,
 		);
 	});
 
-	it("リネーム先のパスに既にファイルが存在する場合、エラーをスローする (上書きしない)", async () => {
+	it("throws an error when the rename destination path already has a file (no overwrite)", async () => {
 		const project = createInMemoryProject();
 		const oldPath = "/src/file1.ts";
 		const existingPath = "/src/existing.ts";
@@ -56,13 +56,13 @@ describe("renameFileSystemEntry Error Cases", () => {
 				dryRun: false,
 			}),
 		).rejects.toThrowError(
-			/^Rename process failed: リネーム先パスに既にファイルが存在します.*See logs for details.$/,
+			/^Rename process failed: Rename target path already has a file.*See logs for details.$/,
 		);
 		expect(project.getSourceFile(oldPath)).toBeDefined();
 		expect(getFileText(project, existingPath)).toContain("existing = true");
 	});
 
-	it("リネーム先のパスに既にディレクトリが存在する場合、エラーをスローする", async () => {
+	it("throws an error when the rename destination path already has a directory", async () => {
 		const project = setupProjectWithExistingDir();
 		const oldPath = "/src/file1.ts";
 		const existingDirPath = "/src/existing-dir";
@@ -75,13 +75,13 @@ describe("renameFileSystemEntry Error Cases", () => {
 				dryRun: false,
 			}),
 		).rejects.toThrowError(
-			/^Rename process failed: リネーム先パスに既にディレクトリが存在します.*See logs for details.$/,
+			/^Rename process failed: Rename target path already has a directory.*See logs for details.$/,
 		);
 		expect(project.getSourceFile(oldPath)).toBeDefined();
 		expect(project.getDirectory(existingDirPath)).toBeDefined();
 	});
 
-	it("リネーム先のパスが重複する場合、エラーをスローする", async () => {
+	it("throws an error when destination paths are duplicated", async () => {
 		const project = createInMemoryProject();
 		const file1 = "/src/file1.ts";
 		const file2 = "/src/file2.ts";
@@ -99,7 +99,7 @@ describe("renameFileSystemEntry Error Cases", () => {
 				dryRun: false,
 			}),
 		).rejects.toThrowError(
-			/^Rename process failed: リネーム先のパスが重複しています.*See logs for details.$/,
+			/^Rename process failed: Duplicate destination path.*See logs for details.$/,
 		);
 	});
 });

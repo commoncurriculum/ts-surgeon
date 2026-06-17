@@ -6,7 +6,7 @@ import { renameFileSystemEntry } from "./rename-file-system-entry";
 import { getFileText } from "../_test-utils/get-file-text";
 
 describe("renameFileSystemEntry Base Cases", () => {
-	it("ファイルリネーム時に相対パスとエイリアスパスのimport文を正しく更新する", async () => {
+	it("correctly updates relative and alias import statements when a file is renamed", async () => {
 		const project = createInMemoryProject();
 		const oldUtilPath = "/src/utils/old-util.ts";
 		const newUtilPath = "/src/utils/new-util.ts";
@@ -47,7 +47,7 @@ console.log(relativeImport(), aliasImport(), indexImport());
 		expectFileMoved(project, oldUtilPath, newUtilPath);
 	});
 
-	it("フォルダリネーム時に相対パスとエイリアスパスのimport文を正しく更新する", async () => {
+	it("correctly updates relative and alias import statements when a folder is renamed", async () => {
 		const project = createInMemoryProject();
 		const oldFeatureDir = "/src/old-feature";
 		const newFeatureDir = "/src/new-feature";
@@ -95,7 +95,7 @@ console.log(relativeImport(), aliasImport(), indexImport());
 		).toBeDefined();
 	});
 
-	it("同階層(.)や親階層(..)への相対パスimport文を持つファイルをリネームした際に、参照元のパスが正しく更新される", async () => {
+	it("correctly updates the referencing paths when a file with same-level (.) or parent-level (..) relative imports is renamed", async () => {
 		const project = createInMemoryProject();
 		const dirA = "/src/dirA";
 		const dirB = "/src/dirB";
@@ -147,7 +147,7 @@ console.log(valA2);
 		expectFileMoved(project, fileA2Path, newFileA2Path);
 	});
 
-	it("親階層(..)への相対パスimport文を持つファイルを、別のディレクトリに移動（リネーム）した際に、参照元のパスが正しく更新される", async () => {
+	it("correctly updates the referencing paths when a file with parent-level (..) relative imports is moved (renamed) to a different directory", async () => {
 		const project = createInMemoryProject();
 		const dirA = "/src/dirA";
 		const dirC = "/src/dirC";

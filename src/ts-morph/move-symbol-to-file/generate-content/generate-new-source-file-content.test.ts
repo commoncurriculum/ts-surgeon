@@ -20,7 +20,7 @@ const setupProjectWithCode = (
 };
 
 describe("generateNewSourceFileContent", () => {
-	it("依存関係のない VariableDeclaration から新しいファイルの内容を生成できる", () => {
+	it("can generate new file content from a VariableDeclaration with no dependencies", () => {
 		const code = "const myVar = 123;";
 		const { originalSourceFile } = setupProjectWithCode(code);
 		const targetSymbolName = "myVar";
@@ -48,7 +48,7 @@ describe("generateNewSourceFileContent", () => {
 		expect(newFileContent.trim()).toBe(expectedContent.trim());
 	});
 
-	it("内部依存関係 (moveToNewFile) を持つ VariableDeclaration から新しいファイル内容を生成できる", () => {
+	it("can generate new file content from a VariableDeclaration with internal dependencies (moveToNewFile)", () => {
 		const code = `
 			function helperFunc(n: number): number {
 				return n * 2;
@@ -88,7 +88,7 @@ describe("generateNewSourceFileContent", () => {
 		);
 
 		const expectedContent = `
-			/* export なし */ function helperFunc(n: number): number {
+			/* no export */ function helperFunc(n: number): number {
 				return n * 2;
 			}
 
@@ -96,13 +96,13 @@ describe("generateNewSourceFileContent", () => {
 		`;
 		const normalize = (str: string) => str.replace(/\s+/g, " ").trim();
 		expect(normalize(newFileContent)).toBe(
-			normalize(expectedContent.replace("/* export なし */ ", "")),
+			normalize(expectedContent.replace("/* no export */ ", "")),
 		);
 		expect(newFileContent).not.toContain("export function helperFunc");
 		expect(newFileContent).toContain("function helperFunc");
 	});
 
-	it("外部依存関係 (import) を持つ VariableDeclaration から新しいファイル内容を生成できる", () => {
+	it("can generate new file content from a VariableDeclaration with external dependencies (import)", () => {
 		const externalCode =
 			"export function externalFunc(n: number): number { return n + 1; }";
 		const originalCode = `
@@ -156,7 +156,7 @@ export const myVar = externalFunc(99);
 		expect(normalize(newFileContent)).toBe(normalize(expectedContent));
 	});
 
-	it("node_modulesからの外部依存を持つシンボルを移動する際、インポートパスが維持される", () => {
+	it("when moving a symbol with external dependencies from node_modules, the import path is preserved", () => {
 		const originalCode = `
 import { useState } from 'react';
 
@@ -223,7 +223,7 @@ export const CounterComponent = () => {
 		expect(normalize(newFileContent)).toBe(normalize(expectedContent));
 	});
 
-	it("名前空間インポート (import * as) を持つシンボルから新しいファイル内容を生成できる", () => {
+	it("can generate new file content from a symbol with a namespace import (import * as)", () => {
 		const originalCode = `
 import * as path from 'node:path';
 
@@ -285,7 +285,7 @@ export const resolveFullPath = (dir: string, file: string): string => {
 		expect(normalize(newFileContent)).toBe(normalize(expectedContent));
 	});
 
-	it("デフォルトインポートに依存するシンボルから新しいファイル内容を生成できる", () => {
+	it("can generate new file content from a symbol that depends on a default import", () => {
 		const loggerCode = `
 			export default function logger(message: string) {
 				console.log(message);
@@ -309,7 +309,7 @@ export const resolveFullPath = (dir: string, file: string): string => {
 		);
 		project.createSourceFile(loggerFilePath, loggerCode);
 
-		// 移動対象の宣言を取得
+		// get the declaration to be moved
 		const declarationStatement = findTopLevelDeclarationByName(
 			originalSourceFile,
 			targetSymbolName,
@@ -318,7 +318,7 @@ export const resolveFullPath = (dir: string, file: string): string => {
 		expect(declarationStatement).toBeDefined();
 		if (!declarationStatement) return;
 
-		// 必要な外部インポート情報を手動で設定 (デフォルトインポート)
+		// manually set up the required external import information (default import)
 		const neededExternalImports: NeededExternalImports = new Map();
 		const loggerImportDecl =
 			originalSourceFile.getImportDeclaration("./logger");

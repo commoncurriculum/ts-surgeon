@@ -75,7 +75,7 @@ export type { MyType } from './old-location';
 		};
 	};
 
-	it("相対パスでインポートしているファイルのパスを正しく更新する", async () => {
+	it("correctly updates the path for files importing via relative path", async () => {
 		const { project, oldFilePath, newFilePath, importerRelPath } =
 			setupTestProject();
 		await updateImportsInReferencingFiles(
@@ -89,7 +89,7 @@ console.log(exportedSymbol);`;
 		expect(project.getSourceFile(importerRelPath)?.getText()).toBe(expected);
 	});
 
-	it("エイリアスパスでインポートしているファイルのパスを正しく更新する (相対パスになる)", async () => {
+	it("correctly updates the path for files importing via alias path (becomes a relative path)", async () => {
 		const { project, oldFilePath, newFilePath, importerAliasPath } =
 			setupTestProject();
 		await updateImportsInReferencingFiles(
@@ -103,7 +103,7 @@ console.log(anotherSymbol);`;
 		expect(project.getSourceFile(importerAliasPath)?.getText()).toBe(expected);
 	});
 
-	it("複数のファイルから参照されている場合、指定したシンボルのパスのみ更新する", async () => {
+	it("when referenced from multiple files, updates only the path for the specified symbol", async () => {
 		const {
 			project,
 			oldFilePath,
@@ -129,7 +129,7 @@ console.log(anotherSymbol);`;
 		);
 	});
 
-	it("複数の名前付きインポートを持つファイルのパスを、指定したシンボルのみ更新する", async () => {
+	it("for a file with multiple named imports, updates the path for only the specified symbol", async () => {
 		const { project, oldFilePath, newFilePath, importerMultiPath } =
 			setupTestProject();
 		const symbolToMove = "exportedSymbol";
@@ -148,7 +148,7 @@ console.log(exportedSymbol, anotherSymbol);`;
 		expect(project.getSourceFile(importerMultiPath)?.getText()).toBe(expected);
 	});
 
-	it("Typeインポートを持つファイルのパスを正しく更新する", async () => {
+	it("correctly updates the path for files with a type import", async () => {
 		const { project, oldFilePath, newFilePath, importerTypePath } =
 			setupTestProject();
 		await updateImportsInReferencingFiles(
@@ -162,7 +162,7 @@ let val: MyType;`;
 		expect(project.getSourceFile(importerTypePath)?.getText()).toBe(expected);
 	});
 
-	it("移動元ファイルへの参照がない場合、エラーなく完了し、他のファイルは変更されない", async () => {
+	it("when there are no references to the source file, completes without error and other files are unchanged", async () => {
 		const { project, oldFilePath, newFilePath, noRefFilePath } =
 			setupTestProject();
 		const originalContent =
@@ -182,7 +182,7 @@ let val: MyType;`;
 		);
 	});
 
-	it("移動先ファイルが元々移動元シンボルをインポートしていた場合、そのインポート指定子/宣言を削除する", async () => {
+	it("when the destination file originally imported the moved symbol, removes that import specifier/declaration", async () => {
 		const project = createInMemoryProject();
 		const oldPath = "/src/old.ts";
 		const newPath = "/src/new.ts";
@@ -208,7 +208,7 @@ console.log(symbolToMove, keepSymbol);`,
 console.log(symbolToMove, keepSymbol);`;
 		expect(referencingFile.getText()).toBe(expected);
 
-		// --- ケース2: 移動対象シンボルのみインポートしていた場合 ---
+		// --- Case 2: when only the symbol being moved was imported ---
 		const project2 = createInMemoryProject();
 		project2.createSourceFile(oldPath, "export const symbolToMove = 1;");
 		const referencingFile2 = project2.createSourceFile(
@@ -227,8 +227,8 @@ console.log(symbolToMove);`,
 		expect(referencingFile2.getText()).toBe("console.log(symbolToMove);");
 	});
 
-	// --- 【制限事項確認】将来的に対応したいケース ---
-	it.skip("【制限事項】バレルファイル経由でインポートしているファイルのパスは更新される", async () => {
+	// --- [Known Limitation] Cases to be addressed in the future ---
+	it.skip("[Known Limitation] the path for files importing via a barrel file is updated", async () => {
 		const { project, oldFilePath, newFilePath, importerIndexPath } =
 			setupTestProject();
 		await updateImportsInReferencingFiles(

@@ -6,8 +6,8 @@ import { getTypeAtPosition } from "../../ts-morph/get-type-at-position/get-type-
 import logger from "../../utils/logger";
 
 /**
- * logger 自体が例外を投げる (LOG_OUTPUT=file でディスクフル等) ケースでも、
- * MCP レスポンス生成が阻まれないようにラップする。
+ * Wraps logger calls so that even if the logger itself throws (e.g. disk full
+ * when LOG_OUTPUT=file), MCP response generation is not interrupted.
  */
 function safeLogError(error: unknown, toolArgs: Record<string, unknown>): void {
 	try {

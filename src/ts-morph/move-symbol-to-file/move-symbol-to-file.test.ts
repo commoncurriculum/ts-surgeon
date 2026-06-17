@@ -5,7 +5,7 @@ import { getFileText } from "../_test-utils/get-file-text";
 import { moveSymbolToFile } from "./move-symbol-to-file";
 
 describe("moveSymbolToFile", () => {
-	it("指定された const シンボルを新しいファイルに移動し、参照を更新する", async () => {
+	it("moves the specified const symbol to a new file and updates references", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/utils.ts";
 		const newFilePath = "/src/new-utils.ts";
@@ -47,7 +47,7 @@ console.log(myUtil());
 		);
 	});
 
-	it("外部依存関係を持つシンボルを移動し、新しいファイルにインポートを追加する", async () => {
+	it("moves a symbol with external dependencies and adds imports to the new file", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const dependencyFilePath = "/src/dependency.ts";
 		const oldFilePath = "/src/source.ts";
@@ -102,7 +102,7 @@ console.log(symbolUsingDependency());
 		);
 	});
 
-	it("指定された function シンボルを新しいファイルに移動し、参照を更新する", async () => {
+	it("moves the specified function symbol to a new file and updates references", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/functions.ts";
 		const newFilePath = "/src/new-functions.ts";
@@ -144,7 +144,7 @@ myFunction();
 		);
 	});
 
-	it("指定された class シンボルを新しいファイルに移動し、参照を更新する", async () => {
+	it("moves the specified class symbol to a new file and updates references", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/models.ts";
 		const newFilePath = "/src/new-models.ts";
@@ -186,7 +186,7 @@ const instance = new MyClass();
 		);
 	});
 
-	it("指定された interface シンボルを新しいファイルに移動し、参照を更新する", async () => {
+	it("moves the specified interface symbol to a new file and updates references", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/types.ts";
 		const newFilePath = "/src/new-types.ts";
@@ -226,7 +226,7 @@ const data: MyInterface = { id: '1' };`,
 		);
 	});
 
-	it("指定された type alias シンボルを新しいファイルに移動し、参照を更新する", async () => {
+	it("moves the specified type alias symbol to a new file and updates references", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/aliases.ts";
 		const newFilePath = "/src/new-aliases.ts";
@@ -268,7 +268,7 @@ let value: MyType = 'test';
 		);
 	});
 
-	it("指定された enum シンボルを新しいファイルに移動し、参照を更新する", async () => {
+	it("moves the specified enum symbol to a new file and updates references", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/constants.ts";
 		const newFilePath = "/src/new-constants.ts";

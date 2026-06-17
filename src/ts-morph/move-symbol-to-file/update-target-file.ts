@@ -5,11 +5,11 @@ import logger from "../../utils/logger";
 import type { ImportMap } from "./generate-content/build-new-file-import-section";
 
 /**
- * 既存の SourceFile に、計算済みのインポート情報と宣言文字列を追加（マージ）する。
+ * Adds (merges) pre-computed import information and declaration strings into an existing SourceFile.
  *
- * @param targetSourceFile 変更対象の SourceFile インスタンス
- * @param requiredImportMap 追加またはマージが必要なインポート情報
- * @param declarationStrings 追加する宣言の文字列配列
+ * @param targetSourceFile The SourceFile instance to modify
+ * @param requiredImportMap Import information that needs to be added or merged
+ * @param declarationStrings Array of declaration strings to add
  */
 export function updateTargetFile(
 	targetSourceFile: SourceFile,
@@ -19,7 +19,7 @@ export function updateTargetFile(
 	logger.debug(`Updating existing file: ${targetSourceFile.getFilePath()}`);
 	const targetFilePath = targetSourceFile.getFilePath();
 
-	// 1. インポートの追加・マージ
+	// 1. Add/merge imports
 	for (const [moduleSpecifier, importInfo] of requiredImportMap.entries()) {
 		logger.debug(`Processing imports for module: ${moduleSpecifier}`);
 
@@ -43,25 +43,25 @@ export function updateTargetFile(
 		);
 
 		if (existingImportDecl) {
-			// --- 既存のインポート宣言がある場合 ---
+			// --- An existing import declaration exists ---
 			logger.debug(`Found existing import for ${moduleSpecifier}. Merging...`);
 
-			// 名前空間インポートの衝突チェック
+			// Check for namespace import conflict
 			const existingNamespaceImport = existingImportDecl.getNamespaceImport();
 			if (importInfo.isNamespaceImport && !existingNamespaceImport) {
 				logger.warn(
-					`Cannot add namespace import for ${moduleSpecifier} because a non-namespace import already exists. Skipping namespace import.`, // 既存の名前付き/デフォルトを優先
+					`Cannot add namespace import for ${moduleSpecifier} because a non-namespace import already exists. Skipping namespace import.`, // Prefer existing named/default
 				);
-				continue; // 名前空間インポートはスキップ
+				continue; // Skip namespace import
 			}
 			if (!importInfo.isNamespaceImport && existingNamespaceImport) {
 				logger.warn(
-					`Cannot add named/default imports for ${moduleSpecifier} because a namespace import already exists. Skipping named/default imports.`, // 既存の名前空間を優先
+					`Cannot add named/default imports for ${moduleSpecifier} because a namespace import already exists. Skipping named/default imports.`, // Prefer existing namespace
 				);
-				continue; // 名前付き/デフォルトインポートはスキップ
+				continue; // Skip named/default imports
 			}
 
-			// デフォルトインポートのマージ
+			// Merge default import
 			if (importInfo.defaultName && !existingImportDecl.getDefaultImport()) {
 				logger.debug(`Adding default import: ${importInfo.defaultName}`);
 				existingImportDecl.setDefaultImport(importInfo.defaultName);
@@ -70,13 +70,13 @@ export function updateTargetFile(
 				existingImportDecl.getDefaultImport()?.getText() !==
 					importInfo.defaultName
 			) {
-				// 既に異なるデフォルトインポートが存在する場合の警告
+				// Warning when a different default import already exists
 				logger.warn(
-					`Existing default import ${existingImportDecl.getDefaultImport()?.getText()} differs from requested ${importInfo.defaultName} for ${moduleSpecifier}. Keeping the existing one.`, // 既存を優先
+					`Existing default import ${existingImportDecl.getDefaultImport()?.getText()} differs from requested ${importInfo.defaultName} for ${moduleSpecifier}. Keeping the existing one.`, // Prefer existing
 				);
 			}
 
-			// 名前付きインポートのマージ
+			// Merge named imports
 			const existingNamedImports = new Set(
 				existingImportDecl.getNamedImports().map((ni) => ni.getName()),
 			);
@@ -89,7 +89,7 @@ export function updateTargetFile(
 				existingImportDecl.addNamedImports(namedImportsToAdd);
 			}
 		} else {
-			// --- 新しいインポート宣言を追加する場合 ---
+			// --- Adding a new import declaration ---
 			logger.debug(
 				`No existing import for ${moduleSpecifier}. Adding new declaration.`,
 			);
@@ -108,21 +108,21 @@ export function updateTargetFile(
 					importStructure.namedImports = [...importInfo.namedImports].sort();
 				}
 			}
-			// デフォルトも名前付きもない場合は副作用インポート import "module"; となる
+			// If neither default nor named imports exist, becomes a side-effect import: import "module";
 			targetSourceFile.addImportDeclaration(importStructure);
 		}
 	}
 
-	// 2. 宣言の追加
+	// 2. Add declarations
 	if (declarationStrings.length > 0) {
 		logger.debug(`Adding ${declarationStrings.length} declaration statements.`);
-		// 既存ファイルの末尾に、空行を挟んで追加
+		// Append to the end of the existing file, separated by a blank line
 		targetSourceFile.addStatements(`\n${declarationStrings.join("\n\n")}`);
 	} else {
 		logger.debug("No declaration strings to add.");
 	}
 
-	// 3. インポートの整理
+	// 3. Organize imports
 	logger.debug("Organizing imports...");
 	targetSourceFile.organizeImports();
 

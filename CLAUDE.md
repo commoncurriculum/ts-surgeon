@@ -2,162 +2,163 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 概要
+## Overview
 
-MCP ts-morph Refactoring Tools - ts-morphを利用したTypeScript/JavaScriptのリファクタリングツールを提供するMCPサーバー。
+MCP ts-morph Refactoring Tools — an MCP server that provides TypeScript/JavaScript refactoring tools using ts-morph.
 
-## 開発コマンド
+## Development Commands
 
-### ビルド
+### Build
 ```bash
-pnpm build        # TypeScriptをコンパイル（dist/に出力）
-pnpm clean        # distディレクトリをクリーン
+pnpm build        # Compile TypeScript (output to dist/)
+pnpm clean        # Clean the dist directory
 ```
 
-### テスト
+### Test
 ```bash
-pnpm test         # テスト実行（単一スレッドで実行）
-pnpm test:watch   # ウォッチモードでテスト実行
-pnpm test -- path/to/test.ts  # 特定のテストファイルを実行
-pnpm test:e2e     # 実リポジトリ E2E（hono/zustand を clone して全ツール適用）
+pnpm test         # Run tests (runs in a single thread)
+pnpm test:watch   # Run tests in watch mode
+pnpm test -- path/to/test.ts  # Run a specific test file
+pnpm test:e2e     # Real-repo E2E (clone hono/zustand and apply all tools)
 ```
 
-### E2E テスト（`pnpm test:e2e`）
+### E2E Tests (`pnpm test:e2e`)
 
-`e2e/` は、バージョン固定の実 OSS（hono / zustand）を clone し、各 MCP ツールを
-実プロジェクトに適用して「差分緑」（baseline と比較し新規型エラー・新規失敗テスト
-が無いこと）を検証する。ユニットテストでは拾えない実世界の AST 不整合を掘り当てる
-（例: `move_symbol_to_file` の逆向き import バグ）。
+`e2e/` clones pinned versions of real OSS projects (hono / zustand), applies each MCP
+tool to the real project, and verifies a "green diff" (no new type errors or new test
+failures compared to baseline). This catches real-world AST inconsistencies that unit
+tests miss (e.g., the reverse-direction import bug in `move_symbol_to_file`).
 
-- デフォルトの `pnpm test` からは除外（`vitest.config.ts` の exclude）。CI には
-  未組み込み（nightly + 手動 dispatch を予定）。
-- 初回は clone + 依存インストールが走る（`bun` / `pnpm` が必要。無ければ baseline
-  未取得で各ケース skip）。2 回目以降は `e2e/.cache/*.ready` マーカで再利用。
-- 実行時間の目安: キャッシュ有りで 2〜3 分。
+- Excluded from the default `pnpm test` run (see `exclude` in `vitest.config.ts`). Not
+  yet integrated into CI (nightly + manual dispatch planned).
+- The first run clones repositories and installs dependencies (`bun` / `pnpm` required;
+  if unavailable, baseline is not acquired and each case is skipped). Subsequent runs
+  reuse the `e2e/.cache/*.ready` marker files.
+- Estimated runtime: 2-3 minutes with cache.
 
-**Claude への指示**: `src/ts-morph/**` のリファクタロジック（特に
-`move-symbol-to-file` / `rename-*` / `remove-path-alias` / `change-signature`）に
-触れた変更は、**仕上げ段階（コミット前 / PR 化前）で `pnpm test:e2e` を実行**して
-実リポジトリで退行が無いことを確認すること。時間がかかるので開発の各イテレーション
-ではなく、まとまった作業の最後に回す。ネットワークや `bun` 不在で skip された場合は
-その旨をユーザーに伝える。
+**Instructions for Claude**: For changes that touch refactoring logic in `src/ts-morph/**`
+(especially `move-symbol-to-file` / `rename-*` / `remove-path-alias` / `change-signature`),
+**run `pnpm test:e2e` at the finishing stage (before committing / before opening a PR)**
+to confirm there are no regressions against real repositories. Because this takes time,
+run it at the end of a body of work rather than after each iteration. If it is skipped
+due to network issues or a missing `bun`, inform the user.
 
-### 型チェック・リント・フォーマット
+### Type Check, Lint, and Format
 ```bash
-pnpm check-types  # TypeScriptの型チェック（コンパイルなし）
-pnpm lint         # Biomeでリントチェック
-pnpm lint:fix     # Biomeでリント修正
-pnpm format       # Biomeでコードフォーマット
+pnpm check-types  # TypeScript type check (no compilation)
+pnpm lint         # Lint check with Biome
+pnpm lint:fix     # Lint fix with Biome
+pnpm format       # Code format with Biome
 ```
 
-### デバッグ
+### Debug
 ```bash
-pnpm inspector    # MCP Inspectorでデバッグ実行
+pnpm inspector    # Debug run with MCP Inspector
 ```
 
-### リリース（バージョン bump）
+### Release (version bump)
 
-**Git タグが単一の真実の source。手で bump しない。**
+**The Git tag is the single source of truth. Do not bump manually.**
 
-- `package.json` の `version` と `src/version.ts` の `VERSION` はどちらも `0.0.0-development` に固定。
-- リリースは `git tag vX.Y.Z && git push origin vX.Y.Z` のみ。
-- `.github/workflows/release.yml` が tag から値を抽出して両ファイルを書き換え、`pnpm build` → `pnpm test` → `dist` の整合性確認 → `pnpm publish` を実行する。
-- 詳細手順は `.claude/skills/release/SKILL.md` および README の「リリース」セクション参照。
-- ユーザーから「リリース」「タグを打って」等を言われたら release skill を使うこと。
+- Both `version` in `package.json` and `VERSION` in `src/version.ts` are fixed at `0.0.0-development`.
+- To release, run `git tag vX.Y.Z && git push origin vX.Y.Z` only.
+- `.github/workflows/release.yml` extracts the value from the tag, rewrites both files, and runs `pnpm build` → `pnpm test` → dist consistency check → `pnpm publish`.
+- For detailed steps, see `.claude/skills/release/SKILL.md` and the "Release" section of the README.
+- When the user says "release", "tag it", or similar, use the release skill.
 
-## プロジェクト構造
+## Project Structure
 
-### コアアーキテクチャ
+### Core Architecture
 
-1. **エントリーポイント**: `src/index.ts`
-   - MCPサーバーのエントリーポイント
-   - STDIOサーバーを起動
+1. **Entry point**: `src/index.ts`
+   - MCP server entry point
+   - Starts the STDIO server
 
-2. **MCPレイヤー** (`src/mcp/`)
-   - `stdio.ts`: STDIOサーバーの実装
-   - `config.ts`: サーバー設定
-   - `tools/`: MCPツールの登録と実装
-     - 各ツールは`register-*.ts`として実装
-     - `ts-morph-tools.ts`で全ツールを統合
+2. **MCP layer** (`src/mcp/`)
+   - `stdio.ts`: STDIO server implementation
+   - `config.ts`: Server configuration
+   - `tools/`: MCP tool registration and implementation
+     - Each tool is implemented as `register-*.ts`
+     - All tools are consolidated in `ts-morph-tools.ts`
 
-3. **ts-morphレイヤー** (`src/ts-morph/`)
-   - 実際のリファクタリング処理を実装
-   - 各機能は独立したモジュールとして実装：
-     - `rename-symbol/`: シンボル名の変更
-     - `rename-file-system/`: ファイル/フォルダのリネーム
-     - `remove-path-alias/`: パスエイリアスの削除
-     - `find-references.ts`: 参照検索
-     - `move-symbol-to-file/`: シンボルのファイル間移動
-     - `find-unused-exports.ts`: 未使用 export の検出
-     - `change-signature/`: 関数シグネチャの変更
-     - `get-type-at-position/`: 指定位置の型情報の取得
-   - `_utils/`: 共通ユーティリティ
-     - `ts-morph-project.ts`: プロジェクト作成の共通処理
-   - `_test-utils/`: テスト用ヘルパー
+3. **ts-morph layer** (`src/ts-morph/`)
+   - Implements the actual refactoring logic
+   - Each feature is implemented as an independent module:
+     - `rename-symbol/`: Symbol renaming
+     - `rename-file-system/`: File/folder renaming
+     - `remove-path-alias/`: Path alias removal
+     - `find-references.ts`: Reference search
+     - `move-symbol-to-file/`: Moving symbols between files
+     - `find-unused-exports.ts`: Unused export detection
+     - `change-signature/`: Function signature changes
+     - `get-type-at-position/`: Getting type information at a position
+   - `_utils/`: Shared utilities
+     - `ts-morph-project.ts`: Common project creation logic
+   - `_test-utils/`: Test helpers
 
-4. **ユーティリティ** (`src/utils/`)
-   - `logger.ts`: Pinoベースのロガー実装
-   - その他の共通ユーティリティ
+4. **Utilities** (`src/utils/`)
+   - `logger.ts`: Pino-based logger implementation
+   - Other shared utilities
 
-5. **エラー処理** (`src/errors/`)
-   - カスタムエラークラスの定義
+5. **Error handling** (`src/errors/`)
+   - Custom error class definitions
 
-### テスト構造
+### Test Structure
 
-- 各機能モジュールには対応する`.test.ts`ファイルが存在
-- テストフレームワーク: Vitest
-- テストサンドボックス: `packages/sandbox/`にテスト用のTypeScriptコード
+- Each feature module has a corresponding `.test.ts` file
+- Test framework: Vitest
+- Test sandbox: TypeScript code for testing in `packages/sandbox/`
 
-## 重要な実装パターン
+## Important Implementation Patterns
 
-### ts-morphプロジェクトの作成
+### Creating a ts-morph Project
 ```typescript
-// src/ts-morph/_utils/ts-morph-project.ts を使用
+// Use src/ts-morph/_utils/ts-morph-project.ts
 import { createTsMorphProject } from "../_utils/ts-morph-project";
 const project = createTsMorphProject(tsconfigPath);
 ```
 
-### MCPツールの登録
-各ツールは以下のパターンで実装：
-1. Zodスキーマでパラメータ定義
-2. ツール実装関数（ts-morphレイヤーを呼び出し）
-3. `server.setRequestHandler`で登録
+### Registering MCP Tools
+Each tool is implemented following this pattern:
+1. Define parameters with a Zod schema
+2. Tool implementation function (calls the ts-morph layer)
+3. Register with `server.setRequestHandler`
 
-### エラーハンドリング
-- カスタムエラークラスを使用
-- ロガーでエラー内容を記録
-- MCPエラーレスポンスとして返却
+### Error Handling
+- Use custom error classes
+- Log error details with the logger
+- Return as an MCP error response
 
-## 開発時の注意事項
+## Development Notes
 
-### 依存関係
-- Node.js（Voltaで管理。バージョンは `package.json` の `volta.node` を参照。現在は 22.14.0）
-- pnpm（`package.json` の `packageManager` で指定。現在は 11.1.2）
+### Dependencies
+- Node.js (managed by Volta; see `volta.node` in `package.json` for the version; currently 22.14.0)
+- pnpm (specified by `packageManager` in `package.json`; currently 11.1.2)
 
-### Git Hooks（lefthook）
-- pre-commit: Biomeでフォーマット自動実行
-- pre-push: フォーマットチェックとテスト実行
+### Git Hooks (lefthook)
+- pre-commit: Auto-format with Biome
+- pre-push: Format check and test run
 
-### ロギング
-環境変数で制御可能：
-- `LOG_LEVEL`: ログレベル（debug, info, warn, error等）
-- `LOG_OUTPUT`: 出力先（console, file）
-- `LOG_FILE_PATH`: ファイル出力時のパス
+### Logging
+Controllable via environment variables:
+- `LOG_LEVEL`: Log level (debug, info, warn, error, etc.)
+- `LOG_OUTPUT`: Output destination (console, file)
+- `LOG_FILE_PATH`: Path when outputting to a file
 
-### テスト実行の詳細
-- 単一スレッドで実行（`--pool threads --poolOptions.threads.singleThread`）
-- モックは各テスト後に自動リセット
-- 環境変数`API_ADDRESS`がテスト時に設定される
+### Test Execution Details
+- Runs in a single thread (`--pool threads --poolOptions.threads.singleThread`)
+- Mocks are automatically reset after each test
+- The environment variable `API_ADDRESS` is set during testing
 
-## 主要な機能と実装ファイル
+## Key Features and Implementation Files
 
-- **シンボル名変更**: `src/ts-morph/rename-symbol/`
-- **ファイル/フォルダ名変更**: `src/ts-morph/rename-file-system/`
-- **参照検索**: `src/ts-morph/find-references.ts`
-- **パスエイリアス削除**: `src/ts-morph/remove-path-alias/`
-- **シンボル移動**: `src/ts-morph/move-symbol-to-file/`
-- **未使用 export 検出**: `src/ts-morph/find-unused-exports.ts`
-- **関数シグネチャ変更**: `src/ts-morph/change-signature/`
-- **型情報の取得**: `src/ts-morph/get-type-at-position/`
+- **Symbol renaming**: `src/ts-morph/rename-symbol/`
+- **File/folder renaming**: `src/ts-morph/rename-file-system/`
+- **Reference search**: `src/ts-morph/find-references.ts`
+- **Path alias removal**: `src/ts-morph/remove-path-alias/`
+- **Symbol moving**: `src/ts-morph/move-symbol-to-file/`
+- **Unused export detection**: `src/ts-morph/find-unused-exports.ts`
+- **Function signature changes**: `src/ts-morph/change-signature/`
+- **Type information retrieval**: `src/ts-morph/get-type-at-position/`
 
-各機能の詳細な仕様はREADME.mdを参照。
+For detailed specifications of each feature, see README.md.

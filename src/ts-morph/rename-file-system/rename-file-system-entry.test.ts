@@ -6,14 +6,14 @@ import * as path from "node:path";
 import * as os from "node:os";
 
 /**
- * テスト用の一時ディレクトリを作成
+ * Creates a temporary directory for testing
  */
 function createTempDir(): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), "rename-file-system-test-"));
 }
 
 /**
- * ディレクトリを再帰的に削除
+ * Recursively deletes a directory
  */
 function removeTempDir(dir: string): void {
 	if (fs.existsSync(dir)) {
@@ -21,7 +21,7 @@ function removeTempDir(dir: string): void {
 	}
 }
 
-describe("renameFileSystemEntry 統合テスト", () => {
+describe("renameFileSystemEntry Integration Tests", () => {
 	let tempDir: string;
 	let tsconfigPath: string;
 	let srcDir: string;
@@ -32,7 +32,7 @@ describe("renameFileSystemEntry 統合テスト", () => {
 		srcDir = path.join(tempDir, "src");
 		fs.mkdirSync(srcDir, { recursive: true });
 
-		// tsconfig.json を作成
+		// Create tsconfig.json
 		fs.writeFileSync(
 			tsconfigPath,
 			JSON.stringify(
@@ -60,8 +60,8 @@ describe("renameFileSystemEntry 統合テスト", () => {
 		removeTempDir(tempDir);
 	});
 
-	it("単一ファイルのリネームとインポート更新", async () => {
-		// テストファイルを作成
+	it("single file rename with import update", async () => {
+		// Create test files
 		const oldUtilsPath = path.join(srcDir, "utils.ts");
 		const newUtilsPath = path.join(srcDir, "helpers.ts");
 		const mainPath = path.join(srcDir, "main.ts");
@@ -86,7 +86,7 @@ console.log("Version:", VERSION);
 `,
 		);
 
-		// プロジェクトを作成してリネーム実行
+		// Create project and run rename
 		const project = initializeProject(tsconfigPath);
 
 		const result = await renameFileSystemEntry({
@@ -100,22 +100,22 @@ console.log("Version:", VERSION);
 			dryRun: false,
 		});
 
-		// リネーム後のファイルが存在することを確認
+		// Verify renamed file exists
 		expect(fs.existsSync(newUtilsPath)).toBe(true);
 		expect(fs.existsSync(oldUtilsPath)).toBe(false);
 
-		// インポート文が更新されていることを確認
+		// Verify import statement was updated
 		const updatedMainContent = fs.readFileSync(mainPath, "utf-8");
 		expect(updatedMainContent).toContain('from "./helpers"');
 		expect(updatedMainContent).not.toContain('from "./utils"');
 
-		// 変更されたファイルのリストを確認
+		// Verify list of changed files
 		expect(result.changedFiles).toContain(mainPath);
 		expect(result.changedFiles).toContain(newUtilsPath);
 	});
 
-	it("フォルダのリネームと複数ファイルの参照更新", async () => {
-		// フォルダ構造を作成
+	it("folder rename with multi-file reference update", async () => {
+		// Create folder structure
 		const oldFolderPath = path.join(srcDir, "components");
 		const newFolderPath = path.join(srcDir, "widgets");
 		fs.mkdirSync(oldFolderPath, { recursive: true });
@@ -162,7 +162,7 @@ console.log(modal.render());
 `,
 		);
 
-		// プロジェクトを作成してリネーム実行
+		// Create project and run rename
 		const project = initializeProject(tsconfigPath);
 
 		await renameFileSystemEntry({
@@ -176,34 +176,34 @@ console.log(modal.render());
 			dryRun: false,
 		});
 
-		// フォルダがリネームされていることを確認
+		// Verify folder was renamed
 		expect(fs.existsSync(newFolderPath)).toBe(true);
-		// ts-morphはファイルを移動するが、空のフォルダは残ることがある
-		// 重要なのはファイルが正しく移動されていること
+		// ts-morph moves files, but empty folders may remain
+		// What matters is that files were correctly moved
 
-		// ファイルが新しいフォルダに移動していることを確認
+		// Verify files moved to new folder
 		expect(fs.existsSync(path.join(newFolderPath, "Button.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(newFolderPath, "Modal.ts"))).toBe(true);
 
-		// 元のフォルダにファイルが残っていないことを確認
+		// Verify no files remain in old folder
 		expect(fs.existsSync(path.join(oldFolderPath, "Button.ts"))).toBe(false);
 		expect(fs.existsSync(path.join(oldFolderPath, "Modal.ts"))).toBe(false);
 
-		// インポート文が更新されていることを確認
+		// Verify import statements were updated
 		const updatedAppContent = fs.readFileSync(appPath, "utf-8");
 		expect(updatedAppContent).toContain('from "./widgets/Button"');
 		expect(updatedAppContent).toContain('from "./widgets/Modal"');
 		expect(updatedAppContent).not.toContain('from "./components/');
 
-		// Modal.ts内の相対インポートも更新されていることを確認
+		// Verify relative imports inside Modal.ts were also updated
 		const updatedModalContent = fs.readFileSync(
 			path.join(newFolderPath, "Modal.ts"),
 			"utf-8",
 		);
-		expect(updatedModalContent).toContain('from "./Button"'); // 相対パスは変更なし
+		expect(updatedModalContent).toContain('from "./Button"'); // relative path unchanged
 	});
 
-	it("dryRunモードでファイルシステムを変更しない", async () => {
+	it("dryRun mode does not modify the file system", async () => {
 		const oldPath = path.join(srcDir, "old-file.ts");
 		const newPath = path.join(srcDir, "new-file.ts");
 		const importerPath = path.join(srcDir, "importer.ts");
@@ -227,22 +227,22 @@ console.log(value);
 					newPath,
 				},
 			],
-			dryRun: true, // dryRunモードを有効化
+			dryRun: true, // enable dryRun mode
 		});
 
-		// ファイルシステムが変更されていないことを確認
+		// Verify file system was not changed
 		expect(fs.existsSync(oldPath)).toBe(true);
 		expect(fs.existsSync(newPath)).toBe(false);
 
-		// 元のインポート文が変更されていないことを確認
+		// Verify original import statement was not changed
 		const importerContent = fs.readFileSync(importerPath, "utf-8");
 		expect(importerContent).toContain('from "./old-file"');
 
-		// 変更予定のファイルリストは返される
+		// List of files to be changed is still returned
 		expect(result.changedFiles.length).toBeGreaterThan(0);
 	});
 
-	it("パスエイリアスを使用したインポートの更新", async () => {
+	it("update imports using path aliases", async () => {
 		const utilsDir = path.join(srcDir, "utils");
 		const helpersDir = path.join(srcDir, "helpers");
 		fs.mkdirSync(utilsDir, { recursive: true });
@@ -284,23 +284,23 @@ console.log(multiply(4, 5));
 			dryRun: false,
 		});
 
-		// フォルダがリネームされていることを確認
+		// Verify folder was renamed
 		expect(fs.existsSync(helpersDir)).toBe(true);
-		// ts-morphはファイルを移動するが、空のフォルダは残ることがある
-		// 重要なのはファイルが正しく移動されていること
+		// ts-morph moves files, but empty folders may remain
+		// What matters is that files were correctly moved
 
-		// ファイルが新しいフォルダに移動していることを確認
+		// Verify file moved to new folder
 		expect(fs.existsSync(path.join(helpersDir, "math.ts"))).toBe(true);
 		expect(fs.existsSync(path.join(utilsDir, "math.ts"))).toBe(false);
 
-		// パスエイリアスを使用したインポートが更新されていることを確認
-		// ts-morphのリネーム処理ではパスエイリアスが相対パスに変換されることがある
+		// Verify path-alias imports were updated
+		// ts-morph rename may convert path aliases to relative paths
 		const updatedAppContent = fs.readFileSync(appPath, "utf-8");
 		expect(updatedAppContent).toContain('from "./helpers/math"');
 		expect(updatedAppContent).not.toContain('from "@/utils/math"');
 	});
 
-	it("複数ファイルの同時リネーム", async () => {
+	it("simultaneous rename of multiple files", async () => {
 		const file1OldPath = path.join(srcDir, "file1.ts");
 		const file1NewPath = path.join(srcDir, "renamed1.ts");
 		const file2OldPath = path.join(srcDir, "file2.ts");
@@ -331,13 +331,13 @@ console.log(value1, value2);
 			dryRun: false,
 		});
 
-		// 両方のファイルがリネームされていることを確認
+		// Verify both files were renamed
 		expect(fs.existsSync(file1NewPath)).toBe(true);
 		expect(fs.existsSync(file2NewPath)).toBe(true);
 		expect(fs.existsSync(file1OldPath)).toBe(false);
 		expect(fs.existsSync(file2OldPath)).toBe(false);
 
-		// インポート文が両方とも更新されていることを確認
+		// Verify both import statements were updated
 		const updatedMainContent = fs.readFileSync(mainPath, "utf-8");
 		expect(updatedMainContent).toContain('from "./renamed1"');
 		expect(updatedMainContent).toContain('from "./renamed2"');
@@ -345,7 +345,7 @@ console.log(value1, value2);
 		expect(updatedMainContent).not.toContain('from "./file2"');
 	});
 
-	it("AbortSignalによる処理のキャンセル", async () => {
+	it("cancellation via AbortSignal", async () => {
 		const oldPath = path.join(srcDir, "cancelable.ts");
 		const newPath = path.join(srcDir, "renamed.ts");
 
@@ -354,7 +354,7 @@ console.log(value1, value2);
 		const project = initializeProject(tsconfigPath);
 		const abortController = new AbortController();
 
-		// 即座にキャンセル
+		// Cancel immediately
 		abortController.abort();
 
 		await expect(
@@ -366,7 +366,7 @@ console.log(value1, value2);
 			}),
 		).rejects.toThrow();
 
-		// ファイルが変更されていないことを確認
+		// Verify file was not changed
 		expect(fs.existsSync(oldPath)).toBe(true);
 		expect(fs.existsSync(newPath)).toBe(false);
 	});

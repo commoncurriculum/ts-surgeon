@@ -1,40 +1,40 @@
 ---
 name: new-mcp-tool
-description: このリポジトリに新しい ts-morph リファクタリング MCP ツールを追加するときの定型作業をガイドする。ts-morph ロジック・MCP 登録ファイル・コロケートテスト・aggregator への登録・README/CLAUDE.md への追記までを抜け漏れなく行う。「新しいツールを追加」「MCP ツールを増やす」「register-*.ts を作る」等で使用。
+description: Guides the boilerplate work for adding a new ts-morph refactoring MCP tool to this repository. Covers everything from ts-morph logic, MCP registration file, co-located tests, aggregator registration, and appending entries to README/CLAUDE.md without omissions. Use when "adding a new tool", "creating more MCP tools", "creating a register-*.ts", or similar.
 disable-model-invocation: true
 ---
 
-# 新しい MCP ツールを追加する
+# Adding a New MCP Tool
 
-`@sirosuzume/mcp-tsmorph-refactor` に新ツールを 1 つ追加するときの定型手順。過去に README のツール表と CLAUDE.md のモジュール一覧が実態とドリフトしたため、**ドキュメント追記まで含めて 1 つの作業**として扱う。
+The standard procedure for adding a new tool to `@sirosuzume/mcp-tsmorph-refactor`. Because the README tool table and the CLAUDE.md module list have drifted from reality in the past, **documentation updates are treated as part of the same task**.
 
-t-wada 式 TDD で進める（テストファースト → レッド → グリーン → リファクタ）。ロジックは ts-morph レイヤーに置き、MCP レイヤーは薄い登録だけにする。
+Follow t-wada-style TDD (test-first → red → green → refactor). Place logic in the ts-morph layer; keep the MCP layer as a thin registration only.
 
-## 作成・更新するファイル一覧
+## Files to Create or Update
 
-新ツール名を仮に `do_something_by_tsmorph`、ロジックを `src/ts-morph/do-something/` に置く場合：
+Assuming the new tool name is `do_something_by_tsmorph` and its logic lives in `src/ts-morph/do-something/`:
 
-1. **ts-morph ロジック**: `src/ts-morph/do-something/do-something.ts`
-   - 純粋関数として実装。`initializeProject(tsconfigPath)` で受け取った `Project` を引数に取り、結果オブジェクトを返す（または Result 型を検討）。
-   - 例外は握りつぶさず、呼び出し側でメッセージ化できるよう投げる。
-2. **コロケートテスト**: `src/ts-morph/do-something/do-something.test.ts`
-   - Vitest。仕様としてのテストを先に書く。Mock は極力使わず、使うときはコメントで理由を補足。
-   - `src/ts-morph/_test-utils/` のヘルパーで一時プロジェクトを組み立てる（既存テストを参照）。
-   - **既知の落とし穴を必ずケース化**: default export / 再エクスポート / パスエイリアス / node_modules 越し参照のうち、該当するもの。
-3. **MCP 登録ファイル**: `src/mcp/tools/register-do-something-tool.ts`
-   - 既存の `register-get-type-at-position-tool.ts` を雛形にする（下記テンプレ）。
-4. **aggregator へ登録**: `src/mcp/tools/ts-morph-tools.ts`
-   - import を 1 行追加し、`registerTsMorphTools` 内で `registerDoSomethingTool(server);` を呼ぶ。
+1. **ts-morph logic**: `src/ts-morph/do-something/do-something.ts`
+   - Implement as a pure function. Accept the `Project` received from `initializeProject(tsconfigPath)` as an argument and return a result object (or consider a Result type).
+   - Do not swallow exceptions; throw them so the caller can convert them to messages.
+2. **Co-located tests**: `src/ts-morph/do-something/do-something.test.ts`
+   - Vitest. Write the tests as specifications first. Minimize mocks; when used, add a comment explaining why.
+   - Build temporary projects using helpers in `src/ts-morph/_test-utils/` (refer to existing tests).
+   - **Always add test cases for known pitfalls**: whichever of default export / re-export / path alias / cross-node_modules references apply.
+3. **MCP registration file**: `src/mcp/tools/register-do-something-tool.ts`
+   - Use the existing `register-get-type-at-position-tool.ts` as a template (see template below).
+4. **Register with the aggregator**: `src/mcp/tools/ts-morph-tools.ts`
+   - Add one import line and call `registerDoSomethingTool(server);` inside `registerTsMorphTools`.
 5. **README.md**:
-   - 「提供されるツール」のツール表に 1 行追加（`[\`do_something_by_tsmorph\`](#do_something_by_tsmorph)`）。
-   - 対応する詳細セクション（機能・ユースケース・必要な情報・注意）を追加。
+   - Add one row to the "Available Tools" table (`[\`do_something_by_tsmorph\`](#do_something_by_tsmorph)`).
+   - Add the corresponding detail section (features, use cases, required info, caveats).
 6. **CLAUDE.md**:
-   - 「ts-morphレイヤー」のモジュール一覧に `do-something/` を追加。
-   - 「主要な機能と実装ファイル」に 1 行追加。
+   - Add `do-something/` to the module list under the ts-morph layer section.
+   - Add one line to "Key Features and Implementation Files".
 
-## register-*.ts テンプレート
+## register-*.ts Template
 
-既存ツールに合わせた骨格。`server.tool(name, description, zodSchema, handler)` の 4 引数。
+Skeleton aligned with existing tools. Four arguments: `server.tool(name, description, zodSchema, handler)`.
 
 ```typescript
 import { performance } from "node:perf_hooks";
@@ -44,7 +44,7 @@ import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
 import { doSomething } from "../../ts-morph/do-something/do-something";
 import logger from "../../utils/logger";
 
-// logger 自体が投げても MCP レスポンス生成を阻まないようにラップする
+// Wrap logger calls so that a throw inside the logger does not block MCP response generation
 function safeLogError(error: unknown, toolArgs: Record<string, unknown>): void {
 	try {
 		logger.error({ err: error, toolArgs }, "Error executing do_something_by_tsmorph");
@@ -64,7 +64,7 @@ function safeLogInfo(fields: Record<string, unknown>): void {
 export function registerDoSomethingTool(server: McpServer): void {
 	server.tool(
 		"do_something_by_tsmorph",
-		`[ts-morph] <一行サマリ>
+		`[ts-morph] <one-line summary>
 
 ## When to use
 - ...
@@ -74,22 +74,22 @@ export function registerDoSomethingTool(server: McpServer): void {
 
 ## Critical constraints
 - All paths (\`tsconfigPath\`, ...) MUST be absolute.
-- position は 1-based（line/column）。`,
+- Positions are 1-based (line/column).`,
 		{
 			tsconfigPath: z.string().describe("Path to the project's tsconfig.json file."),
-			// ... 他パラメータ
+			// ... other parameters
 		},
 		async (args) => {
 			const startTime = performance.now();
 			let message = "";
 			let isError = false;
 			let duration = "0.00";
-			const logArgs = { /* 主要 args */ };
+			const logArgs = { /* key args */ };
 
 			try {
 				const project = initializeProject(args.tsconfigPath);
 				const result = doSomething(project /*, ...args */);
-				message = /* result を文字列化 */ "";
+				message = /* serialize result to string */ "";
 			} catch (error) {
 				safeLogError(error, logArgs);
 				message = `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -123,18 +123,18 @@ export function registerDoSomethingTool(server: McpServer): void {
 }
 ```
 
-## 命名規約
+## Naming Conventions
 
-- MCP ツール名: `snake_case` + `_by_tsmorph` サフィックス。
-- 登録関数: `register<PascalCase>Tool`。
-- ディレクトリ: `kebab-case`。
+- MCP tool name: `snake_case` + `_by_tsmorph` suffix.
+- Registration function: `register<PascalCase>Tool`.
+- Directory: `kebab-case`.
 
-## 完了前チェック
+## Pre-completion Checklist
 
 ```bash
-pnpm check-types   # 型エラーなし
-pnpm test          # 新テスト含め全パス
-pnpm format        # Biome 整形
+pnpm check-types   # no type errors
+pnpm test          # all tests pass, including new ones
+pnpm format        # Biome formatting
 ```
 
-最後に `/check-docs` を実行し、登録ツール名と README/CLAUDE.md の記載が一致していることを確認する。
+Finally, run `/check-docs` to confirm that the registered tool name matches the entries in README/CLAUDE.md.

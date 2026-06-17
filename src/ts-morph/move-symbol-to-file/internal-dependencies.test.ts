@@ -11,7 +11,7 @@ const varStmt = (sourceFile: SourceFile, name: string) =>
 	getStatement(sourceFile, name, SyntaxKind.VariableStatement);
 
 describe("getInternalDependencies", () => {
-	it("関数宣言が依存する内部関数と内部変数を特定できる", () => {
+	it("can identify the internal functions and variables that a function declaration depends on", () => {
 		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"/src/test.ts",
@@ -37,7 +37,7 @@ describe("getInternalDependencies", () => {
 		expect(dependencies).toHaveLength(3);
 	});
 
-	it("関数宣言が依存する内部変数を特定できる (間接依存)", () => {
+	it("can identify the internal variables that a function declaration depends on (indirect dependency)", () => {
 		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"/src/test.ts",
@@ -61,7 +61,7 @@ describe("getInternalDependencies", () => {
 		expect(dependencies).toHaveLength(2);
 	});
 
-	it("変数宣言が依存する内部変数を特定できる", () => {
+	it("can identify the internal variables that a variable declaration depends on", () => {
 		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"/src/test.ts",
@@ -85,7 +85,7 @@ describe("getInternalDependencies", () => {
 		expect(dependencies).toHaveLength(2);
 	});
 
-	it("変数宣言が依存する内部変数を特定できる (直接依存)", () => {
+	it("can identify the internal variables that a variable declaration depends on (direct dependency)", () => {
 		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"/src/test.ts",
@@ -104,7 +104,7 @@ describe("getInternalDependencies", () => {
 		expect(dependencies[0]).toBe(configValueStmt);
 	});
 
-	it("依存関係がない場合は空配列を返す", () => {
+	it("returns an empty array when there are no dependencies", () => {
 		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"/src/test.ts",
@@ -122,7 +122,7 @@ describe("getInternalDependencies", () => {
 		);
 	});
 
-	it("関数宣言が依存する非エクスポートのアロー関数を特定できる", () => {
+	it("can identify non-exported arrow functions that a function declaration depends on", () => {
 		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"/src/test.ts",
@@ -139,7 +139,7 @@ describe("getInternalDependencies", () => {
 		expect(dependencies).toEqual([varStmt(sourceFile, "arrowHelper")]);
 	});
 
-	it("複数の間接的な内部依存関係を再帰的に特定できる", () => {
+	it("can recursively identify multiple indirect internal dependencies", () => {
 		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"/src/test.ts",
@@ -148,7 +148,7 @@ describe("getInternalDependencies", () => {
 			const c = () => d;
 			const b = () => c();
 			export const a = () => b(); // a -> b -> c -> d
-			const e = () => d; // d は a 以外からも参照されるが、ここでは a の依存のみ見る
+			const e = () => d; // d is also referenced from outside a, but here we only look at a's dependencies
 		`,
 		);
 

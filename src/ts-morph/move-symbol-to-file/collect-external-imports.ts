@@ -18,31 +18,31 @@ interface ImportSourceInfo {
 	originalImportDeclaration: ImportDeclaration;
 }
 
-// --- getImportDetailsFromDeclarationNode の戻り値型を拡張 ---
+// --- Extended return type for getImportDetailsFromDeclarationNode ---
 type ImportDetailsResult =
 	| {
 			importDeclaration: ImportDeclaration;
 			importSpecifierNode?: ImportSpecifier;
 			isDefault: boolean;
 			isNamespaceImport: false;
-			namespaceImportName?: undefined; // 非名前空間インポートの場合は不要
+			namespaceImportName?: undefined; // Not needed for non-namespace imports
 	  }
 	| {
 			importDeclaration: ImportDeclaration;
-			importSpecifierNode?: undefined; // 名前空間インポートの場合は specifier はない
+			importSpecifierNode?: undefined; // No specifier for namespace imports
 			isDefault: false;
 			isNamespaceImport: true;
 			namespaceImportName: string;
 	  };
 
 /**
- * 宣言ノードがインポート関連か調べ、詳細情報を返すヘルパー関数
+ * Helper function that checks whether a declaration node is import-related and returns its details.
  */
 function getImportDetailsFromDeclarationNode(
 	declarationNode: Node,
 	originalSourceFile: SourceFile,
 ): ImportDetailsResult | undefined {
-	// 戻り値の型を更新
+	// Updated return type
 	let importDeclaration: ImportDeclaration | undefined;
 	let importSpecifierNode: ImportSpecifier | undefined;
 	let isDefault = false;
@@ -77,11 +77,11 @@ function getImportDetailsFromDeclarationNode(
 		);
 		namespaceImportName = declarationNode.getName();
 	} else {
-		// インポート関連の宣言ノードではない
+		// Not an import-related declaration node
 		return undefined;
 	}
 
-	// インポート宣言が見つからない、または元のファイルのものでない場合は対象外
+	// Exclude if no import declaration was found, or if it doesn't belong to the original file
 	if (
 		!importDeclaration ||
 		importDeclaration.getSourceFile() !== originalSourceFile
@@ -95,12 +95,12 @@ function getImportDetailsFromDeclarationNode(
 		isDefault,
 		isNamespaceImport,
 		namespaceImportName,
-	} as ImportDetailsResult; // 型アサーションで戻り値の型を保証
+	} as ImportDetailsResult; // Type assertion to guarantee the return type
 }
 
 /**
- * 指定された識別子が、元のファイル内でインポートされたシンボルに対応するかどうかを調べ、
- * 対応する場合はインポート情報を返す。
+ * Checks whether the given identifier corresponds to a symbol imported in the original file,
+ * and if so, returns the import information.
  */
 function findImportSourceForIdentifier(
 	identifier: Identifier,
@@ -121,13 +121,13 @@ function findImportSourceForIdentifier(
 
 		if (!importDetails) continue;
 
-		// ImportDeclaration は必須
+		// ImportDeclaration is required
 		if (!importDetails.importDeclaration) continue;
 
 		const { importDeclaration } = importDetails;
 		const moduleSpecifier = importDeclaration.getModuleSpecifierValue();
 
-		// 名前空間インポートの場合
+		// Namespace import case
 		if (importDetails.isNamespaceImport) {
 			return {
 				moduleSpecifier,
@@ -138,7 +138,7 @@ function findImportSourceForIdentifier(
 			};
 		}
 
-		// 名前付き または デフォルトインポートの場合
+		// Named or default import case
 		let importedName: string | undefined;
 		if (importDetails.isDefault) {
 			importedName = "default";
@@ -164,64 +164,64 @@ function findImportSourceForIdentifier(
 	return undefined;
 }
 
-// --- 新しいヘルパー関数: neededImports マップを更新 ---
+// --- New helper function: update the neededImports map ---
 function updateNeededImportsMap(
 	neededImports: NeededExternalImports,
 	importInfo: ImportSourceInfo,
 ): void {
 	const { moduleSpecifier, originalImportDeclaration } = importInfo;
 
-	// まだ記録されていないモジュールパスなら、新しいエントリを作成
+	// If the module path hasn't been recorded yet, create a new entry
 	if (!neededImports.has(moduleSpecifier)) {
 		neededImports.set(moduleSpecifier, {
-			names: new Set(), // インポートする名前 (default含む) を格納する Set
-			declaration: originalImportDeclaration, // 元の ImportDeclaration ノード
-			// isNamespaceImport, namespaceImportName は後で設定
+			names: new Set(), // Set to store imported names (including 'default')
+			declaration: originalImportDeclaration, // Original ImportDeclaration node
+			// isNamespaceImport, namespaceImportName will be set later
 		});
 	}
 
-	// 該当モジュールに必要なインポート情報を追加
+	// Add the required import information for the relevant module
 	const existingEntry = neededImports.get(moduleSpecifier);
 	if (existingEntry) {
 		if (importInfo.isNamespaceImport) {
-			// 名前空間インポートの場合
+			// Namespace import case
 			existingEntry.isNamespaceImport = true;
 			existingEntry.namespaceImportName = importInfo.namespaceImportName;
 		} else if (importInfo.importedName) {
-			// 名前付き or デフォルトインポートの場合 (importedName が存在するはず)
+			// Named or default import case (importedName should exist)
 			existingEntry.names.add(importInfo.importedName);
 		}
 	}
 }
 
 /**
- * Statement 配列を受け取り、それらの内部で使用されている識別子のうち、
- * 元のファイル (originalSourceFile) でインポートされていたシンボルの情報を収集する。
- * 結果は、インポート元のモジュールパスをキーとした Map で返す。
+ * Receives an array of Statements and collects information about identifiers used within them
+ * that were imported from outside in the original file (originalSourceFile).
+ * The result is returned as a Map keyed by the module path of the import source.
  *
- * @param statements - 処理対象のステートメント (移動対象とその内部依存関係のうち moveToNewFile のもの)
- * @param originalSourceFile - 移動元のファイル
- * @returns Map<インポート元モジュールパス, { インポート名(or default)の Set, 元の ImportDeclaration }> (NeededExternalImports)
+ * @param statements - Statements to process (the move target and its internal dependencies classified as moveToNewFile)
+ * @param originalSourceFile - The file from which the symbol is being moved
+ * @returns Map<import source module path, { Set of imported names (or 'default'), original ImportDeclaration }> (NeededExternalImports)
  */
 export function collectNeededExternalImports(
 	statements: Statement[],
 	originalSourceFile: SourceFile,
 ): NeededExternalImports {
 	const neededImports: NeededExternalImports = new Map();
-	// 一度処理した Identifier を記録し、重複処理を防ぐ Set
+	// Set to record already-processed Identifiers and prevent duplicate processing
 	const processedIdentifiers = new Set<Identifier>();
 
-	// 移動対象のステートメント（とその moveToNewFile 依存）を一つずつ処理
+	// Process each statement (the move target and its moveToNewFile dependencies) one by one
 	for (const stmt of statements) {
-		// ステートメント内のすべての Identifier (変数名、関数名など) を取得
+		// Get all Identifiers (variable names, function names, etc.) within the statement
 		const identifiers = stmt.getDescendantsOfKind(SyntaxKind.Identifier);
 
-		// 各 Identifier をチェック
+		// Check each Identifier
 		for (const id of identifiers) {
-			// すでに処理済みの Identifier はスキップ
+			// Skip already-processed Identifiers
 			if (processedIdentifiers.has(id)) continue;
 
-			// この Identifier が元のファイルで外部からインポートされたものか確認
+			// Check whether this Identifier was imported from outside in the original file
 			const importInfo = findImportSourceForIdentifier(id, originalSourceFile);
 
 			if (importInfo) {

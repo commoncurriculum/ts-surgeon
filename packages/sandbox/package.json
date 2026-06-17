@@ -2,7 +2,7 @@
 	"name": "mcp-sandbox",
 	"version": "0.0.0",
 	"private": true,
-	"description": "MCPツールの機能テスト用サンドボックス環境。公開は意図していません。",
+	"description": "Sandbox environment for functional testing of MCP tools. Not intended for publication.",
 	"scripts": {
 		"check-types": "tsc --noEmit"
 	},

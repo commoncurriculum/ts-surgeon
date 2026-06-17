@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// PostToolUse hook: src 配下の .ts を編集したら関連テスト + 型チェックを走らせる。
-// 失敗時は exit 2 で stderr を Claude に返し、修正を促す。
-// 入力: stdin に Claude Code の PostToolUse JSON（tool_name / tool_input.file_path 等）。
+// PostToolUse hook: when a .ts file under src is edited, run the related tests + type check.
+// On failure, exit 2 to return stderr to Claude and prompt a fix.
+// Input: the Claude Code PostToolUse JSON on stdin (tool_name / tool_input.file_path, etc.).
 
 import { execFileSync } from "node:child_process";
 import { relative, isAbsolute } from "node:path";
@@ -22,7 +22,7 @@ let payload;
 try {
 	payload = JSON.parse(raw);
 } catch {
-	// JSON でなければ何もしない
+	// Not JSON — do nothing
 	process.exit(0);
 }
 
@@ -33,7 +33,7 @@ if (!filePath) process.exit(0);
 
 const rel = isAbsolute(filePath) ? relative(projectDir, filePath) : filePath;
 
-// src 配下の .ts/.tsx のみ対象（.d.ts と dist/coverage/node_modules は除外）
+// Only target .ts/.tsx under src (excluding .d.ts and dist/coverage/node_modules)
 const isTarget =
 	rel.startsWith("src/") && /\.(ts|tsx)$/.test(rel) && !rel.endsWith(".d.ts");
 
@@ -50,7 +50,7 @@ function run(label, file, args) {
 		});
 	} catch (err) {
 		const out = `${err.stdout ?? ""}${err.stderr ?? ""}`.trim();
-		failures.push(`### ${label} 失敗\n${out}`);
+		failures.push(`### ${label} failed\n${out}`);
 	}
 }
 
@@ -65,12 +65,12 @@ const vitestArgs = [
 	"--poolOptions.threads.singleThread",
 ];
 
-run("関連テスト", "pnpm", vitestArgs);
-run("型チェック (check-types)", "pnpm", ["run", "check-types"]);
+run("Related tests", "pnpm", vitestArgs);
+run("Type check (check-types)", "pnpm", ["run", "check-types"]);
 
 if (failures.length > 0) {
 	process.stderr.write(
-		`編集後チェックで問題を検出しました (${rel}):\n\n${failures.join("\n\n")}\n`,
+		`Post-edit check detected problems (${rel}):\n\n${failures.join("\n\n")}\n`,
 	);
 	process.exit(2);
 }

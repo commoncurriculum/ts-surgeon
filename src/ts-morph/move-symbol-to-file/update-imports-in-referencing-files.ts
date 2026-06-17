@@ -12,16 +12,17 @@ import { calculateRelativePath } from "../_utils/calculate-relative-path";
 import logger from "../../utils/logger";
 import { findDeclarationsReferencingFile } from "../_utils/find-declarations-to-update";
 
-// ヘルパー関数用のインターフェース
+// Interface for helper function
 interface TargetSpecifierInfo {
 	specifier: ImportSpecifier | ExportSpecifier | undefined;
 	isOnlySpecifier: boolean;
-	isTypeOnlyImport: boolean; // インポート宣言の場合のみ意味を持つ
+	isTypeOnlyImport: boolean; // only meaningful for import declarations
 }
 
 /**
- * インポート/エクスポート宣言から指定されたシンボル名に一致する Specifier を検索し、
- * それが付随情報（唯一の Specifier か、Type Only か）と共に返すヘルパー関数。
+ * Helper function that searches for a Specifier matching the given symbol name in an import/export
+ * declaration, and returns it along with accompanying information (whether it is the only Specifier,
+ * and whether it is type-only).
  */
 function findTargetSpecifierInfo(
 	declaration: ImportDeclaration | ExportDeclaration,
@@ -62,8 +63,8 @@ function findTargetSpecifierInfo(
 }
 
 /**
- * 宣言を分割し、指定されたシンボルを新しいパスでインポート/エクスポートする宣言を追加します。
- * 元の宣言が空になった場合は削除します。
+ * Splits the declaration and adds a new import/export declaration for the specified symbol
+ * pointing to the new path. Removes the original declaration if it becomes empty.
  */
 function splitAndUpdateDeclaration(
 	declaration: ImportDeclaration | ExportDeclaration,
@@ -124,17 +125,17 @@ function splitAndUpdateDeclaration(
 }
 
 /**
- * 指定されたファイルパス (oldFilePath) を参照しているインポート/エクスポート文のうち、
- * 指定されたシンボル (symbolName) を含むもののパスを、
- * 新しいファイルパス (newFilePath) への参照に更新します。
- * 複数のシンボルを含む場合は宣言を分割します。
- * エラーが発生した場合はそのままスローします。
+ * Among the import/export statements that reference the specified file path (oldFilePath),
+ * updates the paths of those containing the specified symbol (symbolName) to reference
+ * the new file path (newFilePath).
+ * If a declaration contains multiple symbols, it is split.
+ * Any errors encountered are re-thrown as-is.
  *
- * @param project ts-morph プロジェクトインスタンス。
- * @param oldFilePath 移動元のファイルの絶対パス。
- * @param newFilePath 移動先のファイルの絶対パス。
- * @param symbolName 移動したシンボルの名前。
- * @throws Error - ファイルが見つからない場合や AST 操作中にエラーが発生した場合
+ * @param project ts-morph project instance.
+ * @param oldFilePath Absolute path of the source file being moved from.
+ * @param newFilePath Absolute path of the destination file being moved to.
+ * @param symbolName Name of the symbol that was moved.
+ * @throws Error - if the file is not found or an error occurs during AST manipulation
  */
 export async function updateImportsInReferencingFiles(
 	project: Project,

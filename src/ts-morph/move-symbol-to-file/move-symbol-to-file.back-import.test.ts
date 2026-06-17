@@ -5,12 +5,12 @@ import { getFileText } from "../_test-utils/get-file-text";
 import { moveSymbolToFile } from "./move-symbol-to-file";
 
 describe("moveSymbolToFile back-import (regression)", () => {
-	// 移動元に残るシンボルが移動シンボルを参照する場合、移動先からの逆向き
-	// import を張る必要がある。旧実装は fixMissingImports() に頼っていたが、
-	// 「先頭 JSDoc + type 宣言 + 削除後の fixMissingImports」という組み合わせで
-	// ts-morph が "children of the old and new trees were expected to have the
-	// same count" を投げて失敗していた。hono の src/utils/url.ts で実際に再現。
-	it("移動元に残るコードが移動シンボルを参照する場合、逆向き import を張る", async () => {
+	// When symbols remaining in the source file reference the moved symbol, a back-import
+	// from the destination file must be added. The old implementation relied on fixMissingImports(),
+	// but the combination of "leading JSDoc + type declaration + fixMissingImports after removal"
+	// caused ts-morph to throw "children of the old and new trees were expected to have the
+	// same count". Reproduced with hono's src/utils/url.ts.
+	it("adds a back-import when remaining code in the source file references the moved symbol", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/url.ts";
 		const newFilePath = "/src/split-path.ts";
@@ -42,19 +42,19 @@ export const splitRoutingPath = (routePath: string): string[] => {
 		const oldText = getFileText(project, oldFilePath);
 		const newText = getFileText(project, newFilePath);
 
-		// 移動先に splitPath 本体がある
+		// the destination has the splitPath body
 		expect(newText).toContain(
 			"export const splitPath = (path: string): string[]",
 		);
-		// 移動元は宣言を持たず、逆向き import を張っている
+		// the source no longer holds the declaration but has the back-import
 		expect(oldText).not.toContain("export const splitPath");
 		expect(oldText).toContain('import { splitPath } from "./split-path"');
-		// 残った参照側はそのまま
+		// the remaining referencing code is untouched
 		expect(oldText).toContain("export const splitRoutingPath");
 		expect(oldText).toContain("return splitPath(routePath)");
 	});
 
-	it("移動元の複数のシンボルが移動シンボルを参照する場合、逆向き import を 1 つにまとめる", async () => {
+	it("consolidates back-imports into one when multiple symbols in the source file reference the moved symbol", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/source.ts";
 		const newFilePath = "/src/shared.ts";

@@ -139,5 +139,5 @@ dist
 # Taskfile cache
 .task
 
-# E2E: cloned target repositories (hono 等) のキャッシュ
+# E2E: cache of cloned target repositories (hono, etc.)
 e2e/.cache/

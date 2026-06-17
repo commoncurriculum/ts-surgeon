@@ -13,9 +13,9 @@ import {
 } from "../../ts-morph/find-unused-exports/summarize-unused-exports";
 import logger from "../../utils/logger";
 
-/** summary モードで全体像を出すためのスキャン上限 (list モードの既定 100 と区別する)。 */
+/** Scan cap for summary mode to get a full picture (distinct from the default 100 used in list mode). */
 const SUMMARY_SCAN_CAP = 100_000;
-/** summary の「ディレクトリ別」内訳で表示する最大行数。 */
+/** Maximum number of rows to show in the "by directory" breakdown in summary mode. */
 const SUMMARY_TOP_DIRECTORIES = 20;
 
 function safeLogError(error: unknown, toolArgs: Record<string, unknown>): void {
@@ -43,8 +43,8 @@ function formatUnusedExport(entry: UnusedExport): string {
 }
 
 /**
- * パッケージ単位の構造的警告を出力行に整形する。
- * list / summary 両モードで、候補リストより先に読ませたいので先頭側に挿入する。
+ * Formats per-package structural warnings into output lines.
+ * Inserted before the candidate list in both list and summary modes so the reader sees them first.
  */
 function formatPackageWarnings(warnings: PackageExportWarning[]): string[] {
 	if (warnings.length === 0) return [];
@@ -59,7 +59,7 @@ function formatPackageWarnings(warnings: PackageExportWarning[]): string[] {
 	return lines;
 }
 
-/** ディレクトリ群の共通プレフィックスを求め、表示を短くするために切り出す。 */
+/** Computes the common prefix of a set of directory paths to shorten the display. */
 function commonDirectoryPrefix(directories: string[]): string {
 	if (directories.length === 0) return "";
 	const split = directories.map((d) => d.split("/"));
@@ -245,7 +245,7 @@ Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 
 			try {
 				const project = initializeProject(args.tsconfigPath);
-				// summary は全体像が目的なので、ユーザー指定が無ければ実質無制限でスキャンする。
+				// summary mode aims for a full picture, so use effectively unlimited results unless the user specifies otherwise.
 				const effectiveMaxResults = isSummary
 					? (args.maxResults ?? SUMMARY_SCAN_CAP)
 					: args.maxResults;

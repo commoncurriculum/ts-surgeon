@@ -3,14 +3,14 @@ import type { DependencyClassification } from "../types";
 import logger from "../../utils/logger";
 
 /**
- * classifiedDependencies 内の `addExport` タイプの依存関係に対し、
- * 元ファイルで export されていない場合に export キーワードを追加する。
+ * For `addExport`-type dependencies in classifiedDependencies,
+ * adds the export keyword if the declaration is not yet exported in the original file.
  */
 export function ensureExportsInOriginalFile(
 	classifiedDependencies: DependencyClassification[],
-	originalFilePath: string, // logger用
+	originalFilePath: string, // for logger
 ): void {
-	logger.debug("必要なエクスポートを元のファイルで確認中...");
+	logger.debug("Checking required exports in the original file...");
 	for (const dep of classifiedDependencies) {
 		if (dep.type !== "addExport") {
 			continue;

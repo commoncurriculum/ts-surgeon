@@ -44,10 +44,11 @@ export function findDeclarationsForRenameOperation(
 		}
 	}
 
-	// Namespace import (`import * as X from "..."` / `import type * as X from "..."`)
-	// は import 宣言に被参照シンボル名が現れないため symbol → findReferencesAsNodes
-	// 経路では取りこぼす。referencing source files から module specifier が
-	// 対象ファイルに解決される宣言を直接拾って補完する。
+	// Namespace imports (`import * as X from "..."` / `import type * as X from "..."`)
+	// do not expose referenced symbol names in the import declaration, so they are
+	// missed by the symbol → findReferencesAsNodes path. Supplement by directly
+	// collecting declarations from referencing source files whose module specifier
+	// resolves to the target file.
 	const referencingFiles = sourceFile.getReferencingSourceFiles();
 	for (const referencingFile of referencingFiles) {
 		signal?.throwIfAborted();

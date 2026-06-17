@@ -5,14 +5,14 @@ import * as path from "node:path";
 import * as os from "node:os";
 
 /**
- * テスト用の一時ディレクトリを作成
+ * Creates a temporary directory for test use.
  */
 function createTempDir(): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), "find-references-test-"));
 }
 
 /**
- * ディレクトリを再帰的に削除
+ * Recursively removes a directory.
  */
 function removeTempDir(dir: string): void {
 	if (fs.existsSync(dir)) {
@@ -31,13 +31,13 @@ describe("findSymbolReferences", () => {
 		removeTempDir(tempDir);
 	});
 
-	it("基本的な変数の参照を見つけることができる", async () => {
-		// ファイルシステムにテストプロジェクトを作成
+	it("can find references to a basic variable", async () => {
+		// Create a test project on the filesystem
 		const tsconfigPath = path.join(tempDir, "tsconfig.json");
 		const srcDir = path.join(tempDir, "src");
 		fs.mkdirSync(srcDir, { recursive: true });
 
-		// tsconfig.json を作成
+		// Create tsconfig.json
 		fs.writeFileSync(
 			tsconfigPath,
 			JSON.stringify(
@@ -56,7 +56,7 @@ describe("findSymbolReferences", () => {
 			),
 		);
 
-		// テストファイルを作成
+		// Create test files
 		const utilsPath = path.join(srcDir, "utils.ts");
 		const mainPath = path.join(srcDir, "main.ts");
 
@@ -79,41 +79,41 @@ const result = helperFunction();
 `,
 		);
 
-		// myVariable の参照を検索（定義位置）
+		// Search for references to myVariable (at its definition position)
 		const result = await findSymbolReferences({
 			tsconfigPath,
 			targetFilePath: utilsPath,
-			position: { line: 1, column: 14 }, // "myVariable" の位置
+			position: { line: 1, column: 14 }, // position of "myVariable"
 		});
 
-		// 定義位置の確認
+		// Verify the definition location
 		expect(result.definition).toBeTruthy();
 		expect(result.definition?.filePath).toBe(utilsPath);
 		expect(result.definition?.line).toBe(1);
 		expect(result.definition?.text).toContain("myVariable");
 
-		// 参照箇所の確認（定義箇所は除外される）
-		// インポート文での参照も含まれる
+		// Verify reference locations (definition site excluded)
+		// Import statements are also included as references
 		expect(result.references.length).toBeGreaterThanOrEqual(2);
 
-		// utils.ts内での参照
+		// Reference inside utils.ts
 		const utilsRef = result.references.find(
 			(ref) => ref.filePath === utilsPath && ref.line === 4,
 		);
 		expect(utilsRef).toBeTruthy();
 
-		// main.ts内での参照（インポート文とconsole.log）
+		// References inside main.ts (import statement and console.log)
 		const mainRefs = result.references.filter(
 			(ref) => ref.filePath === mainPath,
 		);
 		expect(mainRefs.length).toBeGreaterThanOrEqual(1);
 
-		// console.logでの参照が含まれていることを確認
+		// Verify the console.log reference is included
 		const consoleLogRef = mainRefs.find((ref) => ref.line === 3);
 		expect(consoleLogRef).toBeTruthy();
 	});
 
-	it("関数の参照を見つけることができる", async () => {
+	it("can find references to a function", async () => {
 		const tsconfigPath = path.join(tempDir, "tsconfig.json");
 		const srcDir = path.join(tempDir, "src");
 		fs.mkdirSync(srcDir, { recursive: true });
@@ -162,38 +162,38 @@ processData();
 `,
 		);
 
-		// calculate 関数の参照を検索
+		// Search for references to the calculate function
 		const result = await findSymbolReferences({
 			tsconfigPath,
 			targetFilePath: functionsPath,
-			position: { line: 1, column: 17 }, // "calculate" の位置
+			position: { line: 1, column: 17 }, // position of "calculate"
 		});
 
 		expect(result.definition).toBeTruthy();
 		expect(result.definition?.filePath).toBe(functionsPath);
 
-		// 参照箇所（定義を除く）
-		// インポート文での参照も含まれる
+		// References (excluding definition)
+		// Import statements are also included
 		expect(result.references.length).toBeGreaterThanOrEqual(2);
 
-		// functions.ts内での参照
+		// Internal reference inside functions.ts
 		const internalRef = result.references.find(
 			(ref) => ref.filePath === functionsPath && ref.line === 6,
 		);
 		expect(internalRef).toBeTruthy();
 
-		// usage.ts内での参照
+		// References inside usage.ts
 		const externalRefs = result.references.filter(
 			(ref) => ref.filePath === usagePath,
 		);
 		expect(externalRefs.length).toBeGreaterThanOrEqual(1);
 
-		// calculate(5, 3)の呼び出しが含まれていることを確認
+		// Verify the calculate(5, 3) call is included
 		const callRef = externalRefs.find((ref) => ref.line === 3);
 		expect(callRef).toBeTruthy();
 	});
 
-	it("クラスの参照を見つけることができる", async () => {
+	it("can find references to a class", async () => {
 		const tsconfigPath = path.join(tempDir, "tsconfig.json");
 		const srcDir = path.join(tempDir, "src");
 		fs.mkdirSync(srcDir, { recursive: true });
@@ -223,7 +223,7 @@ processData();
 			modelsPath,
 			`export class User {
   constructor(public name: string, public age: number) {}
-  
+
   greet(): string {
     return \`Hello, I'm \${this.name}\`;
   }
@@ -248,33 +248,33 @@ console.log(user.greet());
 `,
 		);
 
-		// User クラスの参照を検索
+		// Search for references to the User class
 		const result = await findSymbolReferences({
 			tsconfigPath,
 			targetFilePath: modelsPath,
-			position: { line: 1, column: 14 }, // "User" の位置
+			position: { line: 1, column: 14 }, // position of "User"
 		});
 
 		expect(result.definition).toBeTruthy();
 		expect(result.definition?.filePath).toBe(modelsPath);
 
-		// 参照箇所
+		// Verify references
 		expect(result.references.length).toBeGreaterThanOrEqual(2);
 
-		// Admin クラスでの継承
+		// Inheritance reference in Admin class
 		const extendsRef = result.references.find(
 			(ref) => ref.filePath === modelsPath && ref.text.includes("extends"),
 		);
 		expect(extendsRef).toBeTruthy();
 
-		// app.tsでのインスタンス化
+		// Instantiation in app.ts
 		const instantiationRef = result.references.find(
 			(ref) => ref.filePath === appPath && ref.text.includes("new User"),
 		);
 		expect(instantiationRef).toBeTruthy();
 	});
 
-	it("存在しないシンボルに対してエラーをスローする", async () => {
+	it("throws an error for a non-existent symbol position", async () => {
 		const tsconfigPath = path.join(tempDir, "tsconfig.json");
 		const srcDir = path.join(tempDir, "src");
 		fs.mkdirSync(srcDir, { recursive: true });
@@ -304,17 +304,17 @@ console.log(user.greet());
 `,
 		);
 
-		// 存在しない位置を指定
+		// Specify a position that does not exist
 		await expect(
 			findSymbolReferences({
 				tsconfigPath,
 				targetFilePath: testPath,
-				position: { line: 10, column: 1 }, // 存在しない行
+				position: { line: 10, column: 1 }, // non-existent line
 			}),
 		).rejects.toThrow();
 	});
 
-	it("re-exportされたシンボルの参照を見つけることができる", async () => {
+	it("can find references to a re-exported symbol", async () => {
 		const tsconfigPath = path.join(tempDir, "tsconfig.json");
 		const srcDir = path.join(tempDir, "src");
 		fs.mkdirSync(srcDir, { recursive: true });
@@ -341,7 +341,7 @@ console.log(user.greet());
 		const indexPath = path.join(srcDir, "index.ts");
 		const appPath = path.join(srcDir, "app.ts");
 
-		// utils.ts - オリジナルの定義
+		// utils.ts - original definition
 		fs.writeFileSync(
 			utilsPath,
 			`export function helper() {
@@ -356,11 +356,11 @@ export const CONSTANT = 42;
 		fs.writeFileSync(
 			indexPath,
 			`export { helper, CONSTANT } from "./utils";
-export { helper as utilHelper } from "./utils"; // 別名でのre-export
+export { helper as utilHelper } from "./utils"; // re-export under an alias
 `,
 		);
 
-		// app.ts - re-export経由での使用
+		// app.ts - consumption via re-export
 		fs.writeFileSync(
 			appPath,
 			`import { helper, CONSTANT, utilHelper } from "./index";
@@ -371,31 +371,31 @@ console.log(utilHelper());
 `,
 		);
 
-		// helper関数の参照を検索
+		// Search for references to the helper function
 		const result = await findSymbolReferences({
 			tsconfigPath,
 			targetFilePath: utilsPath,
-			position: { line: 1, column: 17 }, // "helper" の位置
+			position: { line: 1, column: 17 }, // position of "helper"
 		});
 
 		expect(result.definition).toBeTruthy();
 		expect(result.definition?.filePath).toBe(utilsPath);
 
-		// re-export文とインポート文、使用箇所での参照を含む
+		// Includes re-export statements, import statements, and usage sites
 		expect(result.references.length).toBeGreaterThanOrEqual(3);
 
-		// index.tsでのre-export
+		// Re-export references in index.ts
 		const reExportRefs = result.references.filter(
 			(ref) => ref.filePath === indexPath,
 		);
-		expect(reExportRefs.length).toBeGreaterThanOrEqual(2); // 通常のre-exportと別名でのre-export
+		expect(reExportRefs.length).toBeGreaterThanOrEqual(2); // normal re-export and aliased re-export
 
-		// app.tsでの使用
+		// Usage references in app.ts
 		const appRefs = result.references.filter((ref) => ref.filePath === appPath);
 		expect(appRefs.length).toBeGreaterThanOrEqual(1);
 	});
 
-	it("循環参照があるファイル間での参照を見つけることができる", async () => {
+	it("can find references across files with circular dependencies", async () => {
 		const tsconfigPath = path.join(tempDir, "tsconfig.json");
 		const srcDir = path.join(tempDir, "src");
 		fs.mkdirSync(srcDir, { recursive: true });
@@ -421,7 +421,7 @@ console.log(utilHelper());
 		const moduleAPath = path.join(srcDir, "moduleA.ts");
 		const moduleBPath = path.join(srcDir, "moduleB.ts");
 
-		// moduleA.ts - moduleBを参照
+		// moduleA.ts - references moduleB
 		fs.writeFileSync(
 			moduleAPath,
 			`import { functionB } from "./moduleB";
@@ -436,7 +436,7 @@ export function useB() {
 `,
 		);
 
-		// moduleB.ts - moduleAを参照（循環参照）
+		// moduleB.ts - references moduleA (circular dependency)
 		fs.writeFileSync(
 			moduleBPath,
 			`import { functionA } from "./moduleA";
@@ -451,28 +451,28 @@ export function useA() {
 `,
 		);
 
-		// functionAの参照を検索
+		// Search for references to functionA
 		const result = await findSymbolReferences({
 			tsconfigPath,
 			targetFilePath: moduleAPath,
-			position: { line: 3, column: 17 }, // "functionA" の位置
+			position: { line: 3, column: 17 }, // position of "functionA"
 		});
 
 		expect(result.definition).toBeTruthy();
 		expect(result.definition?.filePath).toBe(moduleAPath);
 
-		// moduleBからの参照を確認
+		// Verify references from moduleB
 		const moduleBRefs = result.references.filter(
 			(ref) => ref.filePath === moduleBPath,
 		);
 		expect(moduleBRefs.length).toBeGreaterThanOrEqual(1);
 
-		// useA関数内での使用を確認
+		// Verify the call inside useA is included
 		const useARef = moduleBRefs.find((ref) => ref.text.includes("functionA()"));
 		expect(useARef).toBeTruthy();
 	});
 
-	it("インターフェースの参照を見つけることができる", async () => {
+	it("can find references to an interface", async () => {
 		const tsconfigPath = path.join(tempDir, "tsconfig.json");
 		const srcDir = path.join(tempDir, "src");
 		fs.mkdirSync(srcDir, { recursive: true });
@@ -538,29 +538,29 @@ processUser(adminData);
 `,
 		);
 
-		// UserData インターフェースの参照を検索
+		// Search for references to the UserData interface
 		const result = await findSymbolReferences({
 			tsconfigPath,
 			targetFilePath: typesPath,
-			position: { line: 1, column: 18 }, // "UserData" の位置
+			position: { line: 1, column: 18 }, // position of "UserData"
 		});
 
 		expect(result.definition).toBeTruthy();
 		expect(result.definition?.filePath).toBe(typesPath);
 
-		// 参照箇所を確認
+		// Verify references
 		expect(result.references.length).toBeGreaterThanOrEqual(3);
 
-		// types.ts内での継承での参照
+		// Inheritance reference inside types.ts
 		const extendsRef = result.references.find(
 			(ref) => ref.filePath === typesPath && ref.text.includes("extends"),
 		);
 		expect(extendsRef).toBeTruthy();
 
-		// implementation.ts内での型注釈での参照
+		// Type annotation references inside implementation.ts
 		const typeAnnotationRefs = result.references.filter(
 			(ref) => ref.filePath === implementationPath,
 		);
-		expect(typeAnnotationRefs.length).toBeGreaterThanOrEqual(2); // 関数パラメータと変数宣言
+		expect(typeAnnotationRefs.length).toBeGreaterThanOrEqual(2); // function parameter and variable declaration
 	});
 });

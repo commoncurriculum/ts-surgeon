@@ -1,11 +1,11 @@
 import { spawnSync } from "node:child_process";
 
 /**
- * 子プロセス用のクリーンな環境変数。
- * 外側 Vitest が注入する VITEST_* / NODE_OPTIONS（loader 等）を取り除き、
- * 子の package manager / テストランナーに持ち込まないようにする。
+ * Clean environment variables for child processes.
+ * Strips VITEST_* / NODE_OPTIONS (loaders, etc.) injected by the outer Vitest
+ * so they are not inherited by the child's package manager or test runner.
  *
- * @param extra マージする追加の環境変数（例: CI / FORCE_COLOR）
+ * @param extra Additional environment variables to merge (e.g. CI / FORCE_COLOR).
  */
 export function childEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 	const env: NodeJS.ProcessEnv = { ...process.env, ...extra };
@@ -24,10 +24,11 @@ export interface RunResult {
 }
 
 /**
- * 子プロセスを同期実行し、stdout/stderr を結合した出力と成否を返す。
- * 依存インストールやテスト出力が大きくなるため maxBuffer を大きめに取る。
+ * Runs a child process synchronously and returns the combined stdout/stderr
+ * output along with success/failure status. maxBuffer is set large because
+ * dependency installs and test output can be substantial.
  *
- * @param extraEnv childEnv にマージする追加の環境変数
+ * @param extraEnv Additional environment variables to merge into childEnv.
  */
 export function run(
 	cmd: string,

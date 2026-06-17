@@ -6,87 +6,95 @@ describe("getIdentifierNodeFromDeclaration", () => {
 	const project = new Project({ useInMemoryFileSystem: true });
 
 	const testCases = [
-		// 1. 基本的な宣言
+		// 1. Basic declarations
 		{
 			code: "const foo = 1;",
 			expected: "foo",
-			description: "変数宣言 (const)",
+			description: "variable declaration (const)",
 		},
-		{ code: "let bar = 2;", expected: "bar", description: "変数宣言 (let)" },
-		{ code: "var baz = 3;", expected: "baz", description: "変数宣言 (var)" },
+		{
+			code: "let bar = 2;",
+			expected: "bar",
+			description: "variable declaration (let)",
+		},
+		{
+			code: "var baz = 3;",
+			expected: "baz",
+			description: "variable declaration (var)",
+		},
 		{
 			code: "function func() {}",
 			expected: "func",
-			description: "関数宣言 (名前付き)",
+			description: "function declaration (named)",
 		},
 		{
 			code: "class MyClass {}",
 			expected: "MyClass",
-			description: "クラス宣言 (名前付き)",
+			description: "class declaration (named)",
 		},
 		{
 			code: "interface MyInterface {}",
 			expected: "MyInterface",
-			description: "インターフェース宣言",
+			description: "interface declaration",
 		},
 		{
 			code: "type MyType = string;",
 			expected: "MyType",
-			description: "型エイリアス宣言",
+			description: "type alias declaration",
 		},
 		{
 			code: "enum MyEnum { A, B }",
 			expected: "MyEnum",
-			description: "列挙型宣言",
+			description: "enum declaration",
 		},
 
-		// 2. デフォルトエクスポート (名前付き識別子)
+		// 2. Default exports (named identifier)
 		{
 			code: "const myVar = 1; export default myVar;",
 			expected: "myVar",
-			description: "デフォルトエクスポート (変数)",
+			description: "default export (variable)",
 		},
 		{
 			code: "function namedFunc() {}; export default namedFunc;",
 			expected: "namedFunc",
-			description: "デフォルトエクスポート (名前付き関数)",
+			description: "default export (named function)",
 		},
 		{
 			code: "class NamedClass {}; export default NamedClass;",
 			expected: "NamedClass",
-			description: "デフォルトエクスポート (名前付きクラス)",
+			description: "default export (named class)",
 		},
 
-		// 3. デフォルトエクスポート (匿名または未処理) - 関数は undefined を返すのが期待される動作
+		// 3. Default exports (anonymous or unhandled) - expected behavior is to return undefined
 		{
 			code: "export default () => {};",
 			expected: undefined,
-			description: "デフォルトエクスポート (アロー関数)",
+			description: "default export (arrow function)",
 		},
 		{
 			code: "export default 123;",
 			expected: undefined,
-			description: "デフォルトエクスポート (リテラル)",
+			description: "default export (literal)",
 		},
 
-		// 4. 分割代入 (パターンから識別子を返すべきではない)
+		// 4. Destructuring (should not return an identifier from a pattern)
 		{
 			code: "const { a } = { a: 1 };",
 			expected: undefined,
-			description: "変数宣言 (オブジェクト分割代入)",
+			description: "variable declaration (object destructuring)",
 		},
 		{
 			code: "const [ b ] = [ 1 ];",
 			expected: undefined,
-			description: "変数宣言 (配列分割代入)",
+			description: "variable declaration (array destructuring)",
 		},
 
-		// 5. ExportSpecifier (フォールバックで処理される可能性あり、主に対象とするのは主要な宣言)
-		// { code: 'const x = 1; export { x as y };', expected: 'y', description: 'エクスポート指定子 (エイリアス)' } // ExportSpecifierノードを直接取得するにはより複雑なセットアップが必要
+		// 5. ExportSpecifier (may be handled by fallback; primary target is main declarations)
+		// { code: 'const x = 1; export { x as y };', expected: 'y', description: 'export specifier (alias)' } // Getting the ExportSpecifier node directly requires more complex setup
 	];
 
 	it.each(testCases)(
-		"$description の場合に $expected を返すこと",
+		"returns $expected for $description",
 		({ code, expected }) => {
 			const sourceFile = project.createSourceFile("temp.ts", code, {
 				overwrite: true,
@@ -94,7 +102,7 @@ describe("getIdentifierNodeFromDeclaration", () => {
 			let declarationNode: Node | undefined;
 
 			if (code.includes("export default")) {
-				// ExportAssignmentノードをより確実に見つける
+				// Find the ExportAssignment node more reliably
 				declarationNode = sourceFile
 					.getStatements()
 					.find(Node.isExportAssignment);
@@ -120,7 +128,7 @@ describe("getIdentifierNodeFromDeclaration", () => {
 
 			expect(
 				declarationNode,
-				`テストコード: ${code} で宣言ノードが見つかりませんでした`,
+				`Declaration node not found for test code: ${code}`,
 			).toBeDefined();
 
 			if (!declarationNode) return;
@@ -136,7 +144,7 @@ describe("getIdentifierNodeFromDeclaration", () => {
 		},
 	);
 
-	it("Identifier ノード自体を渡された場合はそのまま返す (フォールバック1)", () => {
+	it("returns the Identifier node as-is when passed directly (fallback 1)", () => {
 		const sf = project.createSourceFile(
 			"/fallback-identifier.ts",
 			"const foo = 1;",
@@ -149,7 +157,7 @@ describe("getIdentifierNodeFromDeclaration", () => {
 		expect(getIdentifierNodeFromDeclaration(identifier)?.getText()).toBe("foo");
 	});
 
-	it("getNameNode を持つ ExportSpecifier から識別子を取得できる (フォールバック2)", () => {
+	it("can retrieve an identifier from an ExportSpecifier that has getNameNode (fallback 2)", () => {
 		const sf = project.createSourceFile(
 			"/fallback-export-specifier.ts",
 			"const foo = 1;\nexport { foo as bar };",

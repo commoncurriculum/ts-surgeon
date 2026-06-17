@@ -4,11 +4,11 @@ import logger from "../../utils/logger";
 import { getDeclarationIdentifier } from "./get-declaration-identifier";
 
 /**
- * 移動対象として削除される宣言のうち、移動元ファイルに残るコードから
- * まだ参照されているシンボル名を収集する。
+ * Among the declarations being removed as move targets, collects the names of symbols
+ * that are still referenced by code remaining in the source file.
  *
- * 削除前に呼び出す必要がある（参照解決のため宣言が存在している状態）。
- * 戻り値の名前は、移動先ファイルからの「逆向き import」が必要なシンボル。
+ * Must be called before removal (while the declarations still exist for reference resolution).
+ * The returned names are symbols that require a "back-import" from the destination file.
  */
 export function collectSymbolsNeedingBackImport(
 	declarationsToRemove: Statement[],
@@ -53,12 +53,12 @@ export function collectSymbolsNeedingBackImport(
 }
 
 /**
- * 移動元ファイルに、移動先ファイルから指定シンボルを import する宣言を追加する。
- * 同一モジュールへの既存 import があればマージする。
+ * Adds an import declaration to the source file that imports the specified symbols
+ * from the destination file. Merges with an existing import for the same module if present.
  *
- * ts-morph の `fixMissingImports()` は language service 経由の text 置換で
- * AST 不整合 ("children ... same count") を起こすことがあるため、
- * 構造的な `addImportDeclaration` で明示的に追加する。
+ * ts-morph's `fixMissingImports()` performs text replacement via the language service,
+ * which can cause AST inconsistencies ("children ... same count"), so the import is
+ * added explicitly using the structural `addImportDeclaration`.
  */
 export function addBackImportsToOriginalFile(
 	originalSourceFile: SourceFile,
@@ -97,6 +97,6 @@ export function addBackImportsToOriginalFile(
 
 	logger.debug(
 		{ names, moduleSpecifier, file: originalSourceFile.getFilePath() },
-		"移動元ファイルに逆向き import を追加。",
+		"Added back-import to original file.",
 	);
 }

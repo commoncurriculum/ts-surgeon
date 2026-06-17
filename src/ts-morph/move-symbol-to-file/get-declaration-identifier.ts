@@ -1,8 +1,8 @@
 import { Node, type Statement, type Identifier } from "ts-morph";
 
 /**
- * Statement (主に宣言) から主要な Identifier ノードを取得する。
- * internal-dependencies.ts の自己参照チェックロジックをベースにする。
+ * Gets the primary Identifier node from a Statement (mainly declarations).
+ * Based on the self-reference check logic in internal-dependencies.ts.
  */
 export function getDeclarationIdentifier(
 	statement: Statement,
@@ -10,7 +10,7 @@ export function getDeclarationIdentifier(
 	let nameNode: Node | undefined;
 
 	if (Node.isVariableStatement(statement)) {
-		// VariableStatement の場合は最初の VariableDeclaration を見る
+		// For VariableStatement, look at the first VariableDeclaration
 		nameNode = statement.getDeclarations()[0]?.getNameNode();
 	} else if (
 		Node.isFunctionDeclaration(statement) ||
@@ -21,10 +21,10 @@ export function getDeclarationIdentifier(
 	) {
 		nameNode = statement.getNameNode();
 	} else if (Node.isVariableDeclaration(statement)) {
-		// VariableDeclaration 自体が渡された場合 (あまりないが)
+		// When a VariableDeclaration itself is passed (uncommon)
 		nameNode = statement.getNameNode();
 	}
-	// 他のケース (EnumMember, Parameter など) も必要に応じて追加可能
+	// Other cases (EnumMember, Parameter, etc.) can be added as needed
 
 	if (nameNode && Node.isIdentifier(nameNode)) {
 		return nameNode;

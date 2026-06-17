@@ -1,31 +1,32 @@
 export type ChangeSignatureOperation =
 	| {
 			kind: "add";
-			/** 挿入位置 (0-based)。省略時は末尾。 */
+			/** Insertion position (0-based). Defaults to end when omitted. */
 			index?: number;
-			/** 追加するパラメータ名 */
+			/** Name of the parameter to add */
 			name: string;
-			/** パラメータの型注釈テキスト (例: "string", "{ id: number }")。省略時は型注釈なし。 */
+			/** Type annotation text for the parameter (e.g. "string", "{ id: number }"). No type annotation when omitted. */
 			typeText?: string;
-			/** パラメータをオプショナル (`?`) にするか */
+			/** Whether to make the parameter optional (`?`) */
 			optional?: boolean;
-			/** デフォルト値テキスト (例: "0", '"hello"") */
+			/** Default value text (e.g. "0", '"hello"') */
 			defaultValue?: string;
 			/**
-			 * 既存の呼び出し側に挿入する引数式テキスト。
-			 * - 省略時はデフォルト値があればそれを使用、なければ呼び出し側に何も挿入しない (末尾追加かつオプショナル/デフォルトあり前提)。
-			 * - 既存呼び出しに新しい引数が必要な場合は明示的に指定すること。
+			 * Argument expression text to insert at existing call sites.
+			 * - When omitted, uses the default value if present; otherwise inserts nothing at call sites
+			 *   (assumes trailing add with optional/default parameter).
+			 * - Specify explicitly when existing calls need a new argument.
 			 */
 			argumentForCallers?: string;
 	  }
 	| {
 			kind: "remove";
-			/** 削除するパラメータの index (0-based) */
+			/** Index of the parameter to remove (0-based) */
 			index: number;
 	  }
 	| {
 			kind: "reorder";
-			/** 新しい順序。例: [2, 0, 1] は newParams[0] = oldParams[2] を意味する。長さは現在のパラメータ数と一致する必要がある。 */
+			/** New order. Example: [2, 0, 1] means newParams[0] = oldParams[2]. Length must match the current parameter count. */
 			newOrder: number[];
 	  };
 

@@ -1,11 +1,11 @@
 import { type Identifier, Node, type ParameteredNode } from "ts-morph";
 
-/** パラメータリストを持つ関数様ノード */
+/** A function-like node that has a parameter list */
 export type FunctionLikeWithParameters = Node & ParameteredNode;
 
 /**
- * Identifier から所属する関数様宣言 (FunctionDeclaration / MethodDeclaration /
- * ArrowFunction / FunctionExpression / GetAccessor / SetAccessor) を取得する。
+ * Returns the function-like declaration (FunctionDeclaration / MethodDeclaration /
+ * ArrowFunction / FunctionExpression / GetAccessor / SetAccessor) that the Identifier belongs to.
  */
 export function findFunctionLikeDeclaration(
 	identifier: Identifier,
@@ -78,16 +78,16 @@ export function findFunctionLikeDeclaration(
 
 	const parentKind = parent.getKindName();
 	throw new Error(
-		`指定位置のシンボル '${identifier.getText()}' は関数宣言/メソッド/関数式ではありません (検出した親ノード種別: ${parentKind})。コンストラクタは対象外です。パラメータ自体やインポート位置を指していないか確認してください。`,
+		`The symbol '${identifier.getText()}' at the specified position is not a function declaration/method/function expression (detected parent node kind: ${parentKind}). Constructors are not supported. Make sure you are not pointing at a parameter itself or an import site.`,
 	);
 }
 
 /**
- * オーバーロード関数/メソッドの場合、関連する全宣言 (overload signature + implementation)
- * を返す。そうでなければ受け取った宣言だけを単独で返す。
+ * For overloaded functions/methods, returns all related declarations
+ * (overload signatures + implementation). Otherwise returns just the received declaration.
  *
- * これにより `change_signature` 適用時にオーバーロードシグネチャの片方だけが
- * 変更されて型不整合になるのを防ぐ。
+ * This prevents only one overload signature from being changed during `change_signature`,
+ * which would cause type inconsistencies.
  */
 export function getAllRelatedFunctionDeclarations(
 	fn: FunctionLikeWithParameters,
@@ -100,8 +100,8 @@ export function getAllRelatedFunctionDeclarations(
 				return [...overloads, implementation];
 			}
 		}
-		// オーバーロード無しでも getOverloads() を呼ぶことで MethodSignature の
-		// 重複定義などには対応できないが、それは想定外。
+		// Even without overloads, calling getOverloads() does not handle duplicate
+		// MethodSignature definitions — that is an unsupported edge case.
 	}
 	return [fn];
 }

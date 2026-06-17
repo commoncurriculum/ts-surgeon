@@ -39,11 +39,12 @@ interface CallSitePlan {
 }
 
 /**
- * 関数のシグネチャ (パラメータの追加/削除/並び替え) を変更し、
- * プロジェクト全体の呼び出し箇所も同期して更新する。
+ * Changes a function's signature (add/remove/reorder parameters) and
+ * synchronously updates all call sites across the project.
  *
- * tsconfigPath からプロジェクトを初期化して `changeSignatureOnProject` に委譲する。
- * テストなど既存の Project に対して実行したい場合は `changeSignatureOnProject` を直接使う。
+ * Initializes a project from tsconfigPath and delegates to `changeSignatureOnProject`.
+ * Use `changeSignatureOnProject` directly when you already have an existing Project
+ * (e.g. in tests).
  */
 export async function changeSignature(
 	params: ChangeSignatureParams,
@@ -53,7 +54,7 @@ export async function changeSignature(
 }
 
 /**
- * 既存の Project に対して signature 変更を適用する内部 API。
+ * Internal API that applies a signature change to an existing Project.
  */
 export async function changeSignatureOnProject(
 	project: Project,
@@ -73,11 +74,11 @@ export async function changeSignatureOnProject(
 			changeCount: changes.length,
 			dryRun,
 		},
-		"changeSignature 開始",
+		"changeSignature start",
 	);
 
 	if (changes.length === 0) {
-		throw new Error("changes 配列が空です");
+		throw new Error("changes array is empty");
 	}
 
 	const identifier = findIdentifierNode(project, targetFilePath, position);
@@ -87,19 +88,19 @@ export async function changeSignatureOnProject(
 	const allDeclarations = getAllRelatedFunctionDeclarations(primary);
 	logger.debug(
 		{ declarationCount: allDeclarations.length },
-		"対象関数宣言を解決",
+		"resolved target function declarations",
 	);
 
-	// 呼び出し位置を抽出
+	// Extract call sites
 	const references = identifier.findReferencesAsNodes();
 	const callSites = filterCallSites(references);
-	logger.debug({ callSiteCount: callSites.length }, "呼び出し位置を抽出");
+	logger.debug({ callSiteCount: callSites.length }, "extracted call sites");
 
-	// SpreadElement を含む呼び出しは静的に置換できないため検出する。
-	// (引数を変更する operation がある場合のみ問題になる)
+	// Detect calls containing SpreadElement — they cannot be rewritten statically.
+	// (Only matters when an operation changes arguments.)
 	const operationsTouchCallers = changes.some((op) => {
 		if (op.kind === "add") return op.argumentForCallers !== undefined;
-		return true; // remove / reorder は必ず引数に影響
+		return true; // remove / reorder always affects arguments
 	});
 	if (operationsTouchCallers) {
 		const spreadCalls = callSites.filter(callHasSpreadArgument);
@@ -113,14 +114,14 @@ export async function changeSignatureOnProject(
 				})
 				.join("\n");
 			throw new Error(
-				`スプレッド引数 (...args) を含む呼び出しがあり、安全に書き換えできません:\n${samples}`,
+				`spread arguments (...args) found in calls — cannot safely rewrite:\n${samples}`,
 			);
 		}
 	}
 
-	// --- Phase 1: 計画フェーズ (mutation せずに新しい引数列とパラメータ列を計算) ---
-	// ここで例外が出ても in-memory project には一切手を付けていないので安全。
-	// オーバーロードシグネチャごとに型注釈が異なるので、宣言ごとに個別に計算する。
+	// --- Phase 1: Planning phase (compute new argument and parameter lists without mutation) ---
+	// Any exception thrown here is safe because the in-memory project has not been touched yet.
+	// Type annotations differ per overload signature, so each declaration is computed individually.
 	const declarationPlans = allDeclarations.map((decl) => ({
 		decl,
 		newParameterStructures: buildNewParameterStructures(decl, changes),
@@ -132,10 +133,10 @@ export async function changeSignatureOnProject(
 			declarationCount: declarationPlans.length,
 			callSitePlanCount: callSitePlans.length,
 		},
-		"計画フェーズ完了",
+		"planning phase complete",
 	);
 
-	// --- Phase 2: 適用フェーズ (例外が起きないことを期待) ---
+	// --- Phase 2: Apply phase (expected to not throw) ---
 	for (const plan of callSitePlans) {
 		rewriteCallArguments(plan.call, plan.newArgTexts);
 	}
@@ -144,13 +145,16 @@ export async function changeSignatureOnProject(
 	}
 
 	const changedFiles = getChangedFiles(project).map((sf) => sf.getFilePath());
-	logger.debug({ changedFileCount: changedFiles.length }, "適用フェーズ完了");
+	logger.debug(
+		{ changedFileCount: changedFiles.length },
+		"apply phase complete",
+	);
 
 	if (!dryRun) {
 		await saveProjectChanges(project);
 		logger.info(
 			{ functionName, changedFileCount: changedFiles.length },
-			"changeSignature 保存完了",
+			"changeSignature saved",
 		);
 	}
 	return { changedFiles };
@@ -197,7 +201,7 @@ function planCallSiteRewrites(
 			const baseMessage =
 				error instanceof Error ? error.message : String(error);
 			throw new Error(
-				`呼び出し位置 ${sf.getFilePath()}:${line}:${column} で操作を適用できませんでした: ${baseMessage}`,
+				`Failed to apply operation at call site ${sf.getFilePath()}:${line}:${column}: ${baseMessage}`,
 			);
 		}
 	}

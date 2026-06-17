@@ -5,21 +5,21 @@ import type { PathMapping, RenameOperation } from "../types";
 import { withSkippedTsMorphReferenceUpdates } from "./_utils/skip-ts-morph-ref-update";
 
 /**
- * 旧実装は全 rename を per-file `sourceFile.move()` に展開していたが、ts-morph の
- * 当該 API は move ごとに「自身を参照する literal を全プロジェクトから探して書き換える」
- * 処理を走らせる。これが N ファイル × O(project) で爆発し、大規模 monorepo の
- * ディレクトリ rename で 6 分以上かかる原因だった (実測 369s for 34 files)。
+ * The old implementation expanded all renames into per-file `sourceFile.move()` calls, but
+ * ts-morph's API runs a "search the entire project for referencing literals and rewrite them"
+ * step on every move. This explodes as N files × O(project), causing directory renames in
+ * large monorepos to take over 6 minutes (measured: 369s for 34 files).
  *
- * 本実装の高速化アプローチ:
- *  1. ディレクトリ rename はまとめて `Directory.move()` を使う (内部のバッチ最適化を活用)
- *  2. その間 ts-morph 内部の reference-update を no-op 化する monkey-patch を適用。
- *     更新は呼び出し側の `updateModuleSpecifiers` が引き続き担当する (二重実行を解消)
+ * Speed-up approach in this implementation:
+ *  1. Directory renames are batched using `Directory.move()` (leveraging internal batch optimization)
+ *  2. A monkey-patch is applied to no-op ts-morph's internal reference-update during that time.
+ *     Updates remain the responsibility of the caller's `updateModuleSpecifiers` (eliminating double execution)
  *
- * 結果として 369s → ~35s (約 10 倍速)、total では 379s → 44s (約 8.6 倍速) を確認。
+ * Result: 369s → ~35s (approximately 10x faster); total: 379s → 44s (approximately 8.6x faster).
  *
- * fallback: in-memory FS テスト等で `directoryExistsSync` が false の場合は
- * `Directory.move()` の queueMoveDirectory が flush 時に失敗するため、
- * その directory rename は per-file move に流す。
+ * Fallback: when `directoryExistsSync` returns false (e.g., in-memory FS tests),
+ * `Directory.move()`'s queueMoveDirectory fails at flush time, so those directory renames
+ * fall back to per-file move.
  */
 export function moveFileSystemEntries(
 	project: Project,
