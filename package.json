@@ -21,7 +21,7 @@
 		"build": "pnpm run clean && tsc && shx chmod +x dist/index.js",
 		"prepare": "shx rm -rf dist && tsc && shx chmod +x dist/index.js",
 		"prepublishOnly": "pnpm run build",
-		"inspector": "npx @modelcontextprotocol/inspector node build/index.js",
+		"inspector": "npx @modelcontextprotocol/inspector node dist/index.js",
 		"test": "vitest run --pool threads --poolOptions.threads.singleThread",
 		"test:e2e": "vitest run --config vitest.e2e.config.ts",
 		"test:watch": "vitest",
