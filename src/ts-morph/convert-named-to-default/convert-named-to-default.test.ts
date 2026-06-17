@@ -130,6 +130,80 @@ describe("convertNamedExportToDefault", () => {
 				"size",
 			]);
 		});
+
+		it("preserves a type-only import", async () => {
+			const project = setup({
+				"/src/value.ts": "export const Thing = 1;\n",
+				"/src/typed.ts":
+					'import type { Thing } from "./value";\ntype T = typeof Thing;\nexport type { T };\n',
+			});
+
+			await convertNamedExportToDefaultOnProject(project, {
+				targetFilePath: "/src/value.ts",
+				exportName: "Thing",
+			});
+
+			const importDecl = project
+				.getSourceFileOrThrow("/src/typed.ts")
+				.getImportDeclarations()[0];
+			expect(importDecl.isTypeOnly()).toBe(true);
+			expect(importDecl.getDefaultImport()?.getText()).toBe("Thing");
+			expect(importDecl.getNamedImports()).toHaveLength(0);
+		});
+
+		it("resolves named imports written through a path alias", async () => {
+			const project = setup({
+				"/src/button.ts": "export function Button() {}\n",
+				"/src/app.ts": 'import { Button } from "@/button";\nButton();\n',
+			});
+
+			const result = await convertNamedExportToDefaultOnProject(project, {
+				targetFilePath: "/src/button.ts",
+				exportName: "Button",
+			});
+
+			expect(result.updatedImportSites).toBe(1);
+			expect(getFileText(project, "/src/app.ts")).toBe(
+				'import Button from "@/button";\nButton();\n',
+			);
+		});
+
+		it("leaves namespace-member access untouched (documented limitation)", async () => {
+			const project = setup({
+				"/src/button.ts": "export function Button() {}\n",
+				"/src/app.ts": 'import * as ns from "./button";\nns.Button();\n',
+			});
+
+			const result = await convertNamedExportToDefaultOnProject(project, {
+				targetFilePath: "/src/button.ts",
+				exportName: "Button",
+			});
+
+			// Namespace imports are not rewritten; the site is left intact.
+			expect(result.updatedImportSites).toBe(0);
+			expect(getFileText(project, "/src/app.ts")).toBe(
+				'import * as ns from "./button";\nns.Button();\n',
+			);
+		});
+
+		it("converts an aliased target specifier `export { local as Name }`", async () => {
+			const project = setup({
+				"/src/button.ts": "function impl() {}\nexport { impl as Button };\n",
+				"/src/app.ts": 'import { Button } from "./button";\nButton();\n',
+			});
+
+			await convertNamedExportToDefaultOnProject(project, {
+				targetFilePath: "/src/button.ts",
+				exportName: "Button",
+			});
+
+			expect(getFileText(project, "/src/button.ts")).toBe(
+				"function impl() {}\nexport default impl;\n",
+			);
+			expect(getFileText(project, "/src/app.ts")).toBe(
+				'import Button from "./button";\nButton();\n',
+			);
+		});
 	});
 
 	describe("re-export rewriting", () => {

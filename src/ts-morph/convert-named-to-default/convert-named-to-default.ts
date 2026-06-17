@@ -86,6 +86,8 @@ function convertTargetNamedExport(
 			`No exported declaration named '${exportName}' found in ${sourceFile.getFilePath()}.`,
 		);
 	}
+	// A single exported name resolves to one value binding for the forms we
+	// support; the interface/type guard below rejects type-side declarations.
 	const declaration = declarations[0];
 
 	if (declaration.getSourceFile() !== sourceFile) {
@@ -210,12 +212,16 @@ function updateReferences(
 				.find((specifier) => specifier.getName() === exportName);
 			if (!named) continue;
 
+			// `setDefaultImport` rebuilds the import clause and drops a
+			// statement-level `type` modifier, so preserve it explicitly.
+			const wasTypeOnly = importDecl.isTypeOnly();
 			const localName = named.getAliasNode()?.getText() ?? named.getName();
 			named.remove();
 			if (importDecl.getNamedImports().length === 0) {
 				importDecl.removeNamedImports();
 			}
 			importDecl.setDefaultImport(localName);
+			if (wasTypeOnly) importDecl.setIsTypeOnly(true);
 			updatedImportSites++;
 		}
 
