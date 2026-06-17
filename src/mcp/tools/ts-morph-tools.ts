@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { registerChangeSignatureTool } from "./register-change-signature-tool";
 import { registerConvertDefaultExportTool } from "./register-convert-default-export-tool";
+import { registerConvertNamedToDefaultTool } from "./register-convert-named-to-default-tool";
 import { registerFindReferencesTool } from "./register-find-references-tool";
 import { registerFindUnusedExportsTool } from "./register-find-unused-exports-tool";
 import { registerGetDiagnosticsTool } from "./register-get-diagnostics-tool";
@@ -27,4 +28,5 @@ export function registerTsMorphTools(server: McpServer): void {
 	registerConvertDefaultExportTool(server);
 	registerOrganizeImportsTool(server);
 	registerGetDiagnosticsTool(server);
+	registerConvertNamedToDefaultTool(server);
 }

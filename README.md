@@ -46,6 +46,7 @@ Each tool uses `ts-morph` to parse the AST and applies changes while preserving 
 | [`convert_default_export_to_named_by_tsmorph`](#convert_default_export_to_named_by_tsmorph) | Convert a default export to a named export and update all importers |
 | [`organize_imports_by_tsmorph`](#organize_imports_by_tsmorph) | Remove unused imports, sort, and coalesce them across files |
 | [`get_diagnostics_by_tsmorph`](#get_diagnostics_by_tsmorph) | Report TypeScript type errors/warnings for files or the project |
+| [`convert_named_export_to_default_by_tsmorph`](#convert_named_export_to_default_by_tsmorph) | Convert a named export to the default export and update all importers |
 
 ### `rename_symbol_by_tsmorph`
 
@@ -156,6 +157,16 @@ Returns the TypeScript pre-emit diagnostics (the type errors, warnings, and sugg
 - **Required information**: `tsconfigPath`. `filePaths` is optional — omit it to check the whole project (including global diagnostics that have no associated file).
 - **Behavior**: Uses `getPreEmitDiagnostics`; results are sorted error → warning → suggestion → message, then by file and 1-based position. Capped at `maxResults` (default 100), with a `truncated` flag.
 - **Output**: A summary (total/error/warning counts) plus one line per diagnostic: `<category> TS<code> <file>:<line>:<col> — <message>`. A file-level diagnostic with no specific position renders as just `<file>`; a project-global diagnostic (no associated file) renders as `(global)`.
+
+### `convert_named_export_to_default_by_tsmorph`
+
+Converts a file's named export into its default export and rewrites every importing/re-exporting site across the project. The inverse of `convert_default_export_to_named_by_tsmorph`.
+
+- **Use case**: Standardizing a module on a default export (e.g. a component file expected to default-export its component).
+- **Required information**: Target file path and the `exportName` to convert (must be a value export, not a `type`/`interface`).
+- **Supported target forms**: `export function`/`class Foo` → `export default function`/`class Foo`; `export const/let/var/enum Foo` → keeps the declaration and appends `export default Foo;`; `export { Foo }` / `export { local as Foo }`.
+- **Reference updates**: `import { Foo } from "target"` → `import Foo from "target"` (alias preserved as the default's local name), splitting the default out of any combined named import; `export { Foo [as X] } from "target"` → `export { default as Foo|X } from "target"`.
+- **Note**: Aborts if the file already has a default export, if `exportName` is re-exported from another file (convert it in its source file), or if it is part of a multi-variable `export const a, b` statement. Namespace-member access (`ns.Foo` from `import * as ns`) is not rewritten — review such sites manually.
 
 ## Logging Configuration
 
