@@ -893,6 +893,51 @@ console.log(Btn());
 		});
 	});
 
+	describe("apply_code_fix_by_tsmorph", () => {
+		it("removes unused declarations and imports", async () => {
+			const mPath = path.join(srcDir, "m.ts");
+			const appPath = path.join(srcDir, "app.ts");
+			fs.writeFileSync(
+				mPath,
+				"export const used = 1;\nexport const dead = 2;\n",
+			);
+			fs.writeFileSync(
+				appPath,
+				'import { used, dead } from "./m";\nconsole.log(used);\n',
+			);
+
+			const result = await mockServer.callTool("apply_code_fix_by_tsmorph", {
+				tsconfigPath,
+				fix: "remove_unused",
+				filePaths: [appPath],
+				dryRun: false,
+			});
+
+			expect(result).toHaveProperty("isError", false);
+			const text = fs.readFileSync(appPath, "utf-8");
+			expect(text).toContain("used");
+			expect(text).not.toContain("dead");
+		});
+
+		it("stubs out missing interface members", async () => {
+			const cPath = path.join(srcDir, "c.ts");
+			fs.writeFileSync(
+				cPath,
+				"interface I {\n  foo(): number;\n}\nclass C implements I {}\n",
+			);
+
+			const result = await mockServer.callTool("apply_code_fix_by_tsmorph", {
+				tsconfigPath,
+				fix: "implement_interface",
+				filePaths: [cPath],
+				dryRun: false,
+			});
+
+			expect(result).toHaveProperty("isError", false);
+			expect(fs.readFileSync(cPath, "utf-8")).toContain("foo(): number");
+		});
+	});
+
 	describe("error handling", () => {
 		it("returns an error for a file that does not exist", async () => {
 			const nonExistentPath = path.join(srcDir, "non-existent.ts");

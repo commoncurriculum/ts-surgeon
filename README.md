@@ -48,6 +48,7 @@ Each tool uses `ts-morph` to parse the AST and applies changes while preserving 
 | [`get_diagnostics_by_tsmorph`](#get_diagnostics_by_tsmorph) | Report TypeScript type errors/warnings for files or the project |
 | [`convert_named_export_to_default_by_tsmorph`](#convert_named_export_to_default_by_tsmorph) | Convert a named export to the default export and update all importers |
 | [`add_missing_imports_by_tsmorph`](#add_missing_imports_by_tsmorph) | Add imports for unresolved identifiers across files |
+| [`apply_code_fix_by_tsmorph`](#apply_code_fix_by_tsmorph) | Apply a TypeScript "fix all" quick-fix (remove unused, implement members, infer types) |
 
 ### `rename_symbol_by_tsmorph`
 
@@ -177,6 +178,15 @@ Adds import statements for unresolved identifiers (the editor "Add all missing i
 - **Required information**: `tsconfigPath`. `filePaths` is optional — omit it to process every non-declaration source file.
 - **Behavior**: For each unresolved identifier, inserts an import from the best matching export in the project or its dependencies (merging into an existing same-module import where possible), respecting `paths` aliases via the language service.
 - **Note**: When an identifier could come from multiple modules the language service picks one — review ambiguous cases. Nothing is added for names with no resolvable export. Omitting `filePaths` processes the whole project, so prefer the files you touched and/or run with `dryRun: true` first.
+
+### `apply_code_fix_by_tsmorph`
+
+Applies a TypeScript "fix all in file" quick-fix across specific files or the whole project — the automated counterpart to `get_diagnostics_by_tsmorph`.
+
+- **Supported fixes (`fix`)**: `remove_unused` (delete unused declarations + unused imports), `implement_interface` (stub members missing from an `implements` clause), `implement_abstract_members` (stub inherited `abstract` members), `infer_types_from_usage` (annotate implicit-`any` parameters/variables; only under `noImplicitAny`).
+- **Use case**: Bulk-clearing a class of diagnostics surfaced by `get_diagnostics_by_tsmorph`.
+- **Required information**: `tsconfigPath` and the `fix` to apply. `filePaths` is optional — omit it to process every non-declaration source file.
+- **Note**: A fix with no matching diagnostic in a file is a no-op. Stubbed member bodies throw `new Error("Method not implemented.")` — review and fill them in. Omitting `filePaths` processes the whole project, so prefer the files you touched and/or run with `dryRun: true` first.
 
 ## Logging Configuration
 
