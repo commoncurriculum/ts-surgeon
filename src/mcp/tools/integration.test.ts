@@ -808,6 +808,57 @@ console.log(Btn());
 		});
 	});
 
+	describe("convert_named_export_to_default_by_tsmorph", () => {
+		it("converts a named export and updates importers", async () => {
+			const buttonPath = path.join(srcDir, "button.ts");
+			const appPath = path.join(srcDir, "app.ts");
+			fs.writeFileSync(
+				buttonPath,
+				"export function Button() {\n  return 1;\n}\n",
+			);
+			fs.writeFileSync(
+				appPath,
+				'import { Button } from "./button";\n\nconsole.log(Button());\n',
+			);
+
+			const result = await mockServer.callTool(
+				"convert_named_export_to_default_by_tsmorph",
+				{
+					tsconfigPath,
+					targetFilePath: buttonPath,
+					exportName: "Button",
+					dryRun: false,
+				},
+			);
+
+			expect(result).toHaveProperty("isError", false);
+			expect(fs.readFileSync(buttonPath, "utf-8")).toContain(
+				"export default function Button()",
+			);
+			expect(fs.readFileSync(appPath, "utf-8")).toContain(
+				'import Button from "./button"',
+			);
+		});
+
+		it("returns an error when the file already has a default export", async () => {
+			const filePath = path.join(srcDir, "dup.ts");
+			fs.writeFileSync(
+				filePath,
+				"export default function A() {}\nexport function B() {}\n",
+			);
+
+			const result = await mockServer.callTool(
+				"convert_named_export_to_default_by_tsmorph",
+				{ tsconfigPath, targetFilePath: filePath, exportName: "B" },
+			);
+
+			expect(result).toHaveProperty("isError", true);
+			expect(result.content[0]?.text || "").toContain(
+				"already has a default export",
+			);
+		});
+	});
+
 	describe("error handling", () => {
 		it("returns an error for a file that does not exist", async () => {
 			const nonExistentPath = path.join(srcDir, "non-existent.ts");
