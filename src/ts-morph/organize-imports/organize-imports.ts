@@ -69,7 +69,6 @@ function resolveTargetFiles(
 		.getSourceFiles()
 		.filter(
 			(sourceFile) =>
-				!sourceFile.isDeclarationFile() &&
-				!sourceFile.getFilePath().includes("/node_modules/"),
+				!sourceFile.isDeclarationFile() && !sourceFile.isInNodeModules(),
 		);
 }
