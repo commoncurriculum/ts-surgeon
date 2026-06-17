@@ -8,26 +8,25 @@ An MCP server that uses [ts-morph](https://ts-morph.com/) to provide AST-based r
 - [Available Tools](#available-tools)
 - [Logging Configuration](#logging-configuration)
 - [Development](#development)
-- [Release](#release)
 - [License](#license)
 
 ## Quick Start
 
-Add the following to your MCP client configuration file (`mcp.json` or equivalent). Using `npx` ensures the latest published version is used automatically.
+Add the following to your MCP client configuration file (`mcp.json` or equivalent). `npx` runs the server straight from GitHub — no clone or global install needed (it builds on first use and is cached afterward).
 
 ```json
 {
   "mcpServers": {
-    "mcp-tsmorph-refactor": {
+    "mcp-ts-morph": {
       "command": "npx",
-      "args": ["-y", "@sirosuzume/mcp-tsmorph-refactor"],
+      "args": ["-y", "github:commoncurriculum/mcp-ts-morph"],
       "env": {}
     }
   }
 }
 ```
 
-To customize logging, see [Logging Configuration](#logging-configuration). To run from a local build, see [Development](#development).
+Pin a ref for reproducibility (`github:commoncurriculum/mcp-ts-morph#v1.2.3`); for a private repo, the client's environment needs git access to it. To customize logging, see [Logging Configuration](#logging-configuration). To run from a local build, see [Development](#development).
 
 ## Available Tools
 
@@ -215,9 +214,9 @@ Configuration example:
 ```json
 {
   "mcpServers": {
-    "mcp-tsmorph-refactor": {
+    "mcp-ts-morph": {
       "command": "npx",
-      "args": ["-y", "@sirosuzume/mcp-tsmorph-refactor"],
+      "args": ["-y", "github:commoncurriculum/mcp-ts-morph"],
       "env": {
         "LOG_LEVEL": "debug",
         "LOG_OUTPUT": "file",
@@ -238,8 +237,8 @@ Configuration example:
 ### Setup and Build
 
 ```bash
-git clone https://github.com/sirosuzume/mcp-tsmorph-refactor.git
-cd mcp-tsmorph-refactor
+git clone https://github.com/commoncurriculum/mcp-ts-morph.git
+cd mcp-ts-morph
 pnpm install
 pnpm build      # outputs to dist/
 ```
@@ -263,7 +262,7 @@ After building, you can launch `dist/index.js` directly with `node`.
 ```json
 {
   "mcpServers": {
-    "mcp-tsmorph-refactor-dev": {
+    "mcp-ts-morph-dev": {
       "command": "node",
       "args": ["/path/to/your/local/repo/dist/index.js"],
       "env": {
@@ -283,7 +282,7 @@ Change the `command` in `mcp.json` to `"node"` and `args` to the path of `script
 ```json
 {
   "mcpServers": {
-    "mcp-tsmorph-refactor": {
+    "mcp-ts-morph": {
       "command": "node",
       "args": ["scripts/mcp_launcher.js"],
       "env": {
@@ -294,45 +293,6 @@ Change the `command` in `mcp.json` to `"node"` and `args` to the path of `script
   }
 }
 ```
-
-## Release
-
-This package is published to npm automatically via the GitHub Actions workflow (`.github/workflows/release.yml`).
-
-**The Git tag is the single source of truth for the version.** Both `version` in `package.json` and `VERSION` in `src/version.ts` are fixed at `0.0.0-development`; the release workflow reads the tag and bakes the value in. **No manual version bump is needed.**
-
-### Publishing Steps
-
-```bash
-git checkout main && git pull --ff-only
-git tag v1.2.0
-git push origin v1.2.0
-```
-
-Pushing the tag triggers the workflow, which executes the following in order:
-
-1. Extract VERSION (`1.2.0`) from the tag (`v1.2.0`) (strict SemVer only; pre-releases are not supported)
-2. Run `pnpm test` with the placeholder version still in place
-3. Run `node scripts/release-version.mjs --bake 1.2.0` to rewrite `VERSION` in `src/version.ts` and `version` in `package.json`
-4. Run `pnpm build`
-5. Verify with `grep -F` that `dist/version.js` contains `exports.VERSION = "1.2.0";`
-6. Remove `_version_note` from `package.json`
-7. Publish to npm with `pnpm publish --provenance` (Trusted Publishing / OIDC)
-
-After completion, confirm the release with `npm view @sirosuzume/mcp-tsmorph-refactor version`.
-
-> npm Trusted Publishing is required. `NPM_TOKEN` has been retired; publishing is done via GitHub Actions OIDC (see `id-token: write` in `release.yml`).
-
-### Why the Tag Is the Source of Truth
-
-Under the old workflow, releasing required three steps — "bump `version` in `package.json`", "bump `serverInfo.version` in `src/mcp/config.ts`", and "push a tag" — and forgetting any one of them resulted in an inconsistent release (this actually happened). Under the new workflow, `0.0.0-development` is kept throughout development and CI reads the tag at release time to update all locations, making it **structurally impossible to forget a bump**.
-
-CI (`.github/workflows/ci.yml`) runs `node scripts/release-version.mjs --check` on every PR and push to main to confirm that both files still have the placeholder value. A PR that manually bumps the version will fail here.
-
-### Recovery from Failures
-
-- If the workflow fails partway through, **do not delete the tag**. Merge a fix into main and create the next patch tag (`vX.Y.(Z+1)`) (fix forward).
-- Re-publishing with the same tag is impossible due to npm's immutability, so overwriting the tag is pointless.
 
 ## License
 
