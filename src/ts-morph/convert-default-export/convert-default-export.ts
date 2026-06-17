@@ -192,10 +192,20 @@ function convertTargetDefaultExport(
 		throw new Error(`No default export found in ${sourceFile.getFilePath()}`);
 	}
 
-	const declaration = defaultSymbol.getDeclarations()[0];
+	const declarations = defaultSymbol.getDeclarations();
+	const declaration = declarations[0];
 	if (!declaration) {
 		throw new Error(
 			`Could not resolve the default export declaration in ${sourceFile.getFilePath()}`,
+		);
+	}
+	// More than one declaration means inline overloads or declaration merging
+	// (e.g. function + namespace). Converting only the first would leave the file
+	// still default-exporting with contradictory modifiers, so refuse instead of
+	// silently emitting broken output.
+	if (declarations.length > 1) {
+		throw new Error(
+			`The default export of ${sourceFile.getFilePath()} resolves to ${declarations.length} declarations (overloads or declaration merging); convert it manually.`,
 		);
 	}
 

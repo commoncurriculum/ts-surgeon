@@ -478,6 +478,21 @@ describe("convertDefaultExportToNamed", () => {
 			).rejects.toThrow(/No default export/);
 		});
 
+		it("throws when the default export resolves to multiple declarations", async () => {
+			const project = setup({
+				"/src/overloads.ts":
+					"export default function fn(a: number): number;\n" +
+					"export default function fn(a: string): string;\n" +
+					"export default function fn(a: unknown): unknown {\n\treturn a;\n}\n",
+			});
+
+			await expect(
+				convertDefaultExportToNamedOnProject(project, {
+					targetFilePath: "/src/overloads.ts",
+				}),
+			).rejects.toThrow(/resolves to \d+ declarations/);
+		});
+
 		it("throws when the file is not found", async () => {
 			const project = setup({ "/src/a.ts": "export const a = 1;\n" });
 
