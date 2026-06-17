@@ -1,8 +1,7 @@
-import { performance } from "node:perf_hooks";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { organizeImports } from "../../ts-morph/organize-imports/organize-imports";
-import logger from "../../utils/logger";
+import { formatChangedFiles, runTool } from "./_tool-runner";
 
 export function registerOrganizeImportsTool(server: McpServer): void {
 	server.tool(
@@ -48,73 +47,28 @@ Returns the number of files organized and the list of modified (or, in dryRun, t
 					"If true, only show intended changes without modifying files.",
 				),
 		},
-		async (args) => {
-			const startTime = performance.now();
-			let message = "";
-			let isError = false;
-			let duration = "0.00";
-			let changedFilesCount = 0;
+		(args) =>
+			runTool(
+				"organize_imports_by_tsmorph",
+				{ fileCount: args.filePaths?.length ?? "all", dryRun: args.dryRun },
+				async () => {
+					const result = await organizeImports({
+						tsconfigPath: args.tsconfigPath,
+						filePaths: args.filePaths,
+						dryRun: args.dryRun,
+					});
 
-			const logArgs = {
-				fileCount: args.filePaths?.length ?? "all",
-				dryRun: args.dryRun,
-			};
+					const summary = `Organized ${result.organizedFileCount} file(s); ${result.changedFiles.length} changed.`;
+					const changedFilesList = formatChangedFiles(result.changedFiles);
+					const message = args.dryRun
+						? `Dry run complete: ${summary}\nWould modify the following files:\n - ${changedFilesList}`
+						: `Organize imports successful: ${summary}\nThe following files were modified:\n - ${changedFilesList}`;
 
-			try {
-				const result = await organizeImports({
-					tsconfigPath: args.tsconfigPath,
-					filePaths: args.filePaths,
-					dryRun: args.dryRun,
-				});
-
-				changedFilesCount = result.changedFiles.length;
-				const changedFilesList =
-					result.changedFiles.length > 0
-						? result.changedFiles.join("\n - ")
-						: "(No changes)";
-				const summary = `Organized ${result.organizedFileCount} file(s); ${result.changedFiles.length} changed.`;
-
-				if (args.dryRun) {
-					message = `Dry run complete: ${summary}\nWould modify the following files:\n - ${changedFilesList}`;
-				} else {
-					message = `Organize imports successful: ${summary}\nThe following files were modified:\n - ${changedFilesList}`;
-				}
-			} catch (error) {
-				logger.error(
-					{ err: error, toolArgs: logArgs },
-					"Error executing organize_imports_by_tsmorph",
-				);
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-				message = `Error during organize_imports: ${errorMessage}`;
-				isError = true;
-			} finally {
-				const endTime = performance.now();
-				duration = ((endTime - startTime) / 1000).toFixed(2);
-				logger.info(
-					{
-						status: isError ? "Failure" : "Success",
-						durationMs: Number.parseFloat((endTime - startTime).toFixed(2)),
-						changedFilesCount,
-						...logArgs,
-					},
-					"organize_imports_by_tsmorph tool finished",
-				);
-				try {
-					logger.flush();
-				} catch (flushErr) {
-					console.error("Failed to flush logs:", flushErr);
-				}
-			}
-
-			const finalMessage = `${message}\nStatus: ${
-				isError ? "Failure" : "Success"
-			}\nProcessing time: ${duration} seconds`;
-
-			return {
-				content: [{ type: "text", text: finalMessage }],
-				isError,
-			};
-		},
+					return {
+						message,
+						log: { changedFilesCount: result.changedFiles.length },
+					};
+				},
+			),
 	);
 }

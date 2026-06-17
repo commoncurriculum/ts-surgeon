@@ -1,12 +1,13 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-import { moveSymbolToFile } from "../../ts-morph/move-symbol-to-file/move-symbol-to-file";
-import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
-import { getChangedFiles } from "../../ts-morph/_utils/ts-morph-project";
-import { SyntaxKind } from "ts-morph";
-import { performance } from "node:perf_hooks";
-import logger from "../../utils/logger";
 import * as path from "node:path";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { SyntaxKind } from "ts-morph";
+import { z } from "zod";
+import {
+	getChangedFiles,
+	initializeProject,
+} from "../../ts-morph/_utils/ts-morph-project";
+import { moveSymbolToFile } from "../../ts-morph/move-symbol-to-file/move-symbol-to-file";
+import { formatChangedFiles, runTool } from "./_tool-runner";
 
 const declarationKindNames = [
 	"FunctionDeclaration",
@@ -102,12 +103,7 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					"The name of the single top-level symbol you want to move in this execution.",
 				),
 		}).shape,
-		async (args: MoveSymbolArgs) => {
-			const startTime = performance.now();
-			let message = "";
-			let isError = false;
-			let changedFilesCount = 0;
-			let changedFiles: string[] = [];
+		(args: MoveSymbolArgs) => {
 			const {
 				tsconfigPath,
 				originalFilePath,
@@ -130,7 +126,7 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 				dryRun,
 			};
 
-			try {
+			return runTool("move_symbol_to_file_by_tsmorph", logArgs, async () => {
 				const project = initializeProject(tsconfigPath);
 				await moveSymbolToFile(
 					project,
@@ -140,60 +136,21 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					declarationKind,
 				);
 
-				changedFiles = getChangedFiles(project).map((sf) => sf.getFilePath());
-				changedFilesCount = changedFiles.length;
-
-				const baseMessage = `Moved symbol \"${symbolToMove}\" from ${originalFilePath} to ${targetFilePath}.`;
-				const changedFilesList =
-					changedFiles.length > 0 ? changedFiles.join("\n - ") : "(No changes)";
-
-				if (dryRun) {
-					message = `Dry run: ${baseMessage}\nFiles that would be modified:\n - ${changedFilesList}`;
-					logger.info({ changedFiles }, "Dry run: Skipping save.");
-				} else {
+				const changedFiles = getChangedFiles(project).map((sf) =>
+					sf.getFilePath(),
+				);
+				if (!dryRun) {
 					await project.save();
-					logger.debug("Project changes saved after symbol move.");
-					message = `${baseMessage}\nThe following files were modified:\n - ${changedFilesList}`;
 				}
-				isError = false;
-			} catch (error) {
-				logger.error(
-					{ err: error, toolArgs: logArgs },
-					"Error executing move_symbol_to_file_by_tsmorph",
-				);
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-				message = `Error moving symbol: ${errorMessage}`;
-				isError = true;
-			} finally {
-				const endTime = performance.now();
-				const durationMs = endTime - startTime;
 
-				logger.info(
-					{
-						status: isError ? "Failure" : "Success",
-						durationMs: Number.parseFloat(durationMs.toFixed(2)),
-						changedFilesCount,
-						dryRun,
-					},
-					"move_symbol_to_file_by_tsmorph tool finished",
-				);
-				try {
-					logger.flush();
-				} catch (flushErr) {
-					console.error("Failed to flush logs:", flushErr);
-				}
-			}
+				const baseMessage = `Moved symbol "${symbolToMove}" from ${originalFilePath} to ${targetFilePath}.`;
+				const changedFilesList = formatChangedFiles(changedFiles);
+				const message = dryRun
+					? `Dry run: ${baseMessage}\nFiles that would be modified:\n - ${changedFilesList}`
+					: `${baseMessage}\nThe following files were modified:\n - ${changedFilesList}`;
 
-			const endTime = performance.now();
-			const durationMs = endTime - startTime;
-			const durationSec = (durationMs / 1000).toFixed(2);
-			const finalMessage = `${message}\nStatus: ${isError ? "Failure" : "Success"}\nProcessing time: ${durationSec} seconds`;
-
-			return {
-				content: [{ type: "text", text: finalMessage }],
-				isError: isError,
-			};
+				return { message, log: { changedFilesCount: changedFiles.length } };
+			});
 		},
 	);
 }

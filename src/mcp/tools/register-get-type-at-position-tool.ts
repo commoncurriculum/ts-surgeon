@@ -1,32 +1,8 @@
-import { performance } from "node:perf_hooks";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
 import { getTypeAtPosition } from "../../ts-morph/get-type-at-position/get-type-at-position";
-import logger from "../../utils/logger";
-
-/**
- * Wraps logger calls so that even if the logger itself throws (e.g. disk full
- * when LOG_OUTPUT=file), MCP response generation is not interrupted.
- */
-function safeLogError(error: unknown, toolArgs: Record<string, unknown>): void {
-	try {
-		logger.error(
-			{ err: error, toolArgs },
-			"Error executing get_type_at_position_by_tsmorph",
-		);
-	} catch (loggerErr) {
-		console.error("Failed to write error log:", loggerErr);
-	}
-}
-
-function safeLogInfo(fields: Record<string, unknown>): void {
-	try {
-		logger.info(fields, "get_type_at_position_by_tsmorph tool finished");
-	} catch (loggerErr) {
-		console.error("Failed to write info log:", loggerErr);
-	}
-}
+import { runTool } from "./_tool-runner";
 
 export function registerGetTypeAtPositionTool(server: McpServer): void {
 	server.tool(
@@ -77,67 +53,32 @@ export function registerGetTypeAtPositionTool(server: McpServer): void {
 				})
 				.describe("Exact position to inspect."),
 		},
-		async (args) => {
-			const startTime = performance.now();
-			let message = "";
-			let isError = false;
-			let duration = "0.00";
-
-			const logArgs = {
-				targetFilePath: args.targetFilePath,
-				position: args.position,
-			};
-
-			try {
-				const project = initializeProject(args.tsconfigPath);
-				const result = getTypeAtPosition(
-					project,
-					args.targetFilePath,
-					args.position,
-				);
-
-				const lines: string[] = [
-					`Type: ${result.type}`,
-					`Node: ${result.nodeKind} ${JSON.stringify(result.nodeText)}`,
-				];
-				if (result.symbol) {
-					lines.push(`Symbol: ${result.symbol.name} (${result.symbol.kind})`);
-				}
-				if (result.declaration) {
-					lines.push(
-						`Declared at: ${result.declaration.filePath}:${result.declaration.line}:${result.declaration.column}`,
+		(args) =>
+			runTool(
+				"get_type_at_position_by_tsmorph",
+				{ targetFilePath: args.targetFilePath, position: args.position },
+				() => {
+					const project = initializeProject(args.tsconfigPath);
+					const result = getTypeAtPosition(
+						project,
+						args.targetFilePath,
+						args.position,
 					);
-				}
-				message = lines.join("\n");
-			} catch (error) {
-				safeLogError(error, logArgs);
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-				message = `Error: ${errorMessage}`;
-				isError = true;
-			} finally {
-				const endTime = performance.now();
-				duration = ((endTime - startTime) / 1000).toFixed(2);
-				safeLogInfo({
-					status: isError ? "Failure" : "Success",
-					durationMs: Number.parseFloat((endTime - startTime).toFixed(2)),
-					...logArgs,
-				});
-				try {
-					logger.flush();
-				} catch (flushErr) {
-					console.error("Failed to flush logs:", flushErr);
-				}
-			}
 
-			const finalMessage = `${message}\nStatus: ${
-				isError ? "Failure" : "Success"
-			}\nProcessing time: ${duration} seconds`;
-
-			return {
-				content: [{ type: "text", text: finalMessage }],
-				isError,
-			};
-		},
+					const lines: string[] = [
+						`Type: ${result.type}`,
+						`Node: ${result.nodeKind} ${JSON.stringify(result.nodeText)}`,
+					];
+					if (result.symbol) {
+						lines.push(`Symbol: ${result.symbol.name} (${result.symbol.kind})`);
+					}
+					if (result.declaration) {
+						lines.push(
+							`Declared at: ${result.declaration.filePath}:${result.declaration.line}:${result.declaration.column}`,
+						);
+					}
+					return { message: lines.join("\n") };
+				},
+			),
 	);
 }

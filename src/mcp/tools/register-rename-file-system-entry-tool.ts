@@ -1,11 +1,10 @@
+import * as path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { renameFileSystemEntry } from "../../ts-morph/rename-file-system/rename-file-system-entry";
-import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
-import * as path from "node:path";
-import { performance } from "node:perf_hooks";
 import { TimeoutError } from "../../errors/timeout-error";
-import logger from "../../utils/logger";
+import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
+import { renameFileSystemEntry } from "../../ts-morph/rename-file-system/rename-file-system-entry";
+import { formatChangedFiles, runTool } from "./_tool-runner";
 
 const renameSchema = z.object({
 	tsconfigPath: z
@@ -72,24 +71,8 @@ export function registerRenameFileSystemEntryTool(server: McpServer): void {
 ## Result
 Returns the list of modified (or to-be-modified, in dryRun) file paths, plus status and processing time. On timeout the operation is cancelled and an error is returned.`,
 		renameSchema.shape,
-		async (args: RenameArgs) => {
-			const startTime = performance.now();
-			let message = "";
-			let isError = false;
-			let changedFilesCount = 0;
+		(args: RenameArgs) => {
 			const { tsconfigPath, renames, dryRun, timeoutSeconds } = args;
-			const TIMEOUT_MS = timeoutSeconds * 1000;
-
-			let resultPayload: {
-				content: { type: "text"; text: string }[];
-				isError: boolean;
-			} = {
-				content: [{ type: "text", text: "An unexpected error occurred." }],
-				isError: true,
-			};
-
-			const controller = new AbortController();
-			let timeoutId: NodeJS.Timeout | undefined = undefined;
 			const logArgs = {
 				tsconfigPath,
 				renames: renames.map((r) => ({
@@ -100,93 +83,59 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 				timeoutSeconds,
 			};
 
-			try {
-				timeoutId = setTimeout(() => {
-					const errorMessage = `Operation timed out after ${timeoutSeconds} seconds`;
-					logger.error(
-						{ toolArgs: logArgs, durationSeconds: timeoutSeconds },
-						errorMessage,
-					);
-					controller.abort(new TimeoutError(errorMessage, timeoutSeconds));
-				}, TIMEOUT_MS);
+			return runTool(
+				"rename_filesystem_entry_by_tsmorph",
+				logArgs,
+				async () => {
+					const controller = new AbortController();
+					const timeoutId = setTimeout(() => {
+						controller.abort(
+							new TimeoutError(
+								`Operation timed out after ${timeoutSeconds} seconds`,
+								timeoutSeconds,
+							),
+						);
+					}, timeoutSeconds * 1000);
 
-				const project = initializeProject(tsconfigPath);
-				const result = await renameFileSystemEntry({
-					project,
-					renames,
-					dryRun,
-					signal: controller.signal,
-				});
+					try {
+						const project = initializeProject(tsconfigPath);
+						const result = await renameFileSystemEntry({
+							project,
+							renames,
+							dryRun,
+							signal: controller.signal,
+						});
 
-				changedFilesCount = result.changedFiles.length;
-
-				const changedFilesList =
-					result.changedFiles.length > 0
-						? result.changedFiles.join("\n - ")
-						: "(No changes)";
-				const renameSummary = renames
-					.map(
-						(r) =>
-							`'${path.basename(r.oldPath)}' -> '${path.basename(r.newPath)}'`,
-					)
-					.join(", ");
-
-				if (dryRun) {
-					message = `Dry run complete: Renaming [${renameSummary}] would modify the following files:\n - ${changedFilesList}`;
-				} else {
-					message = `Rename successful: Renamed [${renameSummary}]. The following files were modified:\n - ${changedFilesList}`;
-				}
-				isError = false;
-			} catch (error) {
-				logger.error(
-					{ err: error, toolArgs: logArgs },
-					"Error executing rename_filesystem_entry_by_tsmorph",
-				);
-
-				if (error instanceof TimeoutError) {
-					message = `The operation timed out because it did not complete within ${error.durationSeconds} seconds. The operation has been cancelled.\nThe project may be large or the number of changes may be high.`;
-				} else if (error instanceof Error && error.name === "AbortError") {
-					message = `The operation was cancelled: ${error.message}`;
-				} else {
-					const errorMessage =
-						error instanceof Error ? error.message : String(error);
-					message = `Error during rename process: ${errorMessage}`;
-				}
-				isError = true;
-			} finally {
-				if (timeoutId) {
-					clearTimeout(timeoutId);
-				}
-				const endTime = performance.now();
-				const durationMs = endTime - startTime;
-
-				logger.info(
-					{
-						status: isError ? "Failure" : "Success",
-						durationMs: Number.parseFloat(durationMs.toFixed(2)),
-						changedFilesCount,
-						dryRun,
-					},
-					"rename_filesystem_entry_by_tsmorph tool finished",
-				);
-				try {
-					logger.flush();
-					logger.trace("Logs flushed after tool execution.");
-				} catch (flushErr) {
-					console.error("Failed to flush logs:", flushErr);
-				}
-			}
-
-			const endTime = performance.now();
-			const durationMs = endTime - startTime;
-			const durationSec = (durationMs / 1000).toFixed(2);
-			const finalMessage = `${message}\nStatus: ${isError ? "Failure" : "Success"}\nProcessing time: ${durationSec} seconds`;
-			resultPayload = {
-				content: [{ type: "text", text: finalMessage }],
-				isError: isError,
-			};
-
-			return resultPayload;
+						const renameSummary = renames
+							.map(
+								(r) =>
+									`'${path.basename(r.oldPath)}' -> '${path.basename(r.newPath)}'`,
+							)
+							.join(", ");
+						const changedFilesList = formatChangedFiles(result.changedFiles);
+						const message = dryRun
+							? `Dry run complete: Renaming [${renameSummary}] would modify the following files:\n - ${changedFilesList}`
+							: `Rename successful: Renamed [${renameSummary}]. The following files were modified:\n - ${changedFilesList}`;
+						return {
+							message,
+							log: { changedFilesCount: result.changedFiles.length },
+						};
+					} catch (error) {
+						// Map cancellation into friendly messages; the harness prefixes "Error:".
+						if (error instanceof TimeoutError) {
+							throw new Error(
+								`The operation timed out because it did not complete within ${error.durationSeconds} seconds. The operation has been cancelled.\nThe project may be large or the number of changes may be high.`,
+							);
+						}
+						if (error instanceof Error && error.name === "AbortError") {
+							throw new Error(`The operation was cancelled: ${error.message}`);
+						}
+						throw error;
+					} finally {
+						clearTimeout(timeoutId);
+					}
+				},
+			);
 		},
 	);
 }

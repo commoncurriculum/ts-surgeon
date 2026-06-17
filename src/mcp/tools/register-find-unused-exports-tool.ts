@@ -1,4 +1,3 @@
-import { performance } from "node:perf_hooks";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
@@ -11,31 +10,12 @@ import {
 	summarizeUnusedExports,
 	type UnusedExportsSummary,
 } from "../../ts-morph/find-unused-exports/summarize-unused-exports";
-import logger from "../../utils/logger";
+import { runTool } from "./_tool-runner";
 
 /** Scan cap for summary mode to get a full picture (distinct from the default 100 used in list mode). */
 const SUMMARY_SCAN_CAP = 100_000;
 /** Maximum number of rows to show in the "by directory" breakdown in summary mode. */
 const SUMMARY_TOP_DIRECTORIES = 20;
-
-function safeLogError(error: unknown, toolArgs: Record<string, unknown>): void {
-	try {
-		logger.error(
-			{ err: error, toolArgs },
-			"Error executing find_unused_exports_by_tsmorph",
-		);
-	} catch (loggerErr) {
-		console.error("Failed to write error log:", loggerErr);
-	}
-}
-
-function safeLogInfo(fields: Record<string, unknown>): void {
-	try {
-		logger.info(fields, "find_unused_exports_by_tsmorph tool finished");
-	} catch (loggerErr) {
-		console.error("Failed to write info log:", loggerErr);
-	}
-}
 
 function formatUnusedExport(entry: UnusedExport): string {
 	const tag = entry.isDefaultExport ? " [default]" : "";
@@ -226,14 +206,8 @@ Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 					"Default true. Inject synthetic named imports into files containing `import * as ns from \"./mod\"` so that exports of the target module register as 'used' even when consumed only via `{ ...ns }` spread or other escaping patterns. Set to false if you want raw findReferences semantics.",
 				),
 		},
-		async (args) => {
-			const startTime = performance.now();
-			let message = "";
-			let isError = false;
-			let duration = "0.00";
-
+		(args) => {
 			const isSummary = args.responseFormat === "summary";
-
 			const logArgs = {
 				tsconfigPath: args.tsconfigPath,
 				entryPoints: args.entryPoints,
@@ -243,7 +217,7 @@ Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 				expandNamespaceImports: args.expandNamespaceImports,
 			};
 
-			try {
+			return runTool("find_unused_exports_by_tsmorph", logArgs, () => {
 				const project = initializeProject(args.tsconfigPath);
 				// summary mode aims for a full picture, so use effectively unlimited results unless the user specifies otherwise.
 				const effectiveMaxResults = isSummary
@@ -257,54 +231,30 @@ Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 				});
 
 				if (isSummary) {
-					message = formatSummary(
-						summarizeUnusedExports(result.unusedExports),
-						result.scannedFiles,
-						result.truncated,
-						result.packageWarnings,
-					);
-				} else if (result.unusedExports.length === 0) {
-					message = `No unused exports found.\nScanned files: ${result.scannedFiles}\nTruncated: ${result.truncated}`;
-				} else {
-					const lines = [
-						...formatPackageWarnings(result.packageWarnings),
-						`Unused export candidates (${result.unusedExports.length}):`,
-						...result.unusedExports.map(formatUnusedExport),
-						"",
-						`Scanned files: ${result.scannedFiles}`,
-						`Truncated: ${result.truncated}`,
-					];
-					message = lines.join("\n");
+					return {
+						message: formatSummary(
+							summarizeUnusedExports(result.unusedExports),
+							result.scannedFiles,
+							result.truncated,
+							result.packageWarnings,
+						),
+					};
 				}
-			} catch (error) {
-				safeLogError(error, logArgs);
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-				message = `Error: ${errorMessage}`;
-				isError = true;
-			} finally {
-				const endTime = performance.now();
-				duration = ((endTime - startTime) / 1000).toFixed(2);
-				safeLogInfo({
-					status: isError ? "Failure" : "Success",
-					durationMs: Number.parseFloat((endTime - startTime).toFixed(2)),
-					...logArgs,
-				});
-				try {
-					logger.flush();
-				} catch (flushErr) {
-					console.error("Failed to flush logs:", flushErr);
+				if (result.unusedExports.length === 0) {
+					return {
+						message: `No unused exports found.\nScanned files: ${result.scannedFiles}\nTruncated: ${result.truncated}`,
+					};
 				}
-			}
-
-			const finalMessage = `${message}\nStatus: ${
-				isError ? "Failure" : "Success"
-			}\nProcessing time: ${duration} seconds`;
-
-			return {
-				content: [{ type: "text", text: finalMessage }],
-				isError,
-			};
+				const lines = [
+					...formatPackageWarnings(result.packageWarnings),
+					`Unused export candidates (${result.unusedExports.length}):`,
+					...result.unusedExports.map(formatUnusedExport),
+					"",
+					`Scanned files: ${result.scannedFiles}`,
+					`Truncated: ${result.truncated}`,
+				];
+				return { message: lines.join("\n") };
+			});
 		},
 	);
 }

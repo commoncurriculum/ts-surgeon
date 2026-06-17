@@ -1,8 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Project } from "ts-morph";
 import { z } from "zod";
 import { removePathAlias } from "../../ts-morph/remove-path-alias/remove-path-alias";
-import { Project } from "ts-morph";
-import { performance } from "node:perf_hooks";
+import { formatChangedFiles, runTool } from "./_tool-runner";
 
 export function registerRemovePathAliasTool(server: McpServer): void {
 	server.tool(
@@ -43,56 +43,36 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					"If true, only show intended changes without modifying files.",
 				),
 		},
-		async (args) => {
-			const startTime = performance.now();
-			let message = "";
-			let isError = false;
-			let duration = "0.00";
+		(args) =>
+			runTool(
+				"remove_path_alias_by_tsmorph",
+				{ targetPath: args.targetPath, dryRun: args.dryRun },
+				async () => {
+					const { tsconfigPath, targetPath, dryRun } = args;
+					const project = new Project({ tsConfigFilePath: tsconfigPath });
+					const pathsOption = project.compilerOptions.get().paths ?? {};
 
-			try {
-				const { tsconfigPath, targetPath, dryRun } = args;
-				const project = new Project({
-					tsConfigFilePath: tsconfigPath,
-				});
-				const pathsOption = project.compilerOptions.get().paths ?? {};
+					const result = await removePathAlias({
+						project,
+						targetPath,
+						dryRun,
+						paths: pathsOption,
+					});
 
-				const result = await removePathAlias({
-					project,
-					targetPath,
-					dryRun,
-					paths: pathsOption,
-				});
+					if (!dryRun) {
+						await project.save();
+					}
 
-				if (!dryRun) {
-					await project.save();
-				}
+					const actionVerb = dryRun ? "scheduled for modification" : "modified";
+					const message = `Path alias removal (${
+						dryRun ? "Dry run" : "Execute"
+					}): Within the specified path '${targetPath}', the following files were ${actionVerb}:\n - ${formatChangedFiles(result.changedFiles)}`;
 
-				const changedFilesList =
-					result.changedFiles.length > 0
-						? result.changedFiles.join("\n - ")
-						: "(No changes)";
-				const actionVerb = dryRun ? "scheduled for modification" : "modified";
-				message = `Path alias removal (${
-					dryRun ? "Dry run" : "Execute"
-				}): Within the specified path '${targetPath}', the following files were ${actionVerb}:\n - ${changedFilesList}`;
-			} catch (error) {
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-				message = `Error during path alias removal process: ${errorMessage}`;
-				isError = true;
-			} finally {
-				const endTime = performance.now();
-				duration = ((endTime - startTime) / 1000).toFixed(2);
-			}
-
-			const finalMessage = `${message}\nStatus: ${
-				isError ? "Failure" : "Success"
-			}\nProcessing time: ${duration} seconds`;
-
-			return {
-				content: [{ type: "text", text: finalMessage }],
-				isError: isError,
-			};
-		},
+					return {
+						message,
+						log: { changedFilesCount: result.changedFiles.length },
+					};
+				},
+			),
 	);
 }

@@ -1,8 +1,7 @@
-import { performance } from "node:perf_hooks";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { convertDefaultExportToNamed } from "../../ts-morph/convert-default-export/convert-default-export";
-import logger from "../../utils/logger";
+import { formatChangedFiles, runTool } from "./_tool-runner";
 
 export function registerConvertDefaultExportTool(server: McpServer): void {
 	server.tool(
@@ -62,75 +61,33 @@ Returns the resulting export name, the number of updated import and re-export si
 					"If true, only show intended changes without modifying files.",
 				),
 		},
-		async (args) => {
-			const startTime = performance.now();
-			let message = "";
-			let isError = false;
-			let duration = "0.00";
-			let changedFilesCount = 0;
-
-			const logArgs = {
-				targetFilePath: args.targetFilePath,
-				newName: args.newName,
-				dryRun: args.dryRun,
-			};
-
-			try {
-				const result = await convertDefaultExportToNamed({
-					tsconfigPath: args.tsconfigPath,
+		(args) =>
+			runTool(
+				"convert_default_export_to_named_by_tsmorph",
+				{
 					targetFilePath: args.targetFilePath,
 					newName: args.newName,
 					dryRun: args.dryRun,
-				});
+				},
+				async () => {
+					const result = await convertDefaultExportToNamed({
+						tsconfigPath: args.tsconfigPath,
+						targetFilePath: args.targetFilePath,
+						newName: args.newName,
+						dryRun: args.dryRun,
+					});
 
-				changedFilesCount = result.changedFiles.length;
-				const changedFilesList =
-					result.changedFiles.length > 0
-						? result.changedFiles.join("\n - ")
-						: "(No changes)";
-				const summary = `Exported as '${result.exportName}'. Updated ${result.updatedImportSites} import site(s) and ${result.updatedReExportSites} re-export site(s).`;
+					const summary = `Exported as '${result.exportName}'. Updated ${result.updatedImportSites} import site(s) and ${result.updatedReExportSites} re-export site(s).`;
+					const changedFilesList = formatChangedFiles(result.changedFiles);
+					const message = args.dryRun
+						? `Dry run complete: ${summary}\nWould modify the following files:\n - ${changedFilesList}`
+						: `Conversion successful: ${summary}\nThe following files were modified:\n - ${changedFilesList}`;
 
-				if (args.dryRun) {
-					message = `Dry run complete: ${summary}\nWould modify the following files:\n - ${changedFilesList}`;
-				} else {
-					message = `Conversion successful: ${summary}\nThe following files were modified:\n - ${changedFilesList}`;
-				}
-			} catch (error) {
-				logger.error(
-					{ err: error, toolArgs: logArgs },
-					"Error executing convert_default_export_to_named_by_tsmorph",
-				);
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-				message = `Error during convert_default_export_to_named: ${errorMessage}`;
-				isError = true;
-			} finally {
-				const endTime = performance.now();
-				duration = ((endTime - startTime) / 1000).toFixed(2);
-				logger.info(
-					{
-						status: isError ? "Failure" : "Success",
-						durationMs: Number.parseFloat((endTime - startTime).toFixed(2)),
-						changedFilesCount,
-						...logArgs,
-					},
-					"convert_default_export_to_named_by_tsmorph tool finished",
-				);
-				try {
-					logger.flush();
-				} catch (flushErr) {
-					console.error("Failed to flush logs:", flushErr);
-				}
-			}
-
-			const finalMessage = `${message}\nStatus: ${
-				isError ? "Failure" : "Success"
-			}\nProcessing time: ${duration} seconds`;
-
-			return {
-				content: [{ type: "text", text: finalMessage }],
-				isError,
-			};
-		},
+					return {
+						message,
+						log: { changedFilesCount: result.changedFiles.length },
+					};
+				},
+			),
 	);
 }

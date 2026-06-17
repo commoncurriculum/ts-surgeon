@@ -9,6 +9,8 @@ import {
 	type SourceFile,
 } from "ts-morph";
 import logger from "../../utils/logger";
+import { forEachReferenceTo } from "../_utils/for-each-reference";
+import { assertValidIdentifier } from "../_utils/identifier";
 import {
 	getChangedFiles,
 	initializeProject,
@@ -18,69 +20,6 @@ import type {
 	ConvertDefaultExportToNamedParams,
 	ConvertDefaultExportToNamedResult,
 } from "./types";
-
-const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-
-// Reserved words (plus strict-mode future-reserved words and `eval`/`arguments`)
-// that cannot be used as a binding name in a module (modules are always strict).
-const RESERVED_WORDS = new Set([
-	"break",
-	"case",
-	"catch",
-	"class",
-	"const",
-	"continue",
-	"debugger",
-	"default",
-	"delete",
-	"do",
-	"else",
-	"enum",
-	"export",
-	"extends",
-	"false",
-	"finally",
-	"for",
-	"function",
-	"if",
-	"import",
-	"in",
-	"instanceof",
-	"new",
-	"null",
-	"return",
-	"super",
-	"switch",
-	"this",
-	"throw",
-	"true",
-	"try",
-	"typeof",
-	"var",
-	"void",
-	"while",
-	"with",
-	"implements",
-	"interface",
-	"let",
-	"package",
-	"private",
-	"protected",
-	"public",
-	"static",
-	"yield",
-	"await",
-	"eval",
-	"arguments",
-]);
-
-function assertValidNewName(newName: string): void {
-	if (!IDENTIFIER_RE.test(newName) || RESERVED_WORDS.has(newName)) {
-		throw new Error(
-			`Invalid newName: '${newName}' is not a usable identifier (reserved words and non-identifier text are rejected).`,
-		);
-	}
-}
 
 /**
  * Throws when the target file already exports a symbol named `name`, which would
@@ -149,7 +88,7 @@ export async function convertDefaultExportToNamedOnProject(
 	const sourceFile = project.getSourceFile(targetFilePath);
 	if (!sourceFile) throw new Error(`File not found: ${targetFilePath}`);
 
-	if (newName !== undefined) assertValidNewName(newName);
+	if (newName !== undefined) assertValidIdentifier(newName, "newName");
 
 	// Phase 1: convert the default export in the target file and learn its name.
 	const exportName = convertTargetDefaultExport(sourceFile, newName);
@@ -351,18 +290,10 @@ function updateReferences(
 	targetSourceFile: SourceFile,
 	exportName: string,
 ): { updatedImportSites: number; updatedReExportSites: number } {
-	let updatedImportSites = 0;
-	let updatedReExportSites = 0;
-
-	for (const sourceFile of project.getSourceFiles()) {
-		if (sourceFile === targetSourceFile) continue;
-
-		// 1. Imports of the default: `import Foo from "target"` and the
-		//    named-specifier form `import { default as Foo } from "target"`.
-		for (const importDecl of sourceFile.getImportDeclarations()) {
-			if (importDecl.getModuleSpecifierSourceFile() !== targetSourceFile) {
-				continue;
-			}
+	return forEachReferenceTo(project, targetSourceFile, {
+		// `import Foo from "target"` and `import { default as Foo } from "target"`.
+		onImport: (importDecl) => {
+			let updated = 0;
 
 			// (a) Default imported via a named specifier: `{ default as Foo }`.
 			for (const named of importDecl.getNamedImports()) {
@@ -372,34 +303,30 @@ function updateReferences(
 				// `{ default as Foo }` → `{ exportName as Foo }`; collapse a
 				// redundant `{ exportName as exportName }` back to `{ exportName }`.
 				if (alias === exportName) named.removeAlias();
-				updatedImportSites++;
+				updated++;
 			}
 
 			// (b) Default import clause: `import Foo from "target"`.
 			const defaultImport = importDecl.getDefaultImport();
 			if (defaultImport) {
 				rewriteDefaultImport(importDecl, defaultImport.getText(), exportName);
-				updatedImportSites++;
+				updated++;
 			}
-		}
-
-		// 2. Re-exports: `export { default } from "target"` /
-		//    `export { default as X } from "target"`.
-		for (const exportDecl of sourceFile.getExportDeclarations()) {
-			if (exportDecl.getModuleSpecifierSourceFile() !== targetSourceFile) {
-				continue;
-			}
+			return updated;
+		},
+		// `export { default } from "target"` / `export { default as X } from "target"`.
+		onReExport: (exportDecl) => {
+			let updated = 0;
 			for (const specifier of exportDecl.getNamedExports()) {
 				if (specifier.getName() !== "default") continue;
 				// Keeps any alias intact: `{ default as X }` → `{ exportName as X }`,
 				// and `{ default }` → `{ exportName }`.
 				specifier.setName(exportName);
-				updatedReExportSites++;
+				updated++;
 			}
-		}
-	}
-
-	return { updatedImportSites, updatedReExportSites };
+			return updated;
+		},
+	});
 }
 
 function rewriteDefaultImport(

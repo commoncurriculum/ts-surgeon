@@ -1,8 +1,7 @@
-import { performance } from "node:perf_hooks";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { changeSignature } from "../../ts-morph/change-signature/change-signature";
-import logger from "../../utils/logger";
+import { formatChangedFiles, runTool } from "./_tool-runner";
 
 const addOpSchema = z.object({
 	kind: z.literal("add"),
@@ -130,77 +129,35 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					"If true, only show intended changes without modifying files.",
 				),
 		},
-		async (args) => {
-			const startTime = performance.now();
-			let message = "";
-			let isError = false;
-			let duration = "0.00";
-			let changedFilesCount = 0;
-
-			const logArgs = {
-				targetFilePath: args.targetFilePath,
-				functionName: args.functionName,
-				operationKinds: args.changes.map((c) => c.kind),
-				dryRun: args.dryRun,
-			};
-
-			try {
-				const result = await changeSignature({
-					tsconfigPath: args.tsconfigPath,
+		(args) =>
+			runTool(
+				"change_signature_by_tsmorph",
+				{
 					targetFilePath: args.targetFilePath,
-					position: args.position,
 					functionName: args.functionName,
-					changes: args.changes,
+					operationKinds: args.changes.map((c) => c.kind),
 					dryRun: args.dryRun,
-				});
+				},
+				async () => {
+					const result = await changeSignature({
+						tsconfigPath: args.tsconfigPath,
+						targetFilePath: args.targetFilePath,
+						position: args.position,
+						functionName: args.functionName,
+						changes: args.changes,
+						dryRun: args.dryRun,
+					});
 
-				changedFilesCount = result.changedFiles.length;
-				const changedFilesList =
-					result.changedFiles.length > 0
-						? result.changedFiles.join("\n - ")
-						: "(No changes)";
+					const changedFilesList = formatChangedFiles(result.changedFiles);
+					const message = args.dryRun
+						? `Dry run complete: Changing signature of '${args.functionName}' would modify the following files:\n - ${changedFilesList}`
+						: `Signature change successful for '${args.functionName}'. The following files were modified:\n - ${changedFilesList}`;
 
-				if (args.dryRun) {
-					message = `Dry run complete: Changing signature of '${args.functionName}' would modify the following files:\n - ${changedFilesList}`;
-				} else {
-					message = `Signature change successful for '${args.functionName}'. The following files were modified:\n - ${changedFilesList}`;
-				}
-			} catch (error) {
-				logger.error(
-					{ err: error, toolArgs: logArgs },
-					"Error executing change_signature_by_tsmorph",
-				);
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-				message = `Error during change_signature: ${errorMessage}`;
-				isError = true;
-			} finally {
-				const endTime = performance.now();
-				duration = ((endTime - startTime) / 1000).toFixed(2);
-				logger.info(
-					{
-						status: isError ? "Failure" : "Success",
-						durationMs: Number.parseFloat((endTime - startTime).toFixed(2)),
-						changedFilesCount,
-						...logArgs,
-					},
-					"change_signature_by_tsmorph tool finished",
-				);
-				try {
-					logger.flush();
-				} catch (flushErr) {
-					console.error("Failed to flush logs:", flushErr);
-				}
-			}
-
-			const finalMessage = `${message}\nStatus: ${
-				isError ? "Failure" : "Success"
-			}\nProcessing time: ${duration} seconds`;
-
-			return {
-				content: [{ type: "text", text: finalMessage }],
-				isError,
-			};
-		},
+					return {
+						message,
+						log: { changedFilesCount: result.changedFiles.length },
+					};
+				},
+			),
 	);
 }

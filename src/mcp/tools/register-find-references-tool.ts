@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { findSymbolReferences } from "../../ts-morph/find-references"; // import the new function and types
-import { performance } from "node:perf_hooks";
+import { findSymbolReferences } from "../../ts-morph/find-references";
+import { runTool } from "./_tool-runner";
 
 export function registerFindReferencesTool(server: McpServer): void {
 	server.tool(
@@ -37,62 +37,39 @@ Returns the definition (file path, line, column, source line) when found, follow
 				})
 				.describe("The exact position of the symbol."),
 		},
-		async (args) => {
-			const startTime = performance.now();
-			let message = "";
-			let isError = false;
-			let duration = "0.00"; // declared and initialized outside finally
+		(args) =>
+			runTool(
+				"find_references_by_tsmorph",
+				{ targetFilePath: args.targetFilePath, position: args.position },
+				async () => {
+					const { references, definition } = await findSymbolReferences({
+						tsconfigPath: args.tsconfigPath,
+						targetFilePath: args.targetFilePath,
+						position: args.position,
+					});
 
-			try {
-				const { tsconfigPath, targetFilePath, position } = args;
-				const { references, definition } = await findSymbolReferences({
-					tsconfigPath: tsconfigPath,
-					targetFilePath: targetFilePath,
-					position,
-				});
+					let resultText = "";
+					if (definition) {
+						resultText += "Definition:\n";
+						resultText += `- ${definition.filePath}:${definition.line}:${definition.column}\n`;
+						resultText += `  \`\`\`typescript\n  ${definition.text}\n  \`\`\`\n\n`;
+					} else {
+						resultText += "Definition not found.\n\n";
+					}
 
-				let resultText = "";
-
-				if (definition) {
-					resultText += "Definition:\n";
-					resultText += `- ${definition.filePath}:${definition.line}:${definition.column}\n`;
-					resultText += `  \`\`\`typescript\n  ${definition.text}\n  \`\`\`\n\n`;
-				} else {
-					resultText += "Definition not found.\n\n";
-				}
-
-				if (references.length > 0) {
-					resultText += `References (${references.length} found):\n`;
-					const formattedReferences = references
-						.map(
-							(ref) =>
-								`- ${ref.filePath}:${ref.line}:${ref.column}\n  \`\`\`typescript\n  ${ref.text}\n  \`\`\`\``,
-						)
-						.join("\n\n");
-					resultText += formattedReferences;
-				} else {
-					resultText += "References not found.";
-				}
-				message = resultText.trim();
-			} catch (error) {
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-				message = `Error during reference search: ${errorMessage}`;
-				isError = true;
-			} finally {
-				const endTime = performance.now();
-				duration = ((endTime - startTime) / 1000).toFixed(2); // update duration
-			}
-
-			// return outside the finally block
-			const finalMessage = `${message}\nStatus: ${
-				isError ? "Failure" : "Success"
-			}\nProcessing time: ${duration} seconds`;
-
-			return {
-				content: [{ type: "text", text: finalMessage }],
-				isError: isError,
-			};
-		},
+					if (references.length > 0) {
+						resultText += `References (${references.length} found):\n`;
+						resultText += references
+							.map(
+								(ref) =>
+									`- ${ref.filePath}:${ref.line}:${ref.column}\n  \`\`\`typescript\n  ${ref.text}\n  \`\`\`\``,
+							)
+							.join("\n\n");
+					} else {
+						resultText += "References not found.";
+					}
+					return { message: resultText.trim() };
+				},
+			),
 	);
 }

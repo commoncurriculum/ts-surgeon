@@ -123,10 +123,22 @@ const project = createTsMorphProject(tsconfigPath);
 ```
 
 ### Registering MCP Tools
-Each tool is implemented following this pattern:
-1. Define parameters with a Zod schema
-2. Tool implementation function (calls the ts-morph layer)
-3. Register with `server.setRequestHandler`
+Each `register-*.ts` follows this pattern:
+1. Define parameters with a Zod schema and a `[ts-morph] ...` description.
+2. Register with `server.tool(name, description, schema, handler)`.
+3. The handler delegates to `runTool(toolName, logArgs, run)` from
+   `src/mcp/tools/_tool-runner.ts`, which owns the shared shell (timing,
+   error mapping, start/finish logging + flush, the `Status` / `Processing
+   time` footer, and the response envelope). `run` does only the
+   tool-specific work and returns `{ message, log? }`; use
+   `formatChangedFiles(files)` for the changed-files list.
+
+### Cross-file reference rewriting
+Tools that rewrite importers/re-exporters of a target file (e.g.
+`convert-default-export`, `convert-named-to-default`) share
+`forEachReferenceTo(project, target, { onImport, onReExport })` from
+`src/ts-morph/_utils/for-each-reference.ts`; the callbacks own the
+direction-specific specifier mutation and return the per-site update count.
 
 ### Error Handling
 - Use custom error classes

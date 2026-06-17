@@ -1,5 +1,6 @@
 import { Node, type Project, type SourceFile } from "ts-morph";
 import logger from "../../utils/logger";
+import { forEachReferenceTo } from "../_utils/for-each-reference";
 import {
 	getChangedFiles,
 	initializeProject,
@@ -196,21 +197,13 @@ function updateReferences(
 	targetSourceFile: SourceFile,
 	exportName: string,
 ): { updatedImportSites: number; updatedReExportSites: number } {
-	let updatedImportSites = 0;
-	let updatedReExportSites = 0;
-
-	for (const sourceFile of project.getSourceFiles()) {
-		if (sourceFile === targetSourceFile) continue;
-
-		// 1. Named imports: `import { name } from "target"` → default import.
-		for (const importDecl of sourceFile.getImportDeclarations()) {
-			if (importDecl.getModuleSpecifierSourceFile() !== targetSourceFile) {
-				continue;
-			}
+	return forEachReferenceTo(project, targetSourceFile, {
+		// `import { name } from "target"` → default import.
+		onImport: (importDecl) => {
 			const named = importDecl
 				.getNamedImports()
 				.find((specifier) => specifier.getName() === exportName);
-			if (!named) continue;
+			if (!named) return 0;
 
 			// `setDefaultImport` rebuilds the import clause and drops a
 			// statement-level `type` modifier, so preserve it explicitly.
@@ -222,15 +215,11 @@ function updateReferences(
 			}
 			importDecl.setDefaultImport(localName);
 			if (wasTypeOnly) importDecl.setIsTypeOnly(true);
-			updatedImportSites++;
-		}
-
-		// 2. Re-exports: `export { name } from "target"` →
-		//    `export { default as name } from "target"`.
-		for (const exportDecl of sourceFile.getExportDeclarations()) {
-			if (exportDecl.getModuleSpecifierSourceFile() !== targetSourceFile) {
-				continue;
-			}
+			return 1;
+		},
+		// `export { name } from "target"` → `export { default as name } from "target"`.
+		onReExport: (exportDecl) => {
+			let updated = 0;
 			for (const specifier of exportDecl.getNamedExports()) {
 				if (specifier.getName() !== exportName) continue;
 				const externalName =
@@ -238,10 +227,9 @@ function updateReferences(
 				// `setName("default")` would quote the reserved word; write the
 				// specifier text directly to get a bare `default as <name>`.
 				specifier.replaceWithText(`default as ${externalName}`);
-				updatedReExportSites++;
+				updated++;
 			}
-		}
-	}
-
-	return { updatedImportSites, updatedReExportSites };
+			return updated;
+		},
+	});
 }

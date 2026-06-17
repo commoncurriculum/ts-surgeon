@@ -1,28 +1,8 @@
-import { performance } from "node:perf_hooks";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getDiagnostics } from "../../ts-morph/get-diagnostics/get-diagnostics";
 import type { DiagnosticInfo } from "../../ts-morph/get-diagnostics/types";
-import logger from "../../utils/logger";
-
-function safeLogError(error: unknown, toolArgs: Record<string, unknown>): void {
-	try {
-		logger.error(
-			{ err: error, toolArgs },
-			"Error executing get_diagnostics_by_tsmorph",
-		);
-	} catch (loggerErr) {
-		console.error("Failed to write error log:", loggerErr);
-	}
-}
-
-function safeLogInfo(fields: Record<string, unknown>): void {
-	try {
-		logger.info(fields, "get_diagnostics_by_tsmorph tool finished");
-	} catch (loggerErr) {
-		console.error("Failed to write info log:", loggerErr);
-	}
-}
+import { runTool } from "./_tool-runner";
 
 function formatLocation(d: DiagnosticInfo): string {
 	if (d.filePath === undefined) return "(global)";
@@ -77,63 +57,31 @@ A summary (total/error/warning counts) plus one line per diagnostic: \`<category
 				.default(100)
 				.describe("Maximum number of diagnostics to return (default 100)."),
 		},
-		async (args) => {
-			const startTime = performance.now();
-			let message = "";
-			let isError = false;
-			let duration = "0.00";
-
-			const logArgs = {
-				fileCount: args.filePaths?.length ?? "all",
-				maxResults: args.maxResults,
-			};
-
-			try {
-				const result = getDiagnostics({
-					tsconfigPath: args.tsconfigPath,
-					filePaths: args.filePaths,
+		(args) =>
+			runTool(
+				"get_diagnostics_by_tsmorph",
+				{
+					fileCount: args.filePaths?.length ?? "all",
 					maxResults: args.maxResults,
-				});
+				},
+				() => {
+					const result = getDiagnostics({
+						tsconfigPath: args.tsconfigPath,
+						filePaths: args.filePaths,
+						maxResults: args.maxResults,
+					});
 
-				const header = `Diagnostics: ${result.totalCount} total (${result.errorCount} error(s), ${result.warningCount} warning(s))${
-					result.truncated
-						? ` — showing first ${result.diagnostics.length}`
-						: ""
-				}`;
-				const body =
-					result.diagnostics.length > 0
-						? result.diagnostics.map(formatDiagnostic).join("\n")
-						: "(No diagnostics)";
-				message = `${header}\n${body}`;
-			} catch (error) {
-				safeLogError(error, logArgs);
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-				message = `Error: ${errorMessage}`;
-				isError = true;
-			} finally {
-				const endTime = performance.now();
-				duration = ((endTime - startTime) / 1000).toFixed(2);
-				safeLogInfo({
-					status: isError ? "Failure" : "Success",
-					durationMs: Number.parseFloat((endTime - startTime).toFixed(2)),
-					...logArgs,
-				});
-				try {
-					logger.flush();
-				} catch (flushErr) {
-					console.error("Failed to flush logs:", flushErr);
-				}
-			}
-
-			const finalMessage = `${message}\nStatus: ${
-				isError ? "Failure" : "Success"
-			}\nProcessing time: ${duration} seconds`;
-
-			return {
-				content: [{ type: "text", text: finalMessage }],
-				isError,
-			};
-		},
+					const header = `Diagnostics: ${result.totalCount} total (${result.errorCount} error(s), ${result.warningCount} warning(s))${
+						result.truncated
+							? ` — showing first ${result.diagnostics.length}`
+							: ""
+					}`;
+					const body =
+						result.diagnostics.length > 0
+							? result.diagnostics.map(formatDiagnostic).join("\n")
+							: "(No diagnostics)";
+					return { message: `${header}\n${body}` };
+				},
+			),
 	);
 }

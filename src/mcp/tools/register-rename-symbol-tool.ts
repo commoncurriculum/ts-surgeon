@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { renameSymbol } from "../../ts-morph/rename-symbol/rename-symbol";
-import { performance } from "node:perf_hooks";
+import { formatChangedFiles, runTool } from "./_tool-runner";
 
 export function registerRenameSymbolTool(server: McpServer): void {
 	server.tool(
@@ -51,58 +51,37 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					"If true, only show intended changes without modifying files.",
 				),
 		},
-		async (args) => {
-			const startTime = performance.now();
-			let message = "";
-			let isError = false;
-			let duration = "0.00";
+		(args) =>
+			runTool(
+				"rename_symbol_by_tsmorph",
+				{
+					targetFilePath: args.targetFilePath,
+					position: args.position,
+					symbolName: args.symbolName,
+					newName: args.newName,
+					dryRun: args.dryRun,
+				},
+				async () => {
+					const { symbolName, newName, dryRun } = args;
+					const result = await renameSymbol({
+						tsconfigPath: args.tsconfigPath,
+						targetFilePath: args.targetFilePath,
+						position: args.position,
+						symbolName,
+						newName,
+						dryRun,
+					});
 
-			try {
-				const {
-					tsconfigPath,
-					targetFilePath,
-					position,
-					symbolName,
-					newName,
-					dryRun,
-				} = args;
-				const result = await renameSymbol({
-					tsconfigPath: tsconfigPath,
-					targetFilePath: targetFilePath,
-					position: position,
-					symbolName: symbolName,
-					newName: newName,
-					dryRun: dryRun,
-				});
+					const changedFilesList = formatChangedFiles(result.changedFiles);
+					const message = dryRun
+						? `Dry run complete: Renaming symbol '${symbolName}' to '${newName}' would modify the following files:\n - ${changedFilesList}`
+						: `Rename successful: Renamed symbol '${symbolName}' to '${newName}'. The following files were modified:\n - ${changedFilesList}`;
 
-				const changedFilesList =
-					result.changedFiles.length > 0
-						? result.changedFiles.join("\n - ")
-						: "(No changes)";
-
-				if (dryRun) {
-					message = `Dry run complete: Renaming symbol '${symbolName}' to '${newName}' would modify the following files:\n - ${changedFilesList}`;
-				} else {
-					message = `Rename successful: Renamed symbol '${symbolName}' to '${newName}'. The following files were modified:\n - ${changedFilesList}`;
-				}
-			} catch (error) {
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-				message = `Error during rename process: ${errorMessage}`;
-				isError = true;
-			} finally {
-				const endTime = performance.now();
-				duration = ((endTime - startTime) / 1000).toFixed(2);
-			}
-
-			const finalMessage = `${message}\nStatus: ${
-				isError ? "Failure" : "Success"
-			}\nProcessing time: ${duration} seconds`;
-
-			return {
-				content: [{ type: "text", text: finalMessage }],
-				isError: isError,
-			};
-		},
+					return {
+						message,
+						log: { changedFilesCount: result.changedFiles.length },
+					};
+				},
+			),
 	);
 }
