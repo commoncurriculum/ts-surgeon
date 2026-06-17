@@ -92,6 +92,7 @@ pnpm inspector    # Debug run with MCP Inspector
      - `find-unused-exports.ts`: Unused export detection
      - `change-signature/`: Function signature changes
      - `get-type-at-position/`: Getting type information at a position
+     - `convert-default-export/`: Converting a default export to a named export
    - `_utils/`: Shared utilities
      - `ts-morph-project.ts`: Common project creation logic
    - `_test-utils/`: Test helpers
@@ -160,5 +161,6 @@ Controllable via environment variables:
 - **Unused export detection**: `src/ts-morph/find-unused-exports.ts`
 - **Function signature changes**: `src/ts-morph/change-signature/`
 - **Type information retrieval**: `src/ts-morph/get-type-at-position/`
+- **Default-to-named export conversion**: `src/ts-morph/convert-default-export/`
 
 For detailed specifications of each feature, see README.md.

@@ -636,6 +636,101 @@ console.log(u);
 		});
 	});
 
+	describe("convert_default_export_to_named_by_tsmorph", () => {
+		it("converts a named default export and updates importers", async () => {
+			const buttonPath = path.join(srcDir, "button.ts");
+			const appPath = path.join(srcDir, "app.ts");
+
+			fs.writeFileSync(
+				buttonPath,
+				`export default function Button() {
+  return "button";
+}
+`,
+			);
+			fs.writeFileSync(
+				appPath,
+				`import Btn from "./button";
+
+console.log(Btn());
+`,
+			);
+
+			const result = await mockServer.callTool(
+				"convert_default_export_to_named_by_tsmorph",
+				{
+					tsconfigPath,
+					targetFilePath: buttonPath,
+					dryRun: false,
+				},
+			);
+
+			expect(result).toHaveProperty("isError", false);
+			const updatedButton = fs.readFileSync(buttonPath, "utf-8");
+			const updatedApp = fs.readFileSync(appPath, "utf-8");
+
+			expect(updatedButton).toContain("export function Button()");
+			expect(updatedButton).not.toContain("export default");
+			expect(updatedApp).toContain('import { Button as Btn } from "./button"');
+		});
+
+		it("converts an anonymous default export using newName", async () => {
+			const fnPath = path.join(srcDir, "fn.ts");
+			fs.writeFileSync(fnPath, "export default () => 1;\n");
+
+			const result = await mockServer.callTool(
+				"convert_default_export_to_named_by_tsmorph",
+				{
+					tsconfigPath,
+					targetFilePath: fnPath,
+					newName: "run",
+					dryRun: false,
+				},
+			);
+
+			expect(result).toHaveProperty("isError", false);
+			expect(fs.readFileSync(fnPath, "utf-8")).toContain(
+				"export const run = () => 1;",
+			);
+		});
+
+		it("does not modify files in dryRun mode", async () => {
+			const widgetPath = path.join(srcDir, "widget.ts");
+			fs.writeFileSync(widgetPath, "export default class Widget {}\n");
+
+			const result = await mockServer.callTool(
+				"convert_default_export_to_named_by_tsmorph",
+				{
+					tsconfigPath,
+					targetFilePath: widgetPath,
+					dryRun: true,
+				},
+			);
+
+			expect(result).toHaveProperty("isError", false);
+			expect(fs.readFileSync(widgetPath, "utf-8")).toContain(
+				"export default class Widget {}",
+			);
+		});
+
+		it("returns an error for an anonymous default export without newName", async () => {
+			const fnPath = path.join(srcDir, "anon.ts");
+			fs.writeFileSync(fnPath, "export default () => 1;\n");
+
+			const result = await mockServer.callTool(
+				"convert_default_export_to_named_by_tsmorph",
+				{
+					tsconfigPath,
+					targetFilePath: fnPath,
+					dryRun: false,
+				},
+			);
+
+			expect(result).toHaveProperty("isError", true);
+			expect(result.content[0]?.text || "").toContain("anonymous");
+		});
+	});
+
 	describe("error handling", () => {
 		it("returns an error for a file that does not exist", async () => {
 			const nonExistentPath = path.join(srcDir, "non-existent.ts");

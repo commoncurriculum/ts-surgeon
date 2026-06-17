@@ -43,6 +43,7 @@ Each tool uses `ts-morph` to parse the AST and applies changes while preserving 
 | [`change_signature_by_tsmorph`](#change_signature_by_tsmorph) | Add/remove/reorder function parameters and update all call sites |
 | [`get_type_at_position_by_tsmorph`](#get_type_at_position_by_tsmorph) | Get the inferred type at a given position |
 | [`find_unused_exports_by_tsmorph`](#find_unused_exports_by_tsmorph) | List candidates for unused exports |
+| [`convert_default_export_to_named_by_tsmorph`](#convert_default_export_to_named_by_tsmorph) | Convert a default export to a named export and update all importers |
 
 ### `rename_symbol_by_tsmorph`
 
@@ -124,6 +125,17 @@ Scans the entire project and lists `export` declarations that are not referenced
 - **Options**: `entryPoints` (array of absolute paths; always treated as in-use public API), `excludeFilePatterns` (exclude scan targets by substring match), `maxResults` (limit for list mode; default 100), `expandNamespaceImports` (default ON).
 - **Known limitations**: Dynamic `require` / `import()`, routing that depends on filesystem conventions (e.g., Next.js `page.tsx`), and references via string reflection cannot be detected. Use `entryPoints` / `excludeFilePatterns` to narrow down candidates.
 - **Monorepo built dist packages produce systematic false positives**: If a workspace package publishes a build artifact (e.g., `./dist/index.js`) via `exports` (or `main` / `module` / `types`) in `package.json`, imports from other packages resolve to the build output (or `node_modules`) rather than to the scanned `src` symbols. As a result, **all exports that are actually consumed from that package appear as unused candidates in bulk**. This pattern is detected structurally, and a per-package warning (package name, entry point outside scan scope, number of affected candidates) is prepended to the results. Treat candidates from packages with this warning as low-confidence, and always verify with `textHits` and `find_references_by_tsmorph` before deleting. Workaround: point that package's `exports` to source (e.g., `./src/index.ts`) during analysis, or verify candidates individually.
+
+### `convert_default_export_to_named_by_tsmorph`
+
+Converts a file's `export default` into a named export and rewrites every importing/re-exporting site across the project.
+
+- **Use case**: Migrating a module off default exports (e.g. to satisfy a "no default export" lint rule) without hand-editing every importer, or normalizing a default that is imported under inconsistent local names onto a single named export.
+- **Required information**: Target file path. `newName` is required when the default export is anonymous (e.g. `export default () => {}`, `export default { ... }`, `export default function () {}`) and is rejected (when it differs) for an already-named function/class default export.
+- **Supported target forms**: named/anonymous `export default function`/`class`; `export default <expr>` (arrow, object literal, call, literal); `export default <localIdentifier>`; `export { foo as default }`.
+- **Reference updates**: `import Foo from "target"` and the named-specifier form `import { default as Foo } from "target"` both become `import { Name as Foo } from "target"` (the alias is dropped when the local name already equals `Name`); default imports are merged into existing named imports (deduping identical specifiers), or split into a separate declaration when a namespace import (`import Foo, * as ns`) is present (reusing an existing same-module declaration when one exists); `export { default } from "target"` and `export { default as X } from "target"` are rewritten to named re-exports. Path-alias and relative specifiers are both resolved via the TypeChecker.
+- **Safety**: `newName` is validated as a non-reserved identifier; the conversion aborts if the resulting name would collide with an existing export in the target file, and anonymous abstract classes are rejected (they have no valid expression form) — so the tool never emits invalid TypeScript for these cases.
+- **Note**: Run with `dryRun: true` first to preview the impacted files. Dynamic/runtime access to the default (`import("target").then(m => m.default)`, `require("target").default`) is not detected. A re-export that forwards the default as a default (`export { default } from "target"`) becomes a named re-export, changing that barrel's public surface; **transitive** chains are not followed (only sites whose module specifier resolves directly to the target are updated), so verify downstream consumers of such barrels.
 
 ## Logging Configuration
 
