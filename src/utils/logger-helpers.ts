@@ -103,7 +103,8 @@ function setupLogFileTransport(
  * Builds the Pino transport configuration for console log output.
  * Outside of production it attempts to use pino-pretty.
  * When pino-pretty is unavailable, or in production, it returns no transport configuration
- * (undefined), in which case Pino's default JSON output to standard output is used.
+ * (undefined), in which case Pino's default JSON output is written to standard error
+ * (stderr; the default destination is configured in logger.ts) — never standard output.
  *
  * @param {string} nodeEnv - The current NODE_ENV (`development`, `production`, `test`).
  * @returns {pino.TransportSingleOptions | undefined} The console transport configuration (for pino-pretty), or undefined when none is needed.
@@ -139,7 +140,8 @@ function setupConsoleTransport(
 
 /**
  * Configures the appropriate Pino transport based on NODE_ENV and the log output target.
- * In the test environment no transport is configured and logs are directed to standard output.
+ * When this returns undefined, the caller (logger.ts) falls back to Pino's default JSON
+ * output on standard error (stderr); standard output is reserved for MCP JSON-RPC.
  *
  * @param {string} nodeEnv - The current NODE_ENV.
  * @param {"console" | "file"} logOutput - The log output destination.
