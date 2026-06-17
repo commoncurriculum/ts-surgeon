@@ -1,70 +1,70 @@
 ---
 name: check-docs
-description: 登録済み MCP ツール（src/mcp/tools/register-*.ts）と、README.md のツール表・CLAUDE.md のモジュール一覧の整合をチェックする。ツール追加後やドキュメント整理時に、記載漏れ・ドリフトを検出する。「ドキュメントの整合を確認」「README とコードがずれていないか」「ツール一覧チェック」等で使用。
+description: Checks consistency between registered MCP tools (src/mcp/tools/register-*.ts) and the tool table in README.md and the module list in CLAUDE.md. Detects missing entries and drift after adding tools or reorganizing documentation. Use for "check doc consistency", "verify README matches code", "check tool list", or similar.
 ---
 
-# ドキュメント整合チェック
+# Documentation Consistency Check
 
-過去に README のツール表（6→8 のずれ）と CLAUDE.md のモジュール一覧が実態とドリフトした。登録済みツールとドキュメントの記載を機械的に突き合わせ、欠落・余剰を報告する。
+In the past, the README tool table (drifted by 6→8 entries) and the CLAUDE.md module list diverged from reality. This skill mechanically cross-references registered tools against documentation and reports missing entries and surplus entries.
 
-このスキルは**読み取り専用の点検**。修正提案は出すが、勝手にファイルを書き換えない（ユーザーが確認してから直す）。
+This skill is **read-only inspection**. It may suggest fixes but will not modify files on its own (the user confirms before changes are applied).
 
-## 手順
+## Steps
 
-### 1. 登録済みツール名を抽出
+### 1. Extract Registered Tool Names
 
 ```bash
 grep -rhoE '"[a-z_]+_by_tsmorph"' src/mcp/tools/ | tr -d '"' | sort -u
 ```
 
-これが「真実の source」。`ts-morph-tools.ts` の `registerTsMorphTools` 内で実際に呼ばれている登録関数とも突き合わせる（import だけして呼んでいない／呼んでいるが import 漏れ、を検出）：
+This is the source of truth. Also cross-reference with the registration functions actually called inside `registerTsMorphTools` in `ts-morph-tools.ts` (to detect: imported but not called / called but missing import):
 
 ```bash
 grep -E 'register[A-Za-z]+Tool' src/mcp/tools/ts-morph-tools.ts
 ```
 
-### 2. README のツール表と照合
+### 2. Cross-reference the README Tool Table
 
-`README.md` の「提供されるツール」表（`| [\`xxx_by_tsmorph\`]... |`）と各詳細セクション（`### \`xxx_by_tsmorph\``）を抽出：
+Extract the "Available Tools" table (`| [\`xxx_by_tsmorph\`]... |`) and each detail section (`### \`xxx_by_tsmorph\``) from `README.md`:
 
 ```bash
 grep -oE '`[a-z_]+_by_tsmorph`' README.md | tr -d '`' | sort -u
 ```
 
-- 表に載っているがコードに無い → 余剰（削除候補）
-- コードにあるが表に無い → **記載漏れ**（追記が必要）
-- 表にあるがアンカー先の `### ` セクションが無い → リンク切れ
+- In the table but not in code → surplus (candidate for removal)
+- In code but not in the table → **missing entry** (needs to be added)
+- In the table but the corresponding `### ` section is missing → broken link
 
-### 3. CLAUDE.md のモジュール一覧と照合
+### 3. Cross-reference the CLAUDE.md Module List
 
-`src/ts-morph/` の実ディレクトリ・ファイルと、CLAUDE.md「ts-morphレイヤー」「主要な機能と実装ファイル」の記載を突き合わせる：
+Compare the actual directories and files under `src/ts-morph/` against the "ts-morph layer" and "Key Features and Implementation Files" sections of CLAUDE.md:
 
 ```bash
 ls src/ts-morph/
 ```
 
-- 実在するモジュールが CLAUDE.md に無い → 記載漏れ
-- CLAUDE.md にあるが実在しない → 古い記載（要削除）
+- A module that exists but is missing from CLAUDE.md → missing entry
+- An entry in CLAUDE.md that no longer exists → stale entry (should be removed)
 
-### 4. 報告フォーマット
+### 4. Report Format
 
 ```
-## ドキュメント整合チェック結果
+## Documentation Consistency Check Results
 
-### 登録済みツール（N 件）
+### Registered Tools (N items)
 - ...
 
 ### README
-- [OK] 表・詳細セクションともに一致
-- [欠落] xxx_by_tsmorph が表に無い
-- [リンク切れ] yyy のアンカー先セクションが無い
+- [OK] Table and detail sections match
+- [MISSING] xxx_by_tsmorph is not in the table
+- [BROKEN LINK] anchor target section for yyy is missing
 
 ### CLAUDE.md
-- [欠落] src/ts-morph/zzz/ がモジュール一覧に無い
-- [古い記載] aaa が実在しない
+- [MISSING] src/ts-morph/zzz/ is not in the module list
+- [STALE] aaa no longer exists
 
-### 修正提案
-（差分の要点。ユーザー確認後に適用）
+### Suggested Fixes
+(Summary of the diff. Apply after user confirmation.)
 ```
 
-ずれが無ければ「整合済み」と明言する。
+If there are no discrepancies, state "consistent" explicitly.

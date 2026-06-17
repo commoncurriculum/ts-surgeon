@@ -30,7 +30,7 @@ const setupProject = () => {
 };
 
 describe("removePathAlias", () => {
-	it("単純なワイルドカードエイリアス (@/*) を相対パスに変換できること", async () => {
+	it("can convert a simple wildcard alias (@/*) to a relative path", async () => {
 		const project = setupProject();
 		const importerPath = "/src/features/featureA/index.ts";
 		const componentPath = "/src/components/Button.ts";
@@ -53,7 +53,7 @@ describe("removePathAlias", () => {
 		expect(result.changedFiles).toEqual([importerPath]);
 	});
 
-	it("特定のパスエイリアス (@components/*) を相対パスに変換できること", async () => {
+	it("can convert a specific path alias (@components/*) to a relative path", async () => {
 		const project = setupProject();
 		const importerPath = "/src/index.ts";
 		const componentPath = "/src/components/Input/index.ts";
@@ -75,7 +75,7 @@ describe("removePathAlias", () => {
 		expect(result.changedFiles).toEqual([importerPath]);
 	});
 
-	it("ファイルへの直接エイリアス (@utils/helpers) を相対パスに変換できること", async () => {
+	it("can convert a direct file alias (@utils/helpers) to a relative path", async () => {
 		const project = setupProject();
 		const importerPath = "/src/features/featureB/utils.ts";
 		const helperPath = "/src/utils/helpers.ts";
@@ -97,7 +97,7 @@ describe("removePathAlias", () => {
 		expect(result.changedFiles).toEqual([importerPath]);
 	});
 
-	it("エイリアスでない通常の相対パスは変更しないこと", async () => {
+	it("does not change a normal relative path that is not an alias", async () => {
 		const project = setupProject();
 		const importerPath = "/src/features/featureA/index.ts";
 		const servicePath = "/src/features/featureA/service.ts";
@@ -117,7 +117,7 @@ describe("removePathAlias", () => {
 		expect(result.changedFiles).toEqual([]);
 	});
 
-	it("エイリアスでない node_modules パスは変更しないこと", async () => {
+	it("does not change a node_modules path that is not an alias", async () => {
 		const project = setupProject();
 		const importerPath = "/src/index.ts";
 		const importerContent = `import * as fs from 'fs';`;
@@ -135,7 +135,7 @@ describe("removePathAlias", () => {
 		expect(result.changedFiles).toEqual([]);
 	});
 
-	it("dryRun モードではファイルを変更せず、変更予定リストを返すこと", async () => {
+	it("does not modify files in dryRun mode and returns the list of files that would change", async () => {
 		const project = setupProject();
 		const importerPath = "/src/features/featureA/index.ts";
 		const componentPath = "/src/components/Button.ts";
@@ -155,7 +155,7 @@ describe("removePathAlias", () => {
 		expect(result.changedFiles).toEqual([importerPath]);
 	});
 
-	it("ディレクトリを対象とした場合に、内部の複数ファイルのエイリアスを変換できること", async () => {
+	it("can convert aliases in multiple files within a directory when targeting a directory", async () => {
 		const project = setupProject();
 		const dirPath = "/src/features/multi";
 		const file1Path = path.join(dirPath, "file1.ts");
@@ -193,7 +193,7 @@ describe("removePathAlias", () => {
 		expect(result.changedFiles.sort()).toEqual([file1Path, file2Path].sort());
 	});
 
-	it("解決できないエイリアスパスを変更しないこと", async () => {
+	it("does not change an alias path that cannot be resolved", async () => {
 		const project = setupProject();
 		const importerPath = "/src/index.ts";
 		const importerContent = `import { Something } from '@unknown/package';`;
@@ -211,7 +211,7 @@ describe("removePathAlias", () => {
 		expect(result.changedFiles).toEqual([]);
 	});
 
-	it("エイリアスが index.ts を指す場合、結果は /index で終わる (省略されない)", async () => {
+	it("result ends with /index (not omitted) when the alias points to index.ts", async () => {
 		const project = setupProject();
 		const importerPath = "/src/features/featureA/component.ts";
 		const indexPath = "/src/components/index.ts";
@@ -236,7 +236,7 @@ describe("removePathAlias", () => {
 		expect(result.changedFiles).toEqual([importerPath]);
 	});
 
-	it("エイリアスが .js ファイルを指す場合、結果から拡張子は削除される", async () => {
+	it("removes the extension from the result when the alias points to a .js file", async () => {
 		const project = setupProject();
 		const importerPath = "/src/app.ts";
 		const jsPath = "/src/utils/legacy.js";

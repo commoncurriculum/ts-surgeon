@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { findSymbolReferences } from "../../ts-morph/find-references"; // 新しい関数と型をインポート
+import { findSymbolReferences } from "../../ts-morph/find-references"; // import the new function and types
 import { performance } from "node:perf_hooks";
 
 export function registerFindReferencesTool(server: McpServer): void {
@@ -41,7 +41,7 @@ Returns the definition (file path, line, column, source line) when found, follow
 			const startTime = performance.now();
 			let message = "";
 			let isError = false;
-			let duration = "0.00"; // duration を外で宣言・初期化
+			let duration = "0.00"; // declared and initialized outside finally
 
 			try {
 				const { tsconfigPath, targetFilePath, position } = args;
@@ -81,10 +81,10 @@ Returns the definition (file path, line, column, source line) when found, follow
 				isError = true;
 			} finally {
 				const endTime = performance.now();
-				duration = ((endTime - startTime) / 1000).toFixed(2); // duration を更新
+				duration = ((endTime - startTime) / 1000).toFixed(2); // update duration
 			}
 
-			// finally の外で return する
+			// return outside the finally block
 			const finalMessage = `${message}\nStatus: ${
 				isError ? "Failure" : "Success"
 			}\nProcessing time: ${duration} seconds`;

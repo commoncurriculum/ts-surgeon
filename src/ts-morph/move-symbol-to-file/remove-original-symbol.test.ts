@@ -6,10 +6,10 @@ import { removeOriginalSymbol } from "./remove-original-symbol";
 import { findTopLevelDeclarationByName } from "./find-declaration";
 
 describe("removeOriginalSymbol", () => {
-	// 各宣言タイプに対応するテストデータ
+	// Test data for each declaration type
 	const testCases = [
 		{
-			description: "const 変数",
+			description: "const variable",
 			symbolName: "symbolToRemove",
 			syntaxKind: SyntaxKind.VariableStatement,
 			declarationSnippet: "export const symbolToRemove = 123;",
@@ -31,7 +31,7 @@ describe("removeOriginalSymbol", () => {
 			assertionSnippet: "export class ClassToRemove",
 		},
 		{
-			description: "type エイリアス",
+			description: "type alias",
 			symbolName: "TypeToRemove",
 			syntaxKind: SyntaxKind.TypeAliasDeclaration,
 			declarationSnippet: "export type TypeToRemove = { id: string };",
@@ -55,7 +55,7 @@ describe("removeOriginalSymbol", () => {
 	];
 
 	it.each(testCases)(
-		"指定されたトップレベルの $description 宣言を削除する",
+		"removes the specified top-level $description declaration",
 		({
 			description,
 			symbolName,
@@ -91,7 +91,7 @@ describe("removeOriginalSymbol", () => {
 		},
 	);
 
-	it("最後の宣言を削除した結果、ファイルが空になる", () => {
+	it("results in an empty file when the last declaration is removed", () => {
 		const project = createInMemoryProject();
 		const symbolName = "onlySymbol";
 		const sourceFile = project.createSourceFile(
@@ -108,10 +108,10 @@ describe("removeOriginalSymbol", () => {
 
 		removeOriginalSymbol(sourceFile, [declarationToRemove]);
 
-		expect(sourceFile.getFullText().trim()).toBe(""); // 空文字列（または空白のみ）になることを期待
+		expect(sourceFile.getFullText().trim()).toBe(""); // expect an empty string (or whitespace only)
 	});
 
-	it("削除対象が空配列の場合、エラーなく完了し、ファイルは変更されない", () => {
+	it("completes without error and leaves the file unchanged when an empty array is passed", () => {
 		const project = createInMemoryProject();
 		const originalContent = "export const existing = 1;";
 		const sourceFile = project.createSourceFile(
@@ -124,7 +124,7 @@ describe("removeOriginalSymbol", () => {
 		expect(sourceFile.getFullText()).toBe(originalContent);
 	});
 
-	it("別ファイルの宣言を渡された場合、その宣言はスキップされる", () => {
+	it("skips a declaration when it belongs to a different file", () => {
 		const project = createInMemoryProject();
 		const targetFile = project.createSourceFile(
 			"/target.ts",
@@ -147,7 +147,7 @@ describe("removeOriginalSymbol", () => {
 		expect(otherFile.getFullText()).toBe("export const elsewhere = 2;");
 	});
 
-	it("複数の宣言を一度に削除する", () => {
+	it("removes multiple declarations at once", () => {
 		const project = createInMemoryProject();
 		const content = `
 export const varToRemove = 1;
@@ -185,6 +185,6 @@ export class ClassToRemove {}
 		expect(updatedContent).not.toContain("export const varToRemove");
 		expect(updatedContent).not.toContain("export function funcToRemove");
 		expect(updatedContent).not.toContain("export class ClassToRemove");
-		expect(updatedContent).toContain("export const keepMe = 2;"); // 残るべき宣言
+		expect(updatedContent).toContain("export const keepMe = 2;"); // declaration that should remain
 	});
 });

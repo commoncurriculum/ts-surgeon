@@ -9,8 +9,8 @@ const { harness, setup, reset, requirePrepared, expectNoRegression } =
 beforeAll(setup, 600_000);
 afterEach(reset);
 
-describe("zustand E2E (alias 系, 差分緑検証)", () => {
-	it("remove_path_alias: テストの zustand エイリアス import を相対パス化しても型/テスト緑", async (ctx) => {
+describe("zustand E2E (alias-related, differential-green verification)", () => {
+	it("remove_path_alias: converting zustand alias imports in tests to relative paths keeps types/tests green", async (ctx) => {
 		requirePrepared(ctx);
 		const targetPath = absPath(ZUSTAND, "tests/basic.test.tsx");
 
@@ -25,14 +25,14 @@ describe("zustand E2E (alias 系, 差分緑検証)", () => {
 
 		expect(result.isError, textOf(result)).toBeFalsy();
 		const after = fs.readFileSync(targetPath, "utf-8");
-		// エイリアスが相対パスに置換されている
+		// Alias has been replaced with a relative path
 		expect(after).not.toMatch(/from 'zustand'/);
 		expect(after).toMatch(/from '\.\.\/src/);
 
 		expectNoRegression();
 	});
 
-	it("rename_filesystem_entry: middleware ファイルをリネームして import 更新しても型/テスト緑", async (ctx) => {
+	it("rename_filesystem_entry: renaming a middleware file and updating imports keeps types/tests green", async (ctx) => {
 		requirePrepared(ctx);
 		const oldPath = absPath(ZUSTAND, "src/middleware/combine.ts");
 		const newPath = absPath(ZUSTAND, "src/middleware/_e2e-combine.ts");

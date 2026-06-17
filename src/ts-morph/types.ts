@@ -11,10 +11,10 @@ export type PathMapping = {
 };
 
 /**
- * ファイルまたはフォルダのリネーム操作を表すオブジェクト。
- * @property sourceFile - 対象となる SourceFile インスタンス (ファイルの場合)
- * @property oldPath - リネーム前の絶対パス
- * @property newPath - リネーム後の絶対パス
+ * Represents a file or folder rename operation.
+ * @property sourceFile - The target SourceFile instance (for file renames)
+ * @property oldPath - The absolute path before renaming
+ * @property newPath - The absolute path after renaming
  */
 export type RenameOperation = {
 	sourceFile: SourceFile;
@@ -23,12 +23,12 @@ export type RenameOperation = {
 };
 
 /**
- * ファイルリネーム/移動時に更新が必要なインポート/エクスポート宣言の情報。
- * @property declaration - 対象となる ImportDeclaration または ExportDeclaration ノード
- * @property resolvedPath - 元の import/export が解決していたファイルの絶対パス
- * @property referencingFilePath - この宣言を含むファイルの絶対パス
- * @property originalSpecifierText - 元のモジュール指定子のテキスト (例: './utils', '@/components')
- * @property wasPathAlias - 元の指定子がパスエイリアスだったかどうか (オプショナル)
+ * Information about an import/export declaration that needs to be updated when a file is renamed or moved.
+ * @property declaration - The target ImportDeclaration or ExportDeclaration node
+ * @property resolvedPath - The absolute path of the file that the original import/export resolved to
+ * @property referencingFilePath - The absolute path of the file containing this declaration
+ * @property originalSpecifierText - The original module specifier text (e.g. './utils', '@/components')
+ * @property wasPathAlias - Whether the original specifier was a path alias (optional)
  */
 export interface DeclarationToUpdate {
 	declaration: ImportDeclaration | ExportDeclaration;
@@ -39,25 +39,25 @@ export interface DeclarationToUpdate {
 }
 
 /**
- * 移動対象シンボルに対する内部依存関係の分類結果。
+ * Classification result for internal dependencies of a symbol being moved.
  */
 export type DependencyClassification =
-	// 依存関係も新しいファイルに移動し、内部でのみ使用 (export しない)
+	// The dependency is also moved to the new file and used only internally (not exported)
 	| { type: "moveToNewFile"; statement: Statement }
-	// 依存関係は元のファイルに残り、新しいファイルから import する
+	// The dependency stays in the original file and will be imported from there by the new file
 	| { type: "importFromOriginal"; statement: Statement; name: string }
-	// 依存関係は元のファイルに残るが、新しいファイルから import するためexportをつける
+	// The dependency stays in the original file but needs an export added so the new file can import it
 	| { type: "addExport"; statement: Statement; name: string };
 
 /**
- * generateNewSourceFileContent に渡す外部インポート情報の型エイリアス
+ * Type alias for external import information passed to generateNewSourceFileContent
  */
 export type NeededExternalImports = Map<
-	string, // moduleSpecifier (計算後の相対パス or オリジナル)
+	string, // moduleSpecifier (computed relative path or original)
 	{
-		names: Set<string>; // 名前付きインポート or デフォルト('default') or エイリアス
+		names: Set<string>; // named imports, default ('default'), or aliases
 		declaration?: ImportDeclaration;
-		isNamespaceImport?: boolean; // 名前空間インポートかどうかのフラグ
-		namespaceImportName?: string; // 名前空間インポートの識別子 (例: 'path')
+		isNamespaceImport?: boolean; // flag indicating a namespace import
+		namespaceImportName?: string; // identifier for the namespace import (e.g. 'path')
 	}
 >;

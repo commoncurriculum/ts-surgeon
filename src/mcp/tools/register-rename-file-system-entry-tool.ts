@@ -144,9 +144,9 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 				);
 
 				if (error instanceof TimeoutError) {
-					message = `処理が ${error.durationSeconds} 秒以内に完了しなかったため、タイムアウトしました。操作はキャンセルされました.\nプロジェクトの規模が大きいか、変更箇所が多い可能性があります.`;
+					message = `The operation timed out because it did not complete within ${error.durationSeconds} seconds. The operation has been cancelled.\nThe project may be large or the number of changes may be high.`;
 				} else if (error instanceof Error && error.name === "AbortError") {
-					message = `操作がキャンセルされました: ${error.message}`;
+					message = `The operation was cancelled: ${error.message}`;
 				} else {
 					const errorMessage =
 						error instanceof Error ? error.message : String(error);

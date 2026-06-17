@@ -11,17 +11,17 @@ export interface DirectoryCount {
 }
 
 export interface UnusedExportsSummary {
-	/** 候補総数 */
+	/** Total number of candidates */
 	total: number;
-	/** `sameFileReferenceCount === 0` = 真のデッド (宣言ごと削除可) の件数 */
+	/** Count of entries where `sameFileReferenceCount === 0` = truly dead (safe to delete the whole declaration) */
 	deletable: number;
-	/** `sameFileReferenceCount >= 1` = 過剰 export (export キーワードのみ不要) の件数 */
+	/** Count of entries where `sameFileReferenceCount >= 1` = over-exported (only the export keyword is unnecessary) */
 	unexportOnly: number;
-	/** `[default]` 候補 (偽陽性になりやすい) の件数 */
+	/** Count of `[default]` candidates (prone to false positives) */
 	defaultExports: number;
-	/** 宣言種別ごとの件数 (件数降順 → kind 名昇順) */
+	/** Count per declaration kind (descending by count, then ascending by kind name) */
 	byKind: KindCount[];
-	/** ディレクトリ (ファイル名を除いたパス) ごとの件数 (件数降順 → パス昇順) */
+	/** Count per directory (file name stripped) (descending by count, then ascending by path) */
 	byDirectory: DirectoryCount[];
 }
 
@@ -31,7 +31,7 @@ function dirnameOf(filePath: string): string {
 }
 
 /**
- * 件数降順、同数ならキー昇順で安定ソートした `[key, count]` 配列を返す。
+ * Returns a stable-sorted `[key, count]` array in descending count order, ties broken by ascending key.
  */
 function rank(counts: Map<string, number>): { key: string; count: number }[] {
 	return [...counts.entries()]
@@ -40,11 +40,12 @@ function rank(counts: Map<string, number>): { key: string; count: number }[] {
 }
 
 /**
- * `findUnusedExports` の候補配列を集計し、大規模リポジトリでも俯瞰できるサマリを返す純関数。
+ * Pure function that aggregates the candidate array from `findUnusedExports` into a summary
+ * suitable for a high-level overview even on large repositories.
  *
- * 1 候補 1 行で全件列挙すると MCP のトークン上限を超えやすいため、
- * 「削除可 (deletable) / unexport のみ (unexportOnly)」「kind 別」「ディレクトリ別」の
- * 集計だけを返してエージェントが対象範囲を素早く判断できるようにする。
+ * Listing every candidate line-by-line can easily exceed MCP token limits, so this function
+ * returns only aggregate counts by "deletable / unexportOnly", "by kind", and "by directory"
+ * so the agent can quickly assess scope.
  */
 export function summarizeUnusedExports(
 	entries: UnusedExport[],

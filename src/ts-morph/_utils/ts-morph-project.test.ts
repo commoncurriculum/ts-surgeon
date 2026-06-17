@@ -9,13 +9,13 @@ import {
 vi.mock("../../utils/logger");
 
 describe("getTsConfigPaths", () => {
-	it("paths が設定されていない場合は undefined を返す", () => {
+	it("returns undefined when paths is not configured", () => {
 		const project = createInMemoryProject({ pathAliases: {} });
 		project.compilerOptions.set({ baseUrl: ".", paths: undefined });
 		expect(getTsConfigPaths(project)).toBeUndefined();
 	});
 
-	it("正常な paths を返す", () => {
+	it("returns valid paths", () => {
 		const project = createInMemoryProject({
 			pathAliases: { "@/*": ["src/*"], "@lib/*": ["lib/*"] },
 		});
@@ -25,15 +25,15 @@ describe("getTsConfigPaths", () => {
 		});
 	});
 
-	it("paths の値が文字列配列でないエントリはスキップされる", () => {
+	it("skips entries whose paths value is not a string array", () => {
 		const project = createInMemoryProject();
 		project.compilerOptions.set({
 			baseUrl: ".",
 			paths: {
 				"@/*": ["src/*"],
-				// @ts-expect-error 不正値の動作を検証
+				// @ts-expect-error verify behavior with invalid value
 				"@bad": "not-an-array",
-				// @ts-expect-error 不正値の動作を検証
+				// @ts-expect-error verify behavior with invalid value
 				"@mixed/*": [123, "lib/*"],
 			},
 		});
@@ -41,23 +41,23 @@ describe("getTsConfigPaths", () => {
 		expect(getTsConfigPaths(project)).toEqual({ "@/*": ["src/*"] });
 	});
 
-	it("paths がオブジェクト以外の場合は undefined を返す", () => {
+	it("returns undefined when paths is not an object", () => {
 		const project = createInMemoryProject();
-		// @ts-expect-error 不正値の動作を検証
+		// @ts-expect-error verify behavior with invalid value
 		project.compilerOptions.set({ baseUrl: ".", paths: "invalid" });
 		expect(getTsConfigPaths(project)).toBeUndefined();
 	});
 });
 
 describe("getTsConfigAliasKeys", () => {
-	it("paths のキー一覧を返す", () => {
+	it("returns the list of keys from paths", () => {
 		const project = createInMemoryProject({
 			pathAliases: { "@/*": ["src/*"], "@lib/*": ["lib/*"] },
 		});
 		expect(getTsConfigAliasKeys(project).sort()).toEqual(["@/*", "@lib/*"]);
 	});
 
-	it("paths が無ければ空配列を返す", () => {
+	it("returns an empty array when paths is absent", () => {
 		const project = createInMemoryProject({ pathAliases: {} });
 		project.compilerOptions.set({ baseUrl: ".", paths: undefined });
 		expect(getTsConfigAliasKeys(project)).toEqual([]);
@@ -65,12 +65,12 @@ describe("getTsConfigAliasKeys", () => {
 });
 
 describe("getTsConfigBaseUrl", () => {
-	it("baseUrl を返す", () => {
+	it("returns the baseUrl", () => {
 		const project = createInMemoryProject();
 		expect(getTsConfigBaseUrl(project)).toBe(".");
 	});
 
-	it("baseUrl が設定されていない場合は undefined を返す", () => {
+	it("returns undefined when baseUrl is not configured", () => {
 		const project = createInMemoryProject();
 		project.compilerOptions.set({ baseUrl: undefined });
 		expect(getTsConfigBaseUrl(project)).toBeUndefined();

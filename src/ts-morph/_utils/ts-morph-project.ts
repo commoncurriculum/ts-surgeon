@@ -29,7 +29,7 @@ export async function saveProjectChanges(
 			throw error;
 		}
 		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`ファイル保存中にエラーが発生しました: ${message}`);
+		throw new Error(`An error occurred while saving files: ${message}`);
 	}
 }
 

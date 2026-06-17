@@ -2,24 +2,24 @@ import type { Project, SourceFile } from "ts-morph";
 import logger from "../../../utils/logger";
 
 /**
- * ts-morph (v25.x 系) の `SourceFile.move()` / `Directory.move()` は内部で
- * `_updateReferencesForMoveInternal` を呼び、移動ファイル単位で「参照しているリテラル」
- * を全プロジェクトから探して module specifier を書き換える。
+ * In ts-morph (v25.x), `SourceFile.move()` / `Directory.move()` internally calls
+ * `_updateReferencesForMoveInternal`, which searches the entire project for referencing
+ * literals per moved file and rewrites module specifiers.
  *
- * このリポジトリでは `updateModuleSpecifiers` が同じ仕事を既に行っているため二重実行。
- * しかも ts-morph 側の参照解決は per-file × O(project) で cascade slowdown を起こし、
- * 大規模 monorepo (3000+ files) でディレクトリ rename すると 6 分を超えるレベル
- * (実測値: 369s for 34 files in src/types/)。
+ * In this repository, `updateModuleSpecifiers` already performs the same work, causing
+ * double execution. Moreover, ts-morph's reference resolution runs per-file × O(project),
+ * causing cascade slowdown — renaming a directory in a large monorepo (3000+ files) can
+ * take over 6 minutes (measured: 369s for 34 files in src/types/).
  *
- * 本 util は SourceFile prototype の参照解決ペアを一時的に no-op 化して、その間に
- * move を実行する。fn 終了後 try/finally で必ず restore する。
+ * This util temporarily no-ops the reference-resolution pair on the SourceFile prototype
+ * while move is executed. A try/finally block always restores the originals after fn returns.
  *
- * 注意:
- *  - private API (`_underscore` メンバ) への monkey-patch のため、ts-morph 25.x に依存。
- *    将来バージョンで private 名が変わった場合は patch が当たらず、自動的に従来動作
- *    (auto-ref-update 込み) に fallback する (= 遅いが正しく動く)。
- *  - patch は **prototype レベルで一時上書き** するため、同プロセス内の他コードが
- *    並行で move() を呼んだ場合も影響を受ける。直列実行が前提。
+ * Notes:
+ *  - This monkey-patches private API (`_underscore` members), so it depends on ts-morph 25.x.
+ *    If the private names change in a future version, the patch will not apply and behavior
+ *    will automatically fall back to the original (slower but correct) auto-ref-update path.
+ *  - The patch **temporarily overwrites at the prototype level**, so other code in the same
+ *    process that calls move() concurrently will also be affected. Serial execution is assumed.
  */
 export function withSkippedTsMorphReferenceUpdates<T>(
 	project: Project,
@@ -56,7 +56,7 @@ export function withSkippedTsMorphReferenceUpdates<T>(
 		referencingLiterals: [],
 	});
 	protoAny._updateReferencesForMoveInternal = () => {
-		/* no-op: updateModuleSpecifiers が同等の処理を担当 */
+		/* no-op: updateModuleSpecifiers handles the equivalent processing */
 	};
 
 	try {
@@ -68,8 +68,8 @@ export function withSkippedTsMorphReferenceUpdates<T>(
 }
 
 /**
- * Project から既存の SourceFile を 1 つ取り、その prototype を返す。
- * Project に SourceFile が 1 つもない場合は undefined。
+ * Retrieves one existing SourceFile from the Project and returns its prototype.
+ * Returns undefined if the Project has no SourceFiles.
  */
 function pickSourceFilePrototype(project: Project): object | undefined {
 	const sourceFiles = project.getSourceFiles();

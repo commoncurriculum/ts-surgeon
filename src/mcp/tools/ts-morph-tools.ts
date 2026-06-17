@@ -10,7 +10,7 @@ import { registerRenameFileSystemEntryTool } from "./register-rename-file-system
 import { registerRenameSymbolTool } from "./register-rename-symbol-tool";
 
 /**
- * ts-morph を利用したリファクタリングツール群を MCP サーバーに登録する
+ * Registers the ts-morph-based refactoring tool suite with the MCP server
  */
 export function registerTsMorphTools(server: McpServer): void {
 	registerRenameSymbolTool(server);

@@ -49,15 +49,15 @@ console.log(targetSymbol);`,
 	const barrelFilePath = "/src/index.ts";
 	project.createSourceFile(
 		barrelFilePath,
-		`export { targetSymbol } from './target'; // 値を再エクスポート
-export type { TargetType } from './target'; // 型を再エクスポート`,
+		`export { targetSymbol } from './target'; // re-export value
+export type { TargetType } from './target'; // re-export type`,
 	);
 
 	// File importing from barrel file
 	const importerBarrelPath = "/src/importer-barrel.ts";
 	project.createSourceFile(
 		importerBarrelPath,
-		`import { targetSymbol } from './index'; // バレルファイルからインポート
+		`import { targetSymbol } from './index'; // import from barrel file
 console.log(targetSymbol);`,
 	);
 
@@ -78,7 +78,7 @@ console.log(targetSymbol);`,
 };
 
 describe("findDeclarationsReferencingFile", () => {
-	it("target.ts を直接参照している全ての宣言 (Import/Export) を見つける", async () => {
+	it("finds all declarations (Import/Export) that directly reference target.ts", async () => {
 		const {
 			project,
 			targetFile,
@@ -89,10 +89,10 @@ describe("findDeclarationsReferencingFile", () => {
 		} = setupTestProject();
 		const results = await findDeclarationsReferencingFile(targetFile);
 
-		// 期待値: 5つの宣言 (相対パスインポートx2, エイリアスパスインポートx1, バレルエクスポートx2)
+		// expected: 5 declarations (relative path imports x2, alias path import x1, barrel exports x2)
 		expect(results).toHaveLength(5);
 
-		// --- 相対パスインポートの検証 ---
+		// --- Verify relative path imports ---
 		const relativeImports = results.filter(
 			(r) =>
 				r.referencingFilePath === importerRelPath &&
@@ -108,7 +108,7 @@ describe("findDeclarationsReferencingFile", () => {
 		);
 		expect(typeRelImport?.originalSpecifierText).toBe("./target");
 
-		// --- エイリアスパスインポートの検証 ---
+		// --- Verify alias path imports ---
 		const aliasImports = results.filter(
 			(r) =>
 				r.referencingFilePath === importerAliasPath &&
@@ -118,7 +118,7 @@ describe("findDeclarationsReferencingFile", () => {
 		expect(aliasImports[0].originalSpecifierText).toBe("@/target");
 		expect(aliasImports[0].wasPathAlias).toBe(true);
 
-		// --- バレルエクスポートの検証 ---
+		// --- Verify barrel exports ---
 		const barrelExports = results.filter(
 			(r) =>
 				r.referencingFilePath === barrelFilePath &&
@@ -135,12 +135,12 @@ describe("findDeclarationsReferencingFile", () => {
 		expect(typeBarrelExport?.originalSpecifierText).toBe("./target");
 	});
 
-	it("エイリアスパスでインポートしている ImportDeclaration を見つけ、wasPathAlias が true になる", async () => {
+	it("finds an ImportDeclaration importing via an alias path and sets wasPathAlias to true", async () => {
 		const { project, targetFile, targetFilePath, importerAliasPath } =
 			setupTestProject();
 		const results = await findDeclarationsReferencingFile(targetFile);
 
-		// エイリアスパスによるインポートを特定する
+		// Identify the import using an alias path
 		const aliasImports = results.filter(
 			(r) => r.referencingFilePath === importerAliasPath,
 		);
@@ -152,15 +152,15 @@ describe("findDeclarationsReferencingFile", () => {
 		expect(aliasImport.resolvedPath).toBe(targetFilePath);
 		expect(aliasImport.originalSpecifierText).toBe("@/target");
 		expect(aliasImport.declaration.getKindName()).toBe("ImportDeclaration");
-		expect(aliasImport.wasPathAlias).toBe(true); // エイリアスが検出されるべき
+		expect(aliasImport.wasPathAlias).toBe(true); // alias should be detected
 	});
 
-	it("バレルファイルで再エクスポートしている ExportDeclaration を見つける", async () => {
+	it("finds an ExportDeclaration re-exporting via a barrel file", async () => {
 		const { project, targetFile, targetFilePath, barrelFilePath } =
 			setupTestProject();
 		const results = await findDeclarationsReferencingFile(targetFile);
 
-		// バレルファイルからのエクスポートを特定する
+		// Identify the exports from the barrel file
 		const exportDeclarations = results.filter(
 			(r) => r.referencingFilePath === barrelFilePath,
 		);
@@ -187,22 +187,22 @@ describe("findDeclarationsReferencingFile", () => {
 		expect(typeExport?.wasPathAlias).toBe(false);
 	});
 
-	// findDeclarationsReferencingFile は getReferencingSourceFiles を使うため、
-	// バレルファイルを経由した参照は見つけられない (これは想定される動作)
-	it("バレルファイル経由のインポートは見つけられない (getReferencingSourceFiles の仕様)", async () => {
+	// Because findDeclarationsReferencingFile uses getReferencingSourceFiles,
+	// references via barrel files cannot be found (this is expected behavior)
+	it("cannot find imports that go through a barrel file (by design of getReferencingSourceFiles)", async () => {
 		const { project, targetFile, importerBarrelPath } = setupTestProject();
 		const results = await findDeclarationsReferencingFile(targetFile);
 
-		// 結果に importerBarrelPath からのインポートが含まれないことを確認
+		// Confirm that the results do not include an import from importerBarrelPath
 		const barrelImport = results.find(
 			(r) => r.referencingFilePath === importerBarrelPath,
 		);
 		expect(barrelImport).toBeUndefined();
 	});
 
-	it("対象ファイルへの参照がない場合は空の配列を返す", async () => {
+	it("returns an empty array when there are no references to the target file", async () => {
 		const { project } = setupTestProject();
-		// 参照されていないファイルを作成
+		// Create a file with no references
 		const unreferencedFile = project.createSourceFile(
 			"/src/unreferenced.ts",
 			"export const x = 1;",
@@ -211,9 +211,9 @@ describe("findDeclarationsReferencingFile", () => {
 		expect(results).toHaveLength(0);
 	});
 
-	it("Import と Export が混在する場合、両方を見つけられる", async () => {
+	it("finds both when Import and Export declarations are mixed", async () => {
 		const { project, targetFile, targetFilePath } = setupTestProject();
-		// target からインポートとエクスポートの両方を行う別のファイルを追加
+		// Add another file that both imports and exports from target
 		const mixedRefPath = "/src/mixed-ref.ts";
 		project.createSourceFile(
 			mixedRefPath,
@@ -225,7 +225,7 @@ describe("findDeclarationsReferencingFile", () => {
 		);
 		const results = await findDeclarationsReferencingFile(targetFile);
 
-		// mixedRefPath からの2つの宣言 + セットアップからの他の宣言を期待
+		// Expect 2 declarations from mixedRefPath plus other declarations from setup
 		const mixedRefs = results.filter(
 			(r) => r.referencingFilePath === mixedRefPath,
 		);

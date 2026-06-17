@@ -2,58 +2,58 @@ import { describe, expect, it } from "vitest";
 import { isPathAlias } from "./path-alias";
 
 describe("isPathAlias", () => {
-	it("ワイルドカードエイリアスの prefix と前方一致するとき true", () => {
+	it("returns true when the specifier starts with the wildcard alias prefix", () => {
 		expect(isPathAlias("@/components/Button", ["@/*"])).toBe(true);
 	});
 
-	it("ワイルドカードエイリアスの prefix と一致しないとき false", () => {
+	it("returns false when the specifier does not match the wildcard alias prefix", () => {
 		expect(isPathAlias("react", ["@/*"])).toBe(false);
 	});
 
-	it("ワイルドカードなしエイリアスとは完全一致のみ true", () => {
+	it("returns true only for an exact match against a non-wildcard alias", () => {
 		expect(isPathAlias("@app", ["@app"])).toBe(true);
 		expect(isPathAlias("@app/router", ["@app"])).toBe(false);
 	});
 
-	it("似た prefix を持つ別エイリアスを誤判定しない", () => {
-		// "@foo" 定義に対し "@foobar/baz" は別物として false
+	it("does not false-positively match a different alias with a similar prefix", () => {
+		// "@foobar/baz" is a different alias from "@foo" and should return false
 		expect(isPathAlias("@foobar/baz", ["@foo"])).toBe(false);
-		// `/*` 付きでも prefix 末尾の `/` まで一致が必要
+		// Even with `/*`, the prefix must match up to and including the trailing `/`
 		expect(isPathAlias("@foobar/baz", ["@foo/*"])).toBe(false);
 	});
 
-	it("エイリアス配列が空なら常に false", () => {
+	it("always returns false when the alias array is empty", () => {
 		expect(isPathAlias("@/components", [])).toBe(false);
 	});
 
-	it("複数エイリアスのうちどれかに一致すれば true", () => {
+	it("returns true when the specifier matches any one of multiple aliases", () => {
 		expect(isPathAlias("@components/Card", ["@/*", "@components/*"])).toBe(
 			true,
 		);
 	});
 
-	it("階層 prefix を含むワイルドカードは prefix 全体が一致したときのみ true", () => {
+	it("returns true for a hierarchical-prefix wildcard only when the entire prefix matches", () => {
 		expect(isPathAlias("@foo/bar/x", ["@foo/bar/*"])).toBe(true);
-		// `@foo/barz` は `@foo/bar/` で始まらないため false
+		// `@foo/barz` does not start with `@foo/bar/` so returns false
 		expect(isPathAlias("@foo/barz", ["@foo/bar/*"])).toBe(false);
 	});
 
-	// 「`/*` で終わらないワイルドカードは完全一致のみ扱う」という挙動を spec として固定
+	// Fixing as spec: wildcards that do not end with `/*` are treated as exact match only
 	it.each([
-		// "*" 単体: 完全一致のみ (実質的にほぼ常に false)
+		// "*" alone: exact match only (effectively almost always false)
 		{ specifier: "anything", alias: "*", expected: false },
 		{ specifier: "*", alias: "*", expected: true },
-		// "@*" のような `/` なし末尾アスタリスク: 完全一致のみ。前方一致は期待しない
+		// trailing asterisk without `/` like "@*": exact match only, not prefix match
 		{ specifier: "@foo", alias: "@*", expected: false },
 		{ specifier: "@*", alias: "@*", expected: true },
-		// 末尾 `/` のみ (`*` なし): 完全一致のみ
+		// trailing `/` only (no `*`): exact match only
 		{ specifier: "@/foo", alias: "@/", expected: false },
 		{ specifier: "@/", alias: "@/", expected: true },
-		// 空文字エイリアス (malformed tsconfig 防御)
+		// empty string alias (defense against malformed tsconfig)
 		{ specifier: "x", alias: "", expected: false },
 		{ specifier: "", alias: "", expected: true },
 	])(
-		"alias=$alias / specifier=$specifier のとき $expected",
+		"alias=$alias / specifier=$specifier returns $expected",
 		({ specifier, alias, expected }) => {
 			expect(isPathAlias(specifier, [alias])).toBe(expected);
 		},

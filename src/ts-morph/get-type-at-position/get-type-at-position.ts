@@ -6,16 +6,16 @@ import {
 } from "ts-morph";
 
 export interface Position {
-	/** 1-based 行番号 */
+	/** 1-based line number */
 	line: number;
-	/** 1-based 列番号 */
+	/** 1-based column number */
 	column: number;
 }
 
 export interface SymbolInfo {
-	/** シンボル名 */
+	/** Symbol name */
 	name: string;
-	/** シンボルの最初の宣言のノード種別 (例: VariableDeclaration, FunctionDeclaration) */
+	/** Node kind of the symbol's first declaration (e.g. VariableDeclaration, FunctionDeclaration) */
 	kind: string;
 }
 
@@ -26,17 +26,17 @@ export interface DeclarationLocation {
 }
 
 export interface GetTypeAtPositionResult {
-	/** 入力された位置 */
+	/** The input position */
 	position: Position;
-	/** その位置に存在するノードの SyntaxKind 名 */
+	/** SyntaxKind name of the node at the position */
 	nodeKind: string;
-	/** その位置のノードのソーステキスト (80 コードポイントで切り詰め) */
+	/** Source text of the node at the position (truncated to 80 code points) */
 	nodeText: string;
-	/** TypeChecker から得た型のテキスト表現 (関数の場合は signature 形式) */
+	/** Text representation of the type from TypeChecker (signature form for functions) */
 	type: string;
-	/** ノードに紐づくシンボル (識別子・宣言など) */
+	/** Symbol associated with the node (identifier, declaration, etc.) */
 	symbol?: SymbolInfo;
-	/** シンボルの最初の宣言位置 (alias の場合は再帰解決後の元宣言) */
+	/** Location of the symbol's first declaration (for aliases, recursively resolved to the original declaration) */
 	declaration?: DeclarationLocation;
 }
 
@@ -44,18 +44,18 @@ const NODE_TEXT_MAX_LENGTH = 80;
 const ALIAS_RESOLUTION_DEPTH_LIMIT = 16;
 
 /**
- * 指定された位置にある式・識別子の TypeChecker による推論型を取得する。
+ * Returns the TypeChecker-inferred type of the expression or identifier at the given position.
  *
- * - 関数/メソッド宣言を指す Identifier → 宣言テキストから組み立てた signature
- *   (例: `(name: string) => string`、overload なら `(...) & (...)`)
- * - 変数/プロパティ/リテラル → 推論型のテキスト (例: `{ id: string }`, `"hello"`)
- * - 空白/コメント行など、識別子でない位置 → `nodeKind` が SourceFile や
- *   EndOfFileToken となり、`type` はその位置で TS が返す型 (多くの場合
- *   `typeof import("...")` 等)。エラーにはならないため、呼び出し側で
- *   `nodeKind` を見て判定すること。
+ * - Identifier pointing to a function/method declaration → signature built from the declaration text
+ *   (e.g. `(name: string) => string`; overloads as `(...) & (...)`)
+ * - Variable/property/literal → inferred type text (e.g. `{ id: string }`, `"hello"`)
+ * - Whitespace/comment line or non-identifier position → `nodeKind` is SourceFile or
+ *   EndOfFileToken, and `type` is whatever TS returns at that position (often
+ *   `typeof import("...")`). This is not an error — callers should inspect
+ *   `nodeKind` to determine whether the result is meaningful.
  *
- * `tsc` を都度起動するより圧倒的に速く、トークン効率も良いため、
- * Claude が能動的に「この変数の実際の型は?」を確認する用途を想定。
+ * Much faster than spawning `tsc` each time and more token-efficient,
+ * designed for use by Claude to proactively answer "what is the actual type of this variable?".
  */
 export function getTypeAtPosition(
 	project: Project,
@@ -69,13 +69,13 @@ export function getTypeAtPosition(
 		position.column < 1
 	) {
 		throw new Error(
-			`位置は 1-based の正の整数で指定してください (受信値: line=${position.line}, column=${position.column})`,
+			`Position must be specified as 1-based positive integers (received: line=${position.line}, column=${position.column})`,
 		);
 	}
 
 	const sourceFile = project.getSourceFile(filePath);
 	if (!sourceFile) {
-		throw new Error(`ファイルが見つかりません: ${filePath}`);
+		throw new Error(`File not found: ${filePath}`);
 	}
 
 	let offset: number;
@@ -86,16 +86,16 @@ export function getTypeAtPosition(
 		);
 	} catch (_error) {
 		throw new Error(
-			`指定位置 (${position.line}:${position.column}) はファイルの範囲外か無効です`,
+			`Specified position (${position.line}:${position.column}) is out of range or invalid for this file`,
 		);
 	}
 
-	// 注: getDescendantAtPos は空白上でも SourceFile / EndOfFileToken を返すため、
-	// 「ノードが見つからない」ケースは事実上発生しない。安全のため undefined ガードのみ残す。
+	// Note: getDescendantAtPos returns SourceFile / EndOfFileToken even over whitespace,
+	// so a "node not found" case practically never occurs. The undefined guard is kept for safety.
 	const node = sourceFile.getDescendantAtPos(offset);
 	if (!node) {
 		throw new Error(
-			`指定位置 (${position.line}:${position.column}) からノードを解決できません`,
+			`Cannot resolve a node from the specified position (${position.line}:${position.column})`,
 		);
 	}
 
@@ -138,8 +138,8 @@ export function getTypeAtPosition(
 }
 
 /**
- * import { x } from './a' のような alias を、`export * from './b'` を含む再エクスポート
- * チェーンを辿って元の宣言シンボルまで再帰解決する。
+ * Recursively resolves an alias such as `import { x } from './a'` back to the original
+ * declaration symbol by following re-export chains including `export * from './b'`.
  */
 function resolveAliasChain(
 	symbol: TsMorphSymbol | undefined,
@@ -156,15 +156,17 @@ function resolveAliasChain(
 }
 
 /**
- * 型のテキスト表現を組み立てる。
+ * Assembles the text representation of a type.
  *
- * - シンボルの宣言がすべて signature を持つ宣言 (FunctionDeclaration /
+ * - If all of the symbol's declarations are signature-bearing (FunctionDeclaration /
  *   MethodDeclaration / MethodSignature / ArrowFunction / FunctionExpression /
- *   CallSignature) なら、それらの宣言テキストから signature を組み立てる。
- *   これにより rest `...` / optional `?` / 分割代入パラメータが破壊されず、
- *   オーバーロード時には合成 `&` で連結される。
- * - 関数 + namespace マージのような混在宣言の場合は raw を返してプロパティ側を保全する。
- * - 上記以外 (変数・型エイリアス・リテラル等) は TypeChecker の raw text をそのまま返す。
+ *   CallSignature), builds the signature from those declaration texts.
+ *   This preserves rest `...` / optional `?` / destructuring parameters intact,
+ *   and joins overloads with `&`.
+ * - For mixed declarations such as function + namespace merges, returns the raw type
+ *   to preserve the property side.
+ * - For everything else (variables, type aliases, literals, etc.) returns the raw
+ *   TypeChecker text as-is.
  */
 function formatTypeText(
 	type: Type,
@@ -181,11 +183,11 @@ function formatTypeText(
 		signatureDecls.length === 0 ||
 		signatureDecls.length !== declarations.length
 	) {
-		// 混在 (namespace merge 等) または signature を持たない → raw を返してメンバーを保全
+		// Mixed (namespace merge, etc.) or no signature-bearing declarations → return raw to preserve members
 		return raw;
 	}
 
-	// オーバーロードがある場合、implementation シグネチャは隠す (TS 標準の hover 挙動に合わせる)
+	// When there are overloads, hide the implementation signature (matches standard TS hover behavior)
 	const hasOverload = signatureDecls.some(
 		(decl) =>
 			(Node.isFunctionDeclaration(decl) || Node.isMethodDeclaration(decl)) &&
@@ -224,13 +226,13 @@ function isSignatureBearingDeclaration(decl: Node): boolean {
 }
 
 /**
- * 関数様宣言から `(params) => returnType` 形式のテキストを組み立てる。
- * パラメータと戻り値は元ソースのテキストをそのまま使うため、
- * rest / optional / 分割代入 / readonly などの修飾子が保持される。
+ * Builds a `(params) => returnType` text from a function-like declaration.
+ * Parameters and return type are taken verbatim from the original source text,
+ * so modifiers such as rest / optional / destructuring / readonly are preserved.
  */
 function renderSignatureFromDeclaration(decl: Node): string {
 	if (!isSignatureBearingDeclaration(decl)) {
-		// 想定外: 呼び出し元でフィルタ済みのはず
+		// Unexpected: should have been filtered by the caller
 		return decl.getText();
 	}
 	const node = decl as Node & {
@@ -248,8 +250,8 @@ function renderSignatureFromDeclaration(decl: Node): string {
 }
 
 /**
- * 文字列を Unicode コードポイント単位で切り詰める。
- * UTF-16 サロゲートペア (絵文字や追加面の文字) を途中で切ることがない。
+ * Truncates a string by Unicode code point count.
+ * Never splits UTF-16 surrogate pairs (e.g. emoji or supplementary-plane characters) mid-pair.
  */
 function truncateByCodePoint(text: string, maxLength: number): string {
 	const codePoints = Array.from(text);

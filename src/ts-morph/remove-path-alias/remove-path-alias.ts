@@ -8,7 +8,7 @@ import { calculateRelativePath } from "../_utils/calculate-relative-path";
 import { isPathAlias } from "../_utils/path-alias";
 
 /**
- * 1つのソースファイル内のパスエイリアスを相対パスに置換する
+ * Replaces path aliases in a single source file with relative paths
  */
 function processSourceFile(
 	sourceFile: SourceFile,
@@ -56,7 +56,7 @@ function processSourceFile(
 }
 
 /**
- * 指定されたパス (ファイルまたはディレクトリ) 内のパスエイリアスを相対パスに置換する
+ * Replaces path aliases with relative paths within the specified path (file or directory)
  */
 export async function removePathAlias({
 	project,
@@ -78,7 +78,7 @@ export async function removePathAlias({
 		const sourceFile = project.getSourceFile(targetPath);
 		if (!sourceFile) {
 			throw new Error(
-				`指定されたパスはプロジェクト内でディレクトリまたはソースファイルとして見つかりません: ${targetPath}`,
+				`The specified path was not found as a directory or source file in the project: ${targetPath}`,
 			);
 		}
 		filesToProcess.push(sourceFile);

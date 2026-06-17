@@ -1,5 +1,5 @@
 import { type Project, SyntaxKind, type Identifier, type Node } from "ts-morph";
-// 共通関数をインポート
+// Import shared functions
 import {
 	initializeProject,
 	getChangedFiles,
@@ -9,7 +9,7 @@ import {
 // --- Helper Functions ---
 
 /**
- * 指定されたファイルと位置から Identifier ノードを検索する
+ * Finds an Identifier node at the specified file and position
  */
 export function findIdentifierNode(
 	project: Project,
@@ -17,8 +17,7 @@ export function findIdentifierNode(
 	position: { line: number; column: number },
 ): Identifier {
 	const sourceFile = project.getSourceFile(targetFilePath);
-	if (!sourceFile)
-		throw new Error(`ファイルが見つかりません: ${targetFilePath}`);
+	if (!sourceFile) throw new Error(`File not found: ${targetFilePath}`);
 
 	let positionOffset: number;
 	try {
@@ -28,7 +27,7 @@ export function findIdentifierNode(
 		);
 	} catch (error) {
 		throw new Error(
-			`指定位置 (${position.line}:${position.column}) はファイルの範囲外か無効です`,
+			`The specified position (${position.line}:${position.column}) is out of range or invalid`,
 		);
 	}
 
@@ -36,7 +35,7 @@ export function findIdentifierNode(
 
 	if (!node) {
 		throw new Error(
-			`指定位置 (${position.line}:${position.column}) にノードが見つかりません`,
+			`No node found at the specified position (${position.line}:${position.column})`,
 		);
 	}
 
@@ -51,12 +50,12 @@ export function findIdentifierNode(
 	}
 
 	throw new Error(
-		`指定位置 (${position.line}:${position.column}) は Identifier ではありません`,
+		`The node at the specified position (${position.line}:${position.column}) is not an Identifier`,
 	);
 }
 
 /**
- * Identifier ノードが期待されるシンボル名と種類（親ノードの種類）であるか検証する
+ * Validates that an Identifier node matches the expected symbol name (and parent node kind)
  */
 export function validateSymbol(
 	identifier: Identifier,
@@ -66,22 +65,22 @@ export function validateSymbol(
 		return;
 	}
 	throw new Error(
-		`シンボル名が一致しません (期待: ${expectedSymbolName}, 実際: ${identifier.getText()})`,
+		`Symbol name mismatch (expected: ${expectedSymbolName}, actual: ${identifier.getText()})`,
 	);
 }
 
 /**
- * 指定された Identifier ノードの参照箇所をすべて取得する
- * (定義箇所を含む場合があることに注意)
- * @param identifier 参照を検索する対象の Identifier ノード
- * @returns 参照箇所の Node 配列
+ * Returns all reference locations for the given Identifier node
+ * (note: the definition site may be included)
+ * @param identifier The Identifier node whose references to search
+ * @returns Array of reference Node objects
  */
 export function findAllReferencesAsNodes(identifier: Identifier): Node[] {
 	return identifier.findReferencesAsNodes();
 }
 
 /**
- * 指定されたシンボルをプロジェクト全体でリネームする
+ * Renames the specified symbol across the entire project
  */
 export async function renameSymbol({
 	tsconfigPath,

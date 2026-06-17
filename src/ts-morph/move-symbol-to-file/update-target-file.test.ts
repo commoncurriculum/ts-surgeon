@@ -4,7 +4,7 @@ import { updateTargetFile } from "./update-target-file";
 import type { ImportMap } from "./generate-content/build-new-file-import-section";
 
 describe("updateTargetFile", () => {
-	it("既存ファイルに新しい宣言と、それに必要な新しい名前付きインポートを追加・マージできる", () => {
+	it("can add and merge new declarations and their required named imports into an existing file", () => {
 		const project = createInMemoryProject();
 		const targetFilePath = "/src/target.ts";
 		project.createSourceFile(
@@ -49,7 +49,7 @@ export function baz() { return qux(); }
 		expect(targetSourceFile.getFullText().trim()).toBe(expectedContent.trim());
 	});
 
-	it("requiredImportMap に自己参照パスが含まれていても、自己参照インポートは追加せず、既存の周囲ステートメントを保持する", () => {
+	it("does not add a self-referential import even if requiredImportMap contains a self-referential path, and preserves surrounding existing statements", () => {
 		const project = createInMemoryProject();
 		const initialContent = `export type ExistingType = number;
 
@@ -74,7 +74,7 @@ console.log('hello');
 		expect(targetSourceFile.getFullText().trim()).toBe(initialContent.trim());
 	});
 
-	it("既存インポートがない場合、デフォルトインポートを新規追加できる", () => {
+	it("can add a new default import when no existing import exists", () => {
 		const project = createInMemoryProject();
 		const targetSourceFile = project.createSourceFile(
 			"/src/target.ts",
@@ -101,7 +101,7 @@ console.log('hello');
 		);
 	});
 
-	it("既存インポートがない場合、名前空間インポートを新規追加できる", () => {
+	it("can add a new namespace import when no existing import exists", () => {
 		const project = createInMemoryProject();
 		const targetSourceFile = project.createSourceFile(
 			"/src/target.ts",
@@ -128,7 +128,7 @@ console.log('hello');
 		);
 	});
 
-	it("既存と異なるデフォルトインポートを追加しようとした場合、既存を優先する", () => {
+	it("prefers the existing default import when attempting to add a different one", () => {
 		const project = createInMemoryProject();
 		const targetSourceFile = project.createSourceFile(
 			"/src/target.ts",
@@ -156,7 +156,7 @@ console.log('hello');
 		expect(targetSourceFile.getFullText()).not.toContain("renamed");
 	});
 
-	it("名前空間インポートと通常インポートが衝突する場合、既存を優先する", () => {
+	it("prefers the existing import when a namespace import and a regular import conflict", () => {
 		const project = createInMemoryProject();
 		const targetSourceFile = project.createSourceFile(
 			"/src/target.ts",

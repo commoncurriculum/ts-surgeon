@@ -21,8 +21,8 @@ import { updateTargetFile } from "./update-target-file";
 import { calculateRequiredImportMap } from "./generate-content/build-new-file-import-section";
 
 /**
- * シンボル移動に必要な情報を収集する。
- * 元ファイル、移動対象の宣言、分類済み依存関係、外部インポート情報を返す。
+ * Collects the information required to move a symbol.
+ * Returns the original source file, the target declaration, classified dependencies, and external import info.
  */
 async function gatherMovePrerequisites(
 	project: Project,
@@ -39,7 +39,7 @@ async function gatherMovePrerequisites(
 	if (!originalSourceFile) {
 		throw new Error(`Original source file not found: ${originalFilePath}`);
 	}
-	logger.debug(`元のファイルを発見: ${originalFilePath}`);
+	logger.debug(`Original file found: ${originalFilePath}`);
 
 	const declaration = findTopLevelDeclarationByName(
 		originalSourceFile,
@@ -51,7 +51,7 @@ async function gatherMovePrerequisites(
 			`Symbol "${symbolToMove}" not found in ${originalFilePath}`,
 		);
 	}
-	logger.debug(`シンボルの宣言を発見: ${symbolToMove}`);
+	logger.debug(`Symbol declaration found: ${symbolToMove}`);
 
 	let isDefaultExported = false;
 	if (
@@ -69,7 +69,7 @@ async function gatherMovePrerequisites(
 	}
 
 	const internalDependencies = getInternalDependencies(declaration);
-	logger.debug(`${internalDependencies.length}個の内部依存関係を発見。`);
+	logger.debug(`Found ${internalDependencies.length} internal dependencies.`);
 
 	const classifiedDependencies = classifyDependencies(
 		declaration,
@@ -84,7 +84,9 @@ async function gatherMovePrerequisites(
 		allDepsToMove,
 		originalSourceFile,
 	);
-	logger.debug(`必要な外部インポートを${neededExternalImports.size}個収集。`);
+	logger.debug(
+		`Collected ${neededExternalImports.size} required external imports.`,
+	);
 
 	return {
 		originalSourceFile,
@@ -95,7 +97,7 @@ async function gatherMovePrerequisites(
 }
 
 /**
- * 参照元のインポートパス更新、元のファイルからのシンボル削除、元のファイルのインポート修正を行う。
+ * Updates import paths in referencing files, removes the symbol from the original file, and fixes imports in the original file.
  */
 async function updateReferencesAndOriginalFile(
 	project: Project,
@@ -112,7 +114,7 @@ async function updateReferencesAndOriginalFile(
 		newFilePath,
 		symbolToMove,
 	);
-	logger.debug("参照元ファイルのインポートを更新。");
+	logger.debug("Updated imports in referencing files.");
 
 	const dependenciesToRemoveDeclarations = classifiedDependencies
 		.filter(
@@ -132,21 +134,21 @@ async function updateReferencesAndOriginalFile(
 	);
 
 	removeOriginalSymbol(originalSourceFile, allDeclarationsToRemove);
-	logger.debug("元のファイルからシンボルと依存関係を削除。");
+	logger.debug("Removed symbol and its dependencies from the original file.");
 
 	addBackImportsToOriginalFile(
 		originalSourceFile,
 		newFilePath,
 		symbolsNeedingBackImport,
 	);
-	// addBackImports は不足分の追加のみ行う。削除で不要になった import の除去は
-	// organizeImports が担うため、ここは整理だけでなく correctness 上も必要。
+	// addBackImports only adds missing imports. Removing imports that became unnecessary
+	// after deletion is handled by organizeImports, which is required both for cleanliness and correctness.
 	originalSourceFile.organizeImports();
-	logger.debug("元のファイルのインポートを整理。");
+	logger.debug("Organized imports in the original file.");
 }
 
 /**
- * 新しいファイルの内容を生成し、ファイルを作成または既存ファイルに追加する。
+ * Generates the content for the new file, then either creates it or appends to an existing file.
  */
 function generateAndAppendToNewFile(
 	project: Project,
@@ -193,16 +195,16 @@ function generateAndAppendToNewFile(
 }
 
 /**
- * 指定されたシンボルを現在のファイルから別ファイル（なければ新規作成）に移動します。
- * ヘルパー関数は成功時に値を返し、失敗時に例外をスローします。
+ * Moves the specified symbol from its current file to another file (creating it if it does not exist).
+ * Helper functions return a value on success and throw an exception on failure.
  *
- * @param project ts-morph プロジェクトインスタンス
- * @param originalFilePath 元のファイルの絶対パス
- * @param newFilePath 移動先ファイルの絶対パス
- * @param symbolToMove 移動するシンボルの名前
- * @param declarationKind 移動するシンボルの種類 (オプション)
- * @returns Promise<void> 処理が完了したら解決される Promise
- * @throws Error - シンボルが見つからない、デフォルトエクスポート、AST 操作エラーなど
+ * @param project ts-morph project instance
+ * @param originalFilePath Absolute path to the source file
+ * @param newFilePath Absolute path to the destination file
+ * @param symbolToMove Name of the symbol to move
+ * @param declarationKind Kind of the declaration to move (optional)
+ * @returns Promise<void> A Promise that resolves when processing is complete
+ * @throws Error - if the symbol is not found, is a default export, or an AST operation error occurs
  */
 export async function moveSymbolToFile(
 	project: Project,
@@ -212,7 +214,7 @@ export async function moveSymbolToFile(
 	declarationKind?: SyntaxKind,
 ): Promise<void> {
 	logger.debug(
-		`moveSymbolToFile 開始: Symbol='${symbolToMove}', From='${originalFilePath}', To='${newFilePath}'`,
+		`moveSymbolToFile start: Symbol='${symbolToMove}', From='${originalFilePath}', To='${newFilePath}'`,
 	);
 
 	const {

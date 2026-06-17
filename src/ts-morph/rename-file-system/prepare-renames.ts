@@ -11,11 +11,11 @@ function checkDestinationExists(
 ): void {
 	signal?.throwIfAborted();
 	if (project.getSourceFile(pathToCheck)) {
-		throw new Error(`リネーム先パスに既にファイルが存在します: ${pathToCheck}`);
+		throw new Error(`Rename target path already has a file: ${pathToCheck}`);
 	}
 	if (project.getDirectory(pathToCheck)) {
 		throw new Error(
-			`リネーム先パスに既にディレクトリが存在します: ${pathToCheck}`,
+			`Rename target path already has a directory: ${pathToCheck}`,
 		);
 	}
 }
@@ -23,8 +23,8 @@ function checkDestinationExists(
 export interface PrepareRenamesResult {
 	operations: RenameOperation[];
 	/**
-	 * 元入力のうち directory rename だったものの絶対パスペア。
-	 * file move 後に旧ディレクトリ階層の空ディレクトリを掃除するために使う (issue #27)。
+	 * Absolute path pairs for entries from the original input that were directory renames.
+	 * Used to clean up empty directories in the old directory hierarchy after file moves (issue #27).
 	 */
 	directoryRenames: PathMapping[];
 }
@@ -50,7 +50,7 @@ export function prepareRenames(
 		const absoluteNewPath = path.resolve(rename.newPath);
 
 		if (uniqueNewPaths.has(absoluteNewPath)) {
-			throw new Error(`リネーム先のパスが重複しています: ${absoluteNewPath}`);
+			throw new Error(`Duplicate destination path: ${absoluteNewPath}`);
 		}
 		uniqueNewPaths.add(absoluteNewPath);
 
@@ -94,7 +94,7 @@ export function prepareRenames(
 				});
 			}
 		} else {
-			throw new Error(`リネーム対象が見つかりません: ${absoluteOldPath}`);
+			throw new Error(`Rename target not found: ${absoluteOldPath}`);
 		}
 	}
 	const durationMs = (performance.now() - startTime).toFixed(2);

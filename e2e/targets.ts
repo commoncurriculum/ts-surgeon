@@ -1,47 +1,48 @@
 import * as path from "node:path";
 
 /**
- * E2E の題材となる外部リポジトリの定義。
+ * Definition of the external repositories used as E2E targets.
  *
- * バージョンは必ず固定する（commit SHA をピン留め）。tag は人間向けの目印で、
- * 実際に checkout するのは commit。これにより上流が動いても結果が変わらない。
+ * Versions must always be pinned (commit SHA pinning). The tag is a
+ * human-readable label; the actual checkout is done by commit SHA so that
+ * upstream changes do not affect results.
  */
 export interface TargetRepo {
-	/** 識別子（キャッシュディレクトリ名にも使う） */
+	/** Identifier (also used as the cache directory name). */
 	readonly name: string;
-	/** clone 元 */
+	/** URL to clone from. */
 	readonly repoUrl: string;
-	/** 目印のタグ（ドキュメント用途。実体は commit で固定） */
+	/** Human-readable tag label (documentation only; the actual checkout uses the commit SHA). */
 	readonly tag: string;
-	/** 固定する commit SHA。clone 後にこの SHA を checkout する */
+	/** Pinned commit SHA. After cloning, this SHA is checked out. */
 	readonly commit: string;
 	/**
-	 * MCP ツールに渡す tsconfig のリポジトリ相対パス。
-	 * project references（files:[]）な root tsconfig はソースを読み込まないため、
-	 * src 全体を include する設定を選ぶ。
+	 * Repository-relative path to the tsconfig passed to MCP tools.
+	 * A root tsconfig with project references (files:[]) does not load source files,
+	 * so choose a config that includes the entire src tree.
 	 */
 	readonly tsconfigRelPath: string;
 	/**
-	 * 依存インストールコマンド（argv。[0] は PATH 上の package manager 実行ファイル）。
-	 * frozen-lockfile + ignore-scripts でロックファイル固定・postinstall 不実行。
+	 * Dependency install command (argv; [0] is the package manager executable on PATH).
+	 * Uses frozen-lockfile + ignore-scripts to pin the lockfile and skip postinstall.
 	 */
 	readonly installArgv: readonly string[];
-	/** 型チェック: 対象リポジトリの node_modules/.bin 配下の実行ファイル名と引数 */
+	/** Type-check: executable name and arguments under node_modules/.bin of the target repo. */
 	readonly typecheckBin: string;
 	readonly typecheckArgs: readonly string[];
 	/**
-	 * ユニットテスト: Node で走る範囲のみ。
-	 * format/lint はリファクタ後に必ず差分が出るため検証に含めない。
+	 * Unit tests: only the subset that runs under Node.
+	 * format/lint are excluded because refactoring always produces diffs there.
 	 */
 	readonly unitTestBin: string;
 	readonly unitTestArgs: readonly string[];
 }
 
 /**
- * hono: alias を持たない中規模リポジトリ。bun ネイティブ。
- * rename / find-references / move / find-unused / get-type / change-signature の題材。
- * root tsconfig は project references なので src 全体を include する tsconfig.spec.json を使う。
- * vitest は multi-runtime 構成のため Node で走る `main` project のみ実行する。
+ * hono: a medium-sized repository with no path aliases, native bun.
+ * Used as the target for rename / find-references / move / find-unused / get-type / change-signature.
+ * The root tsconfig uses project references, so tsconfig.spec.json (which includes the full src tree) is used.
+ * vitest uses a multi-runtime setup, so only the `main` project (Node) is executed.
  */
 export const HONO: TargetRepo = {
 	name: "hono",
@@ -57,9 +58,9 @@ export const HONO: TargetRepo = {
 };
 
 /**
- * zustand: path alias（zustand / zustand/* → ./src/*）を持つ単一パッケージ。pnpm。
- * remove_path_alias と rename-file-system（alias 経由 import 更新）の題材。
- * 型チェックは root tsconfig.json（src + tests を include, noEmit）。
+ * zustand: a single package with path aliases (zustand / zustand/* → ./src/*), using pnpm.
+ * Used as the target for remove_path_alias and rename-file-system (import updates via aliases).
+ * Type-checking uses the root tsconfig.json (includes src + tests, noEmit).
  */
 export const ZUSTAND: TargetRepo = {
 	name: "zustand",

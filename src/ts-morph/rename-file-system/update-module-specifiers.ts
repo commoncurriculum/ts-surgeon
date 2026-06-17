@@ -55,14 +55,14 @@ export function updateModuleSpecifiers(
 			continue;
 		}
 
-		// 元のインポートスタイルで index が省略されていたか判定
-		// (例: './utils', '../', '@/')
+		// Determine whether the index filename was omitted in the original import style
+		// (e.g. './utils', '../', '@/')
 		const wasIndexSimplified =
 			/(\/|\/[^/.]+)$/.test(originalSpecifierText) ||
 			!path.extname(originalSpecifierText);
 
-		// TODO: wasPathAlias の場合に tsconfig の paths/baseUrl から
-		// エイリアスパスを再計算する処理は未実装。現状は相対パスにフォールバックする。
+		// TODO: When wasPathAlias is true, recalculating the alias path from tsconfig paths/baseUrl
+		// is not yet implemented. Currently falls back to a relative path.
 		if (wasPathAlias) {
 			logger.warn(
 				{

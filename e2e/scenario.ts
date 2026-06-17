@@ -22,27 +22,28 @@ export {
 } from "./verify-target";
 export { createToolHarness, type ToolResult } from "./call-tool";
 
-/** ToolResult のテキストコンテンツを連結する。 */
+/** Concatenates the text content of a ToolResult. */
 export function textOf(result: ToolResult): string {
 	return result.content.map((c) => c.text).join("\n");
 }
 
 export interface TargetScenario {
 	harness: ReturnType<typeof createToolHarness>;
-	/** 対象リポジトリを準備し baseline を取得する（beforeAll で呼ぶ）。 */
+	/** Prepares the target repository and captures the baseline (call in beforeAll). */
 	setup: () => void;
-	/** リファクタで変更した作業ツリーを元に戻す（afterEach で呼ぶ）。 */
+	/** Restores the working tree changed by refactoring (call in afterEach). */
 	reset: () => void;
-	/** 準備に失敗していれば当該ケースを skip する。 */
+	/** Skips the current test case if preparation failed. */
 	requirePrepared: (ctx: { skip: (note?: string) => void }) => void;
-	/** リファクタ後に baseline からの退行が無いことを検証する。 */
+	/** Asserts that there is no regression from the baseline after refactoring. */
 	expectNoRegression: () => void;
 }
 
 /**
- * E2E_REQUIRE_PREPARED が設定されているとき、準備失敗を skip ではなく fail にする。
- * CI（nightly）で bun 不在・ネットワーク不通による「全 skip で実質ノーチェックなのに
- * 緑」を防ぐためのガード。ローカルでは未設定なので従来どおり skip する。
+ * When E2E_REQUIRE_PREPARED is set, turns preparation failures into hard failures
+ * instead of skips. This guards against the CI (nightly) silently passing as green
+ * when all tests are skipped due to a missing bun or network failure. Locally the
+ * variable is unset, so the previous skip behavior is preserved.
  */
 function preparationIsMandatory(): boolean {
 	const v = process.env.E2E_REQUIRE_PREPARED;
@@ -50,9 +51,9 @@ function preparationIsMandatory(): boolean {
 }
 
 /**
- * 対象リポジトリごとの E2E シナリオ状態（harness / baseline）と、
- * 共通のライフサイクル・アサーションをまとめて生成する。
- * テストファイル側で beforeAll(setup) / afterEach(reset) を登録して使う。
+ * Creates the per-target-repository E2E scenario state (harness / baseline)
+ * along with shared lifecycle helpers and assertions.
+ * Register beforeAll(setup) / afterEach(reset) in the test file.
  */
 export function createScenario(target: TargetRepo): TargetScenario {
 	const harness = createToolHarness();
@@ -66,8 +67,8 @@ export function createScenario(target: TargetRepo): TargetScenario {
 				baseline = checkHealth(target);
 			} catch (e) {
 				if (preparationIsMandatory()) throw e;
-				// clone / install に失敗（ネットワーク不通や bun 不在など）した場合は
-				// baseline 未取得のまま各ケースを skip する
+				// If clone / install fails (e.g. no network or bun not found),
+				// leave baseline undefined and skip each test case.
 				baseline = undefined;
 			}
 		},
@@ -78,11 +79,11 @@ export function createScenario(target: TargetRepo): TargetScenario {
 			if (baseline) return;
 			if (preparationIsMandatory()) {
 				throw new Error(
-					`${target.name} の E2E 準備に失敗しました（E2E_REQUIRE_PREPARED 設定下では skip せず fail）`,
+					`${target.name} E2E preparation failed (E2E_REQUIRE_PREPARED is set — failing instead of skipping)`,
 				);
 			}
 			ctx.skip(
-				`${target.name} の準備（clone/install/baseline）に失敗したため skip`,
+				`${target.name} preparation (clone/install/baseline) failed — skipping`,
 			);
 		},
 		expectNoRegression() {
@@ -101,9 +102,10 @@ export interface Position {
 }
 
 /**
- * 対象リポジトリ内の export 宣言の「名前識別子」の位置（1-based line/column）を
- * ts-morph で算出する。バージョン固定なので結果は安定するが、行番号ハードコードより
- * 読みやすく壊れにくい。
+ * Uses ts-morph to compute the position (1-based line/column) of the name
+ * identifier of an export declaration within the target repository.
+ * The result is stable because the version is pinned, and this is more
+ * readable and robust than hard-coding line numbers.
  */
 export function locateSymbolPosition(
 	target: TargetRepo,
@@ -118,7 +120,7 @@ export function locateSymbolPosition(
 	const sf = project.getSourceFile(absFilePath);
 	if (!sf) {
 		throw new Error(
-			`[e2e] ${target.name}: ${relFilePath} が tsconfig(${target.tsconfigRelPath}) のプロジェクトに含まれていません`,
+			`[e2e] ${target.name}: ${relFilePath} is not included in the tsconfig project (${target.tsconfigRelPath})`,
 		);
 	}
 
@@ -130,7 +132,7 @@ export function locateSymbolPosition(
 		sf.getTypeAlias(symbolName);
 	if (!decl) {
 		throw new Error(
-			`[e2e] ${target.name}: ${relFilePath} に export '${symbolName}' が見つかりません`,
+			`[e2e] ${target.name}: export '${symbolName}' not found in ${relFilePath}`,
 		);
 	}
 

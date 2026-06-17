@@ -17,7 +17,7 @@ function entry(partial: Partial<UnusedExport>): UnusedExport {
 }
 
 describe("summarizeUnusedExports", () => {
-	it("空配列はすべて 0 / 空集計", () => {
+	it("empty array produces all zeros and empty aggregates", () => {
 		const s = summarizeUnusedExports([]);
 		expect(s).toEqual({
 			total: 0,
@@ -29,7 +29,7 @@ describe("summarizeUnusedExports", () => {
 		});
 	});
 
-	it("total と削除安全性 (deletable / unexportOnly) を数える", () => {
+	it("counts total and delete-safety (deletable / unexportOnly)", () => {
 		const s = summarizeUnusedExports([
 			entry({ sameFileReferenceCount: 0 }),
 			entry({ sameFileReferenceCount: 0 }),
@@ -40,7 +40,7 @@ describe("summarizeUnusedExports", () => {
 		expect(s.unexportOnly).toBe(1);
 	});
 
-	it("default export 数を数える", () => {
+	it("counts default exports", () => {
 		const s = summarizeUnusedExports([
 			entry({ isDefaultExport: true }),
 			entry({ isDefaultExport: false }),
@@ -48,7 +48,7 @@ describe("summarizeUnusedExports", () => {
 		expect(s.defaultExports).toBe(1);
 	});
 
-	it("kind 別を件数降順で返す", () => {
+	it("returns byKind in descending count order", () => {
 		const s = summarizeUnusedExports([
 			entry({ kind: "TypeAliasDeclaration" }),
 			entry({ kind: "TypeAliasDeclaration" }),
@@ -60,7 +60,7 @@ describe("summarizeUnusedExports", () => {
 		]);
 	});
 
-	it("ディレクトリ別を件数降順で返す (ファイル名を除いた dir 単位)", () => {
+	it("returns byDirectory in descending count order using the directory portion of the path (file name stripped)", () => {
 		const s = summarizeUnusedExports([
 			entry({ filePath: "/src/feat/a.ts" }),
 			entry({ filePath: "/src/feat/b.ts" }),

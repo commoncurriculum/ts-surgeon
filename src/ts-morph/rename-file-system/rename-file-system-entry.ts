@@ -20,8 +20,8 @@ import { prepareRenames } from "./prepare-renames";
 import { updateModuleSpecifiers } from "./update-module-specifiers";
 
 /**
- * [実験的] 移動対象ファイルのエクスポートシンボルを参照するすべての宣言を特定し、
- * ユニークな DeclarationToUpdate のリストにして返す。
+ * [Experimental] Identifies all declarations that reference exported symbols of the files
+ * being moved, and returns them as a deduplicated list of DeclarationToUpdate.
  */
 async function findAllDeclarationsToUpdate(
 	project: Project,
@@ -68,7 +68,7 @@ async function findAllDeclarationsToUpdate(
 				?.getFilePath();
 
 			if (oldPath !== importPath) {
-				// リネーム対象のファイルを直接インポートしていない（バレルファイル等で間接的にインポートしている）場合はスキップ
+				// Skip if the file is not directly imported (e.g., re-exported via a barrel file)
 				continue;
 			}
 
@@ -110,14 +110,14 @@ async function findAllDeclarationsToUpdate(
 }
 
 /**
- * 指定された複数のファイルまたはフォルダをリネームし、プロジェクト内の参照を更新する。
+ * Renames one or more files or folders and updates all references in the project.
  *
- * @param project ts-morph プロジェクトインスタンス
- * @param renames リネーム対象のパスのペア ({ oldPath: string, newPath: string }) の配列
- * @param dryRun trueの場合、ファイルシステムへの変更を保存せずに、変更されるファイルのリストのみを返す
- * @param signal オプショナルな AbortSignal。処理をキャンセルするために使用できる
- * @returns 変更されたファイルの絶対パスのリスト
- * @throws リネーム処理中にエラーが発生した場合、または signal によってキャンセルされた場合
+ * @param project ts-morph project instance
+ * @param renames Array of path pairs ({ oldPath: string, newPath: string }) to rename
+ * @param dryRun If true, returns only the list of files that would be changed without saving to the file system
+ * @param signal Optional AbortSignal that can be used to cancel the operation
+ * @returns List of absolute paths of changed files
+ * @throws If an error occurs during the rename process, or if cancelled via signal
  */
 export async function renameFileSystemEntry({
 	project,
@@ -180,8 +180,8 @@ export async function renameFileSystemEntry({
 				},
 				"Saved project changes",
 			);
-			// FS への永続化が完了した後でなければ、旧ディレクトリは依然として
-			// 移動前のファイルを保持しているため readDirSync が空にならない
+			// Must wait until persistence to the FS is complete; otherwise the old directory
+			// still holds pre-move files and readDirSync will not return empty
 			cleanupEmptyOldDirectories(project, directoryRenames, signal);
 		} else if (dryRun) {
 			logger.info({ count: changed.length }, "Dry run: Skipping save");

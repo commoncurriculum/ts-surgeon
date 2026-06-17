@@ -2,36 +2,36 @@ import { Node } from "ts-morph";
 import type { Identifier } from "ts-morph";
 
 /**
- * 様々な宣言ノード (変数宣言、関数宣言、クラス宣言、デフォルトエクスポートなど) から、
- * その宣言が表す主要な名前 (識別子) のノードを取得します。
+ * Retrieves the primary name (identifier) node from various declaration node types
+ * (variable declarations, function declarations, class declarations, default exports, etc.).
  *
- * 例えば、`const foo = 1;` であれば `foo` の Identifier ノードを返します。
- * `export default myIdentifier;` であれば `myIdentifier` の Identifier ノードを返します。
+ * For example, given `const foo = 1;`, returns the Identifier node for `foo`.
+ * Given `export default myIdentifier;`, returns the Identifier node for `myIdentifier`.
  *
- * 識別子が見つからない場合 (例: 無名のエクスポート) や、
- * 未対応の宣言タイプの場合は undefined を返します。
+ * Returns undefined if no identifier is found (e.g., anonymous exports) or
+ * if the declaration type is not supported.
  *
- * @param node - 対象の ts-morph 宣言ノード (Node型)。
- * @returns 識別子ノード (Identifier) または undefined。
+ * @param node - The target ts-morph declaration node (Node type).
+ * @returns The identifier node (Identifier) or undefined.
  */
 export function getIdentifierNodeFromDeclaration(
 	node: Node,
 ): Identifier | undefined {
-	// 1. 主要な宣言タイプを直接チェック
+	// 1. Directly check the primary declaration types
 	if (Node.isVariableDeclaration(node)) {
-		// VariableDeclaration の場合、getNameNode() で識別子を取得
-		// 例: const foo = ...; -> foo
+		// For VariableDeclaration, get the identifier via getNameNode()
+		// e.g., const foo = ...; -> foo
 		const nameNode = node.getNameNode();
-		// 分割代入など Identifier 以外の場合があるためチェック
+		// Check because destructuring patterns yield non-Identifier name nodes
 		if (Node.isIdentifier(nameNode)) {
 			return nameNode;
 		}
 		return undefined;
 	}
 	if (Node.isFunctionDeclaration(node) || Node.isClassDeclaration(node)) {
-		// 関数/クラス宣言の場合、getNameNode() で識別子を取得
-		// 例: function foo() {} -> foo, class Bar {} -> Bar
-		// 無名関数/クラスの場合は undefined が返る
+		// For function/class declarations, get the identifier via getNameNode()
+		// e.g., function foo() {} -> foo, class Bar {} -> Bar
+		// Returns undefined for anonymous functions/classes
 		return node.getNameNode();
 	}
 	if (
@@ -39,45 +39,45 @@ export function getIdentifierNodeFromDeclaration(
 		Node.isTypeAliasDeclaration(node) ||
 		Node.isEnumDeclaration(node)
 	) {
-		// インターフェース/型エイリアス/列挙型宣言の場合、getNameNode() で識別子を取得
+		// For interface/type alias/enum declarations, get the identifier via getNameNode()
 		return node.getNameNode();
 	}
 
-	// 2. デフォルトエクスポート (`export default ...`) の処理
+	// 2. Handle default exports (`export default ...`)
 	if (Node.isExportAssignment(node)) {
 		const expression = node.getExpression();
-		// `export default identifier;` の形式の場合
+		// For the form `export default identifier;`
 		if (Node.isIdentifier(expression)) {
 			return expression;
 		}
-		// `export default function foo() {}` や `export default class Bar {}` の形式の場合
-		// (無名の場合 getNameNode() は undefined を返す)
+		// For the form `export default function foo() {}` or `export default class Bar {}`
+		// (getNameNode() returns undefined for anonymous cases)
 		if (
 			Node.isFunctionDeclaration(expression) ||
 			Node.isClassDeclaration(expression)
 		) {
 			return expression.getNameNode();
 		}
-		// export default () => {} や export default {} など、
-		// 直接識別子を持たない式の場合はここでは取得できない
+		// For expressions without a direct identifier, such as `export default () => {}` or
+		// `export default {}`, we cannot retrieve an identifier here
 	}
 
-	// 3. フォールバック処理
-	//    (シンボルの getDeclarations() が直接 Identifier を返すなど、稀なケースに対応)
+	// 3. Fallback handling
+	//    (handles rare cases where symbol.getDeclarations() directly returns an Identifier)
 	if (Node.isIdentifier(node)) {
 		return node;
 	}
 
-	// 4. 更なるフォールバック (やや不安定な可能性あり)
-	//    ExportSpecifier など、getNameNode() メソッドを持つ他のノードタイプを試す
-	//    例: export { originalName as aliasName }; の aliasName
+	// 4. Further fallback (potentially less stable)
+	//    Try other node types that have a getNameNode() method, such as ExportSpecifier
+	//    e.g., the aliasName in: export { originalName as aliasName };
 	if ("getNameNode" in node && typeof node.getNameNode === "function") {
 		const nameNode = node.getNameNode();
 		if (Node.isIdentifier(nameNode)) {
 			return nameNode;
 		}
 	}
-	//    getName() メソッドを持つノードから名前を取得し、その名前を持つ Identifier を子孫から探す
+	//    Get the name from a node that has getName() and search descendants for an Identifier with that name
 	if ("getName" in node && typeof node.getName === "function") {
 		const name = node.getName();
 		if (typeof name === "string") {

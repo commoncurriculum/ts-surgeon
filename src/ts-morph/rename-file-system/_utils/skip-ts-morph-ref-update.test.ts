@@ -5,7 +5,7 @@ import { withSkippedTsMorphReferenceUpdates } from "./skip-ts-morph-ref-update";
 vi.mock("../../../utils/logger");
 
 describe("withSkippedTsMorphReferenceUpdates", () => {
-	it("通常の Project では fn が実行され、prototype がパッチ後に復元される", () => {
+	it("fn is executed and the prototype is restored after patching in a normal Project", () => {
 		const project = createInMemoryProject();
 		const sf = project.createSourceFile("/src/a.ts", "export const a = 1;");
 		const proto = Object.getPrototypeOf(sf) as Record<string, unknown>;
@@ -23,7 +23,7 @@ describe("withSkippedTsMorphReferenceUpdates", () => {
 		expect(proto._updateReferencesForMoveInternal).toBe(originalUpdate);
 	});
 
-	it("fn が throw した場合でも prototype は復元される", () => {
+	it("prototype is restored even when fn throws", () => {
 		const project = createInMemoryProject();
 		const sf = project.createSourceFile("/src/a.ts", "export const a = 1;");
 		const proto = Object.getPrototypeOf(sf) as Record<string, unknown>;
@@ -40,20 +40,20 @@ describe("withSkippedTsMorphReferenceUpdates", () => {
 		expect(proto._updateReferencesForMoveInternal).toBe(originalUpdate);
 	});
 
-	it("Project に SourceFile が 1 つもない場合、fn はそのまま実行される (fallback)", () => {
+	it("fn is executed as-is when the Project has no SourceFiles (fallback)", () => {
 		const project = createInMemoryProject();
 		const result = withSkippedTsMorphReferenceUpdates(project, () => "ok");
 		expect(result).toBe("ok");
 	});
 
-	it("prototype の私的 API が見つからない場合も fn はそのまま実行される (fallback)", () => {
+	it("fn is executed as-is when the private API is not found on the prototype (fallback)", () => {
 		const project = createInMemoryProject();
 		const sf = project.createSourceFile("/src/a.ts", "export const a = 1;");
 		const proto = Object.getPrototypeOf(sf) as Record<string, unknown>;
 		const originalGet = proto._getReferencesForMoveInternal;
 		const originalUpdate = proto._updateReferencesForMoveInternal;
 
-		// private API を一時的に非関数に差し替える
+		// Temporarily replace the private API with a non-function
 		proto._getReferencesForMoveInternal = undefined;
 		proto._updateReferencesForMoveInternal = undefined;
 

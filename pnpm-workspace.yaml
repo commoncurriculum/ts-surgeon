@@ -1,7 +1,7 @@
 # pnpm 11+ workspace / supply-chain configuration.
 # IMPORTANT: in pnpm 11, supply-chain settings live HERE, not in .npmrc.
 
-# --- Supply-chain hardening (絶対に弱めないこと) ---
+# --- Supply-chain hardening (never weaken these settings) ---
 
 # Don't install packages published less than 7 days ago (value in minutes).
 # Defends against 0-day supply-chain attacks where a malicious release
@@ -16,12 +16,13 @@ strictDepBuilds: true
 # Reject installs that would lower the trust level of a previously-installed
 # package (e.g. switching from registry to a tarball URL).
 #
-# DISABLED FOR NOW: pnpm 11.1.2 では実装されているが、判定基準が "earlier
-# publish had provenance attestation" となっており、@types/node が pull する
-# undici-types で誤検出する (npm registry 上は過去版にも attestation なしで、
-# pnpm 内部の trust metric が我々の知らない別物を見ている)。
-# 誤検出を残すと pnpm install そのものが詰むので一旦コメントアウト。
-# pnpm 側の trust 仕様が明文化されたら再有効化を検討する。
+# DISABLED FOR NOW: implemented in pnpm 11.1.2, but the criterion is
+# "earlier publish had provenance attestation", which produces false positives
+# for undici-types (pulled in by @types/node) — past versions on the npm registry
+# have no attestation, and pnpm's internal trust metric appears to measure
+# something different that is not publicly documented.
+# Leaving the false positive in place causes pnpm install to hard-fail, so this
+# is commented out for now. Revisit if/when pnpm documents its trust spec.
 # trustPolicy: no-downgrade
 
 # Disallow transitive dependencies that point to git+ssh://, https tarballs,
@@ -33,11 +34,10 @@ blockExoticSubdeps: true
 # Every dependency with a postinstall must be allowed (true) or denied (false).
 # Anything missing triggers a hard error because of strictDepBuilds.
 allowBuilds:
-  # Biome の linter/formatter 本体。lint / format スクリプトで必須。
+  # Biome linter/formatter binary. Required for lint / format scripts.
   "@biomejs/biome": true
-  # vitest が transformer として使う JS bundler。postinstall で OS 別ネイティブ
-  # バイナリを取得するためテスト実行に必須。
+  # JS bundler used by vitest as a transformer. Fetches an OS-specific native
+  # binary via postinstall; required for running tests.
   esbuild: true
-  # Git hook (pre-commit / pre-push) のセットアップ。pnpm install 時に
-  # ローカルへ hook 配置する必要がある。
+  # Sets up Git hooks (pre-commit / pre-push) locally during pnpm install.
   lefthook: true

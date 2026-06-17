@@ -12,8 +12,8 @@ function setup(files: Record<string, string>): Project {
 }
 
 describe("getTypeAtPosition", () => {
-	describe("基本", () => {
-		it("変数識別子の型を取得できる", () => {
+	describe("basics", () => {
+		it("retrieves the type of a variable identifier", () => {
 			const project = setup({
 				"/a.ts": [
 					'const user = { id: "u1", name: "alice" };',
@@ -35,7 +35,7 @@ describe("getTypeAtPosition", () => {
 			expect(result.declaration?.line).toBe(1);
 		});
 
-		it("関数識別子の型 (シグネチャ) を取得できる", () => {
+		it("retrieves the type (signature) of a function identifier", () => {
 			const project = setup({
 				"/a.ts": [
 					"function greet(name: string): string {",
@@ -56,7 +56,7 @@ describe("getTypeAtPosition", () => {
 			});
 		});
 
-		it("プロパティアクセスのプロパティ部分の型を取得できる", () => {
+		it("retrieves the type of the property portion of a property access", () => {
 			const project = setup({
 				"/a.ts": [
 					'const user = { id: 42, name: "alice" };',
@@ -72,7 +72,7 @@ describe("getTypeAtPosition", () => {
 			expect(result.type).toBe("string");
 		});
 
-		it("関数呼び出し結果は呼び出された関数識別子位置で関数の型として返す", () => {
+		it("returns the function's type at the called function identifier position for a call expression result", () => {
 			const project = setup({
 				"/a.ts": [
 					"function getNumber(): number { return 1; }",
@@ -87,8 +87,8 @@ describe("getTypeAtPosition", () => {
 		});
 	});
 
-	describe("関数 signature の修飾子保持", () => {
-		it("rest パラメータの `...` を保持する", () => {
+	describe("function signature modifier preservation", () => {
+		it("preserves the rest parameter `...`", () => {
 			const project = setup({
 				"/a.ts": [
 					"function f(a: number, ...rest: number[]): void {}",
@@ -102,7 +102,7 @@ describe("getTypeAtPosition", () => {
 			expect(result.type).toBe("(a: number, ...rest: number[]) => void");
 		});
 
-		it("optional `?` を保持する", () => {
+		it("preserves the optional `?` modifier", () => {
 			const project = setup({
 				"/a.ts": ["function f(a: number, b?: string): void {}", "f(1);"].join(
 					"\n",
@@ -115,7 +115,7 @@ describe("getTypeAtPosition", () => {
 			expect(result.type).toBe("(a: number, b?: string) => void");
 		});
 
-		it("分割代入パラメータが `__0` ではなく元のテキストで保持される", () => {
+		it("preserves destructuring parameters as original source text rather than `__0`", () => {
 			const project = setup({
 				"/a.ts": [
 					"function f({ a, b }: { a: number; b: string }): void {}",
@@ -126,15 +126,15 @@ describe("getTypeAtPosition", () => {
 				line: 2,
 				column: 1,
 			});
-			// __0 のような合成名が露出しないこと
+			// Synthesized names like __0 must not be exposed
 			expect(result.type).not.toContain("__0");
 			expect(result.type).toContain("{ a, b }");
 			expect(result.type).toContain("a: number");
 		});
 	});
 
-	describe("オーバーロード関数", () => {
-		it("オーバーロード signature を `&` で結合して返す (implementation は隠す)", () => {
+	describe("overloaded functions", () => {
+		it("returns overload signatures joined with `&` and hides the implementation signature", () => {
 			const project = setup({
 				"/a.ts": [
 					"function f(a: string): string;",
@@ -153,8 +153,8 @@ describe("getTypeAtPosition", () => {
 		});
 	});
 
-	describe("関数 + namespace マージ", () => {
-		it("namespace 側のプロパティを保つために signature 形に展開しない", () => {
+	describe("function + namespace merge", () => {
+		it("does not expand to signature form in order to preserve the namespace-side properties", () => {
 			const project = setup({
 				"/a.ts": [
 					"function fn(x: number): string { return ''; }",
@@ -166,15 +166,15 @@ describe("getTypeAtPosition", () => {
 				line: 3,
 				column: 13,
 			});
-			// signature 展開してしまうと "(x: number) => string" となり namespace 側 (version) が消える。
-			// TS が返す `typeof fn` のまま保ち、エージェントが宣言を辿れるようにする。
+			// If the signature were expanded it would become "(x: number) => string", silently dropping the namespace side (version).
+			// Keep the raw `typeof fn` that TS returns so an agent can still navigate to the declaration.
 			expect(result.type).not.toMatch(/^\(x: number\) => string$/);
 			expect(result.type).toBe("typeof fn");
 		});
 	});
 
-	describe("リテラル", () => {
-		it("文字列リテラルの位置で string リテラル型を返す", () => {
+	describe("literals", () => {
+		it("returns a string literal type at a string literal position", () => {
 			const project = setup({
 				"/a.ts": 'const x = "hello";',
 			});
@@ -186,7 +186,7 @@ describe("getTypeAtPosition", () => {
 			expect(result.type).toBe('"hello"');
 		});
 
-		it("数値リテラルの位置で number リテラル型を返す", () => {
+		it("returns a numeric literal type at a numeric literal position", () => {
 			const project = setup({
 				"/a.ts": "const x = 42;",
 			});
@@ -199,8 +199,8 @@ describe("getTypeAtPosition", () => {
 		});
 	});
 
-	describe("import alias 解決", () => {
-		it("直接 import された symbol の宣言位置を元ファイルで返す", () => {
+	describe("import alias resolution", () => {
+		it("returns the declaration location of a directly imported symbol in the original file", () => {
 			const project = setup({
 				"/lib.ts":
 					"export function helper(n: number): string { return String(n); }",
@@ -216,7 +216,7 @@ describe("getTypeAtPosition", () => {
 			expect(result.type).toBe("(n: number) => string");
 		});
 
-		it("barrel re-export (export * from) 越しでも元の宣言まで再帰解決する", () => {
+		it("recursively resolves to the original declaration even through a barrel re-export (export * from)", () => {
 			const project = setup({
 				"/a.ts":
 					"export function helper(n: number): string { return String(n); }",
@@ -234,7 +234,7 @@ describe("getTypeAtPosition", () => {
 			expect(result.declaration?.line).toBe(1);
 		});
 
-		it("named re-export (export { x } from) 越しでも元の宣言まで再帰解決する", () => {
+		it("recursively resolves to the original declaration even through a named re-export (export { x } from)", () => {
 			const project = setup({
 				"/a.ts":
 					"export function helper(n: number): string { return String(n); }",
@@ -251,8 +251,8 @@ describe("getTypeAtPosition", () => {
 		});
 	});
 
-	describe("ジェネリック", () => {
-		it("ユーザ定義ジェネリック型も復元できる", () => {
+	describe("generics", () => {
+		it("can recover user-defined generic types", () => {
 			const project = setup({
 				"/a.ts": [
 					"type Box<T> = { value: T };",
@@ -267,7 +267,7 @@ describe("getTypeAtPosition", () => {
 			expect(result.type).toBe("Box<string>");
 		});
 
-		it("ユニオン型を保持する", () => {
+		it("preserves union types", () => {
 			const project = setup({
 				"/a.ts": [
 					"function f(): string | number { return 1; }",
@@ -282,7 +282,7 @@ describe("getTypeAtPosition", () => {
 			expect(result.type).toBe("string | number");
 		});
 
-		it("ジェネリック関数の signature は元の型パラメータを保持する", () => {
+		it("preserves the original type parameters in a generic function signature", () => {
 			const project = setup({
 				"/a.ts": [
 					"function identity<T>(x: T): T { return x; }",
@@ -293,30 +293,30 @@ describe("getTypeAtPosition", () => {
 				line: 2,
 				column: 1,
 			});
-			// 元の宣言から組み立てるので、推論された number ではなく T が残る
+			// Built from the original declaration, so T is preserved rather than the inferred number
 			expect(result.type).toBe("(x: T) => T");
 		});
 	});
 
-	describe("エラー処理", () => {
-		it("存在しないファイルでエラー", () => {
+	describe("error handling", () => {
+		it("throws an error for a non-existent file", () => {
 			const project = setup({});
 			expect(() =>
 				getTypeAtPosition(project, "/nonexistent.ts", {
 					line: 1,
 					column: 1,
 				}),
-			).toThrow(/ファイルが見つかりません/);
+			).toThrow(/File not found/);
 		});
 
-		it("ファイル範囲外の位置でエラー", () => {
+		it("throws an error for a position outside the file's range", () => {
 			const project = setup({ "/a.ts": "const x = 1;" });
 			expect(() =>
 				getTypeAtPosition(project, "/a.ts", { line: 99, column: 1 }),
-			).toThrow(/範囲外/);
+			).toThrow(/out of range/);
 		});
 
-		it("line=0 / column=0 のような不正な位置はエラー", () => {
+		it("throws an error for invalid positions such as line=0 / column=0", () => {
 			const project = setup({ "/a.ts": "const x = 1;" });
 			expect(() =>
 				getTypeAtPosition(project, "/a.ts", { line: 0, column: 1 }),
@@ -329,23 +329,23 @@ describe("getTypeAtPosition", () => {
 			).toThrow(/1-based/);
 		});
 
-		it("末尾の空白行に対しても型情報を返す (SourceFile レベルの型)", () => {
-			// getDescendantAtPos は空白でも SourceFile を返すため、エラーにはならない。
-			// nodeKind と type の双方を確認することで、ts-morph のバージョン差を検出可能にする。
+		it("returns type information even for a trailing blank line (SourceFile-level type)", () => {
+			// getDescendantAtPos returns SourceFile even over whitespace, so no error is thrown.
+			// Checking both nodeKind and type makes it possible to detect ts-morph version differences.
 			const project = setup({ "/a.ts": "const x = 1;\n\n" });
 			const result = getTypeAtPosition(project, "/a.ts", {
 				line: 2,
 				column: 1,
 			});
 			expect(["SourceFile", "EndOfFileToken"]).toContain(result.nodeKind);
-			// 空白位置でも何らかの型文字列が返ること (空文字や undefined ではない)
+			// Even at a whitespace position, some type string must be returned (not empty or undefined)
 			expect(typeof result.type).toBe("string");
 			expect(result.type.length).toBeGreaterThan(0);
 		});
 	});
 
-	describe("型注釈位置", () => {
-		it("型エイリアス使用位置の型 (引数の型注釈) を取得できる", () => {
+	describe("type annotation positions", () => {
+		it("retrieves the type at a type alias usage position (argument type annotation)", () => {
 			const project = setup({
 				"/a.ts": [
 					"type UserId = string;",
@@ -361,8 +361,8 @@ describe("getTypeAtPosition", () => {
 		});
 	});
 
-	describe("メソッド / accessor", () => {
-		it("インスタンスメソッド呼び出しの signature を取得できる", () => {
+	describe("methods / accessors", () => {
+		it("retrieves the signature of an instance method call", () => {
 			const project = setup({
 				"/a.ts": [
 					"class C {",
@@ -380,24 +380,24 @@ describe("getTypeAtPosition", () => {
 		});
 	});
 
-	describe("nodeText の安全な切り詰め", () => {
-		it("UTF-16 サロゲートペアを途中で切らない", () => {
-			// 79 chars + 1 emoji (= 81 code points)。コードポイント80でカットすると emoji の前で止まる。
+	describe("safe truncation of nodeText", () => {
+		it("does not split UTF-16 surrogate pairs mid-pair", () => {
+			// 79 chars + 1 emoji (= 81 code points). Cutting at code point 80 stops before the emoji.
 			const longString = `"${"a".repeat(78)}\u{1F389}xyz"`;
 			const project = setup({
 				"/a.ts": `const x = ${longString};`,
 			});
-			// 文字列リテラル本体の位置を指す
+			// Points to the position of the string literal body
 			const result = getTypeAtPosition(project, "/a.ts", {
 				line: 1,
 				column: 11,
 			});
 			expect(result.nodeKind).toBe("StringLiteral");
-			// 切り詰めが起きていれば '…' で終わるが、孤立サロゲートが残らないこと
+			// If truncation occurred the text ends with '…', but no lone surrogates must remain
 			if (result.nodeText.endsWith("…")) {
-				// 末尾 '…' を取り除いた残りが well-formed UTF-16 であること
+				// The portion after removing the trailing '…' must be well-formed UTF-16
 				const body = result.nodeText.slice(0, -1);
-				// lone high surrogate の検出
+				// Detect a lone high surrogate
 				expect(body).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
 			}
 		});

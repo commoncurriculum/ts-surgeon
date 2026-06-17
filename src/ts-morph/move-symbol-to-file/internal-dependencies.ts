@@ -3,13 +3,13 @@ import { getDeclarationIdentifier } from "./get-declaration-identifier";
 import logger from "../../utils/logger";
 
 /**
- * 与えられたノードを含むトップレベルの Statement を見つける。
- * ノード自身がトップレベル Statement の場合はそれを返す。
- * 見つからない場合は undefined を返す。
+ * Finds the top-level Statement that contains the given node.
+ * Returns the node itself if it is already a top-level Statement.
+ * Returns undefined if none is found.
  */
 function findContainingTopLevelStatement(
 	node: Node,
-	sourceFile: Node, // SourceFile は Node のサブタイプ
+	sourceFile: Node, // SourceFile is a subtype of Node
 	isTopLevelStatementFn: (n: Node) => n is Statement,
 ): Statement | undefined {
 	if (isTopLevelStatementFn(node)) {
@@ -20,16 +20,17 @@ function findContainingTopLevelStatement(
 	while (current && !isTopLevelStatementFn(current)) {
 		current = current.getParent();
 		if (!current || current === sourceFile) {
-			// SourceFile に到達するか、親がなくなったら探索終了
+			// Stop searching when SourceFile is reached or there is no parent
 			return undefined;
 		}
 	}
-	// current が isTopLevelStatementFn を満たす Statement であるはず
+	// current should be a Statement satisfying isTopLevelStatementFn
 	return current as Statement | undefined;
 }
 
 /**
- * 宣言が内部依存関係の条件を満たすかチェックし、満たす場合はトップレベル Statement を返す。
+ * Checks whether a declaration satisfies the conditions for an internal dependency,
+ * and if so, returns the top-level Statement.
  */
 function getValidTopLevelDependency(
 	declaration: Node,
@@ -82,17 +83,17 @@ function getValidTopLevelDependency(
 }
 
 /**
- * 指定されたノードから内部依存関係を再帰的に探索し、依存関係セットに追加する。
+ * Recursively searches for internal dependencies from the given node and adds them to the dependency set.
  */
 function findDependenciesRecursive(
-	currentNode: Statement, // 探索を開始するノード (トップレベル Statement)
-	dependencies: Set<Statement>, // 結果を蓄積する Set
-	visited: Set<Statement>, // 訪問済みノードを記録する Set
+	currentNode: Statement, // Node from which to start the search (top-level Statement)
+	dependencies: Set<Statement>, // Set to accumulate results
+	visited: Set<Statement>, // Set to record already-visited nodes
 	sourceFile: Node,
 	isTopLevelStatementFn: (n: Node) => n is Statement,
-	targetDeclaration: Statement, // 元々の移動対象ノード
+	targetDeclaration: Statement, // The original move-target node
 ) {
-	// 既に訪問済みなら処理しない (循環参照防止)
+	// Do not process if already visited (prevents circular references)
 	if (visited.has(currentNode)) {
 		return;
 	}
@@ -107,7 +108,7 @@ function findDependenciesRecursive(
 	const currentIdentifierNode = getDeclarationIdentifier(currentNode);
 
 	for (const identifier of identifiers) {
-		// 自己参照や内部定義はスキップ (ただし、依存関係の探索では必要に応じて処理)
+		// Skip self-references and internal definitions (handle as needed during dependency traversal)
 		if (currentIdentifierNode && identifier === currentIdentifierNode) {
 			continue;
 		}
@@ -121,7 +122,7 @@ function findDependenciesRecursive(
 				declaration,
 				sourceFile,
 				isTopLevelStatementFn,
-				targetDeclaration, // 依存関係の判定基準は元の移動対象
+				targetDeclaration, // The original move target is the reference point for dependency evaluation
 			);
 
 			if (validDependency && !dependencies.has(validDependency)) {
@@ -131,7 +132,7 @@ function findDependenciesRecursive(
 						.substring(0, 30)}...'`,
 				);
 				dependencies.add(validDependency);
-				// 新しく見つかった依存関係について再帰的に探索
+				// Recursively search the newly found dependency
 				findDependenciesRecursive(
 					validDependency,
 					dependencies,
@@ -146,8 +147,8 @@ function findDependenciesRecursive(
 }
 
 /**
- * 指定された宣言ノードがファイル内部で依存している他のトップレベル宣言ノードを特定する
- * (直接的および間接的な依存関係を含む)
+ * Identifies other top-level declaration nodes within the file that the given declaration node depends on
+ * (including both direct and indirect dependencies).
  */
 export function getInternalDependencies(
 	targetDeclaration: Statement,
@@ -169,7 +170,7 @@ export function getInternalDependencies(
 		);
 	};
 
-	// targetDeclaration 自体を起点として再帰的に探索を開始
+	// Start recursive search from targetDeclaration itself as the entry point
 	findDependenciesRecursive(
 		targetDeclaration,
 		dependencies,

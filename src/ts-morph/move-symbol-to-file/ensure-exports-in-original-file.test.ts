@@ -7,7 +7,7 @@ import logger from "../../utils/logger";
 vi.mock("../../utils/logger");
 
 describe("ensureExportsInOriginalFile", () => {
-	it("addExport タイプで未エクスポートの場合、export キーワードを追加する", () => {
+	it("adds the export keyword for an addExport-type dependency that is not yet exported", () => {
 		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"original.ts",
@@ -38,7 +38,7 @@ describe("ensureExportsInOriginalFile", () => {
 		);
 	});
 
-	it("addExport タイプで既にエクスポート済みの場合、変更しない", () => {
+	it("makes no change for an addExport-type dependency that is already exported", () => {
 		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"original.ts",
@@ -66,10 +66,10 @@ describe("ensureExportsInOriginalFile", () => {
 
 		expect(dep1Statement.isExported()).toBe(true);
 		expect(dep2Statement.isExported()).toBe(true);
-		expect(sourceFile.getFullText()).toBe(originalText); // 変更がないことを確認
+		expect(sourceFile.getFullText()).toBe(originalText); // verify no change
 	});
 
-	it("addExport タイプでない依存関係は無視する", () => {
+	it("ignores dependencies that are not of addExport type", () => {
 		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"original.ts",
@@ -81,7 +81,7 @@ describe("ensureExportsInOriginalFile", () => {
 
 		const classifiedDependencies: DependencyClassification[] = [
 			{
-				type: "moveToNewFile", // addExport ではない
+				type: "moveToNewFile", // not addExport
 				statement: dep1Statement,
 			},
 		];
@@ -92,9 +92,9 @@ describe("ensureExportsInOriginalFile", () => {
 		expect(sourceFile.getFullText()).toBe(originalText);
 	});
 
-	it("エクスポート不可能なノードに対して警告ログを出力する", () => {
+	it("logs a warning for a non-exportable node", () => {
 		const project = createInMemoryProject();
-		// エクスポートできないステートメント (例: ラベル付きステートメント)
+		// a statement that cannot be exported (e.g., a labeled statement)
 		const sourceFile = project.createSourceFile(
 			"original.ts",
 			"myLabel: for (let i = 0; i < 1; i++) {}",
@@ -104,7 +104,7 @@ describe("ensureExportsInOriginalFile", () => {
 		const classifiedDependencies: DependencyClassification[] = [
 			{
 				type: "addExport",
-				name: "myLabel", // 名前は適当
+				name: "myLabel", // arbitrary name
 				statement: labeledStatement,
 			},
 		];

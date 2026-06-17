@@ -5,9 +5,9 @@ import { getTsConfigAliasKeys } from "./ts-morph-project";
 import logger from "../../utils/logger";
 
 /**
- * ターゲットファイルを参照するすべての Import/Export 宣言を検索する。
- * ts-morph の getReferencingSourceFiles を使用。
- * 注意: バレルファイル (例: index.ts) 経由の再エクスポートによる参照は見つけられない可能性がある。
+ * Searches for all Import/Export declarations that reference the target file.
+ * Uses ts-morph's getReferencingSourceFiles.
+ * Note: References via re-exports through barrel files (e.g. index.ts) may not be found.
  */
 export async function findDeclarationsReferencingFile(
 	targetFile: SourceFile,
@@ -24,7 +24,7 @@ export async function findDeclarationsReferencingFile(
 		"Starting findDeclarationsReferencingFile using getReferencingSourceFiles",
 	);
 
-	// ts-morph の組み込みメソッドを使用して参照元ソースファイルを見つける
+	// Use the built-in ts-morph method to find referencing source files
 	const referencingSourceFiles = targetFile.getReferencingSourceFiles();
 
 	logger.trace(
@@ -35,7 +35,7 @@ export async function findDeclarationsReferencingFile(
 	for (const referencingFile of referencingSourceFiles) {
 		signal?.throwIfAborted();
 		const referencingFilePath = referencingFile.getFilePath();
-		// 1 ファイルの解析失敗で全参照走査を止めないための意図的な warn+continue
+		// Intentional warn+continue to avoid halting the full reference scan due to a single file parse failure
 		try {
 			const declarations = [
 				...referencingFile.getImportDeclarations(),
@@ -47,7 +47,7 @@ export async function findDeclarationsReferencingFile(
 				const moduleSpecifier = declaration.getModuleSpecifier();
 				if (!moduleSpecifier) continue;
 
-				// 宣言が *実際に* ターゲットファイルに解決されるか確認する
+				// Verify that the declaration actually resolves to the target file
 				const specifierSourceFile = declaration.getModuleSpecifierSourceFile();
 				if (specifierSourceFile?.getFilePath() !== targetFilePath) continue;
 

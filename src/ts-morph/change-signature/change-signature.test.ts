@@ -24,7 +24,7 @@ function setup(files: Record<string, string>): Project {
 }
 
 describe("computeNewArgumentTexts", () => {
-	it("add: argumentForCallers が指定されていれば指定 index に挿入", () => {
+	it("add: inserts at the specified index when argumentForCallers is provided", () => {
 		const result = computeNewArgumentTexts(
 			["a", "b"],
 			[{ kind: "add", index: 1, name: "x", argumentForCallers: "ctx" }],
@@ -32,7 +32,7 @@ describe("computeNewArgumentTexts", () => {
 		expect(result).toEqual(["a", "ctx", "b"]);
 	});
 
-	it("add: argumentForCallers が無ければ呼び出し引数は変えない", () => {
+	it("add: does not change call arguments when argumentForCallers is absent", () => {
 		const result = computeNewArgumentTexts(
 			["a"],
 			[{ kind: "add", name: "x", defaultValue: "0" }],
@@ -40,7 +40,7 @@ describe("computeNewArgumentTexts", () => {
 		expect(result).toEqual(["a"]);
 	});
 
-	it("add: index が呼び出しの引数数を超える場合はエラー", () => {
+	it("add: throws an error when index exceeds the call's argument count", () => {
 		expect(() =>
 			computeNewArgumentTexts(
 				[],
@@ -53,10 +53,10 @@ describe("computeNewArgumentTexts", () => {
 					},
 				],
 			),
-		).toThrow(/index=2 に挿入/);
+		).toThrow(/index=2/);
 	});
 
-	it("remove: 指定 index の引数を削除", () => {
+	it("remove: removes the argument at the specified index", () => {
 		const result = computeNewArgumentTexts(
 			["a", "b", "c"],
 			[{ kind: "remove", index: 1 }],
@@ -64,7 +64,7 @@ describe("computeNewArgumentTexts", () => {
 		expect(result).toEqual(["a", "c"]);
 	});
 
-	it("remove: 引数数が足りない (省略 optional) 場合は無変更", () => {
+	it("remove: no change when argument count is insufficient (omitted optional)", () => {
 		const result = computeNewArgumentTexts(
 			["a"],
 			[{ kind: "remove", index: 2 }],
@@ -72,7 +72,7 @@ describe("computeNewArgumentTexts", () => {
 		expect(result).toEqual(["a"]);
 	});
 
-	it("reorder: newOrder に従い並び替える", () => {
+	it("reorder: reorders according to newOrder", () => {
 		const result = computeNewArgumentTexts(
 			["a", "b", "c"],
 			[{ kind: "reorder", newOrder: [2, 0, 1] }],
@@ -80,7 +80,7 @@ describe("computeNewArgumentTexts", () => {
 		expect(result).toEqual(["c", "a", "b"]);
 	});
 
-	it("reorder: 引数数が不一致ならエラー", () => {
+	it("reorder: throws an error when argument count does not match", () => {
 		expect(() =>
 			computeNewArgumentTexts(
 				["a", "b"],
@@ -89,7 +89,7 @@ describe("computeNewArgumentTexts", () => {
 		).toThrow(/Reorder requires call sites/);
 	});
 
-	it("複数操作を順次適用", () => {
+	it("applies multiple operations sequentially", () => {
 		const result = computeNewArgumentTexts(
 			["a", "b"],
 			[
@@ -103,7 +103,7 @@ describe("computeNewArgumentTexts", () => {
 });
 
 describe("computeNewParameterStructures", () => {
-	it("add: 末尾に追加 (index 省略)", () => {
+	it("add: appends to the end (index omitted)", () => {
 		const result = computeNewParameterStructures(
 			[{ name: "a", type: "string" }],
 			[{ kind: "add", name: "b", typeText: "number", defaultValue: "0" }],
@@ -119,34 +119,34 @@ describe("computeNewParameterStructures", () => {
 		]);
 	});
 
-	it("add: 中間挿入で argumentForCallers 未指定はエラー", () => {
+	it("add: throws an error when mid-list insertion is missing argumentForCallers", () => {
 		expect(() =>
 			computeNewParameterStructures(
 				[{ name: "a" }, { name: "b" }],
 				[{ kind: "add", index: 1, name: "x", typeText: "string" }],
 			),
-		).toThrow(/argumentForCallers が必須/);
+		).toThrow(/argumentForCallers is required/);
 	});
 
-	it("add: 末尾追加でも optional/default が無く argumentForCallers も無いとエラー", () => {
+	it("add: throws an error when trailing add has no optional/default and no argumentForCallers", () => {
 		expect(() =>
 			computeNewParameterStructures(
 				[{ name: "a" }],
 				[{ kind: "add", name: "b", typeText: "string" }],
 			),
-		).toThrow(/optional または defaultValue/);
+		).toThrow(/optional or have a defaultValue/);
 	});
 
-	it("remove: index が範囲外ならエラー", () => {
+	it("remove: throws an error when index is out of range", () => {
 		expect(() =>
 			computeNewParameterStructures(
 				[{ name: "a" }],
 				[{ kind: "remove", index: 1 }],
 			),
-		).toThrow(/範囲/);
+		).toThrow(/out of parameter range/);
 	});
 
-	it("reorder: 長さ不一致はエラー", () => {
+	it("reorder: throws an error when lengths do not match", () => {
 		expect(() =>
 			computeNewParameterStructures(
 				[{ name: "a" }, { name: "b" }],
@@ -155,25 +155,25 @@ describe("computeNewParameterStructures", () => {
 		).toThrow(/newOrder/);
 	});
 
-	it("reorder: 重複した index はエラー", () => {
+	it("reorder: throws an error when duplicate index is present", () => {
 		expect(() =>
 			computeNewParameterStructures(
 				[{ name: "a" }, { name: "b" }],
 				[{ kind: "reorder", newOrder: [0, 0] }],
 			),
-		).toThrow(/重複|range/i);
+		).toThrow(/duplicate or out-of-range/i);
 	});
 
-	it("rest パラメータを reorder で末尾以外に動かすとエラー", () => {
+	it("reorder: throws an error when rest parameter is moved to a non-last position", () => {
 		expect(() =>
 			computeNewParameterStructures(
 				[{ name: "a" }, { name: "rest", isRestParameter: true }],
 				[{ kind: "reorder", newOrder: [1, 0] }],
 			),
-		).toThrow(/rest パラメータ/);
+		).toThrow(/rest parameter/);
 	});
 
-	it("rest パラメータの後ろに add するとエラー", () => {
+	it("add: throws an error when adding after a rest parameter", () => {
 		expect(() =>
 			computeNewParameterStructures(
 				[{ name: "rest", isRestParameter: true }],
@@ -186,12 +186,12 @@ describe("computeNewParameterStructures", () => {
 					},
 				],
 			),
-		).toThrow(/rest パラメータ/);
+		).toThrow(/rest parameter/);
 	});
 });
 
 describe("validateRestParameterIsLast", () => {
-	it("rest が末尾なら OK", () => {
+	it("does not throw when rest is last", () => {
 		expect(() =>
 			validateRestParameterIsLast([
 				{ name: "a" },
@@ -200,18 +200,18 @@ describe("validateRestParameterIsLast", () => {
 		).not.toThrow();
 	});
 
-	it("rest が中間にあるとエラー", () => {
+	it("throws an error when rest is not last", () => {
 		expect(() =>
 			validateRestParameterIsLast([
 				{ name: "rest", isRestParameter: true },
 				{ name: "b" },
 			]),
-		).toThrow(/rest パラメータ/);
+		).toThrow(/rest parameter/);
 	});
 });
 
 describe("findFunctionLikeDeclaration", () => {
-	it("関数宣言を取得できる", () => {
+	it("retrieves a function declaration", () => {
 		const project = setup({
 			"/a.ts": "export function foo(a: number) { return a; }",
 		});
@@ -220,7 +220,7 @@ describe("findFunctionLikeDeclaration", () => {
 		expect(fn.getParameters()).toHaveLength(1);
 	});
 
-	it("アロー関数代入を取得できる", () => {
+	it("retrieves an arrow function assignment", () => {
 		const project = setup({
 			"/a.ts": "export const foo = (a: number) => a;",
 		});
@@ -229,7 +229,7 @@ describe("findFunctionLikeDeclaration", () => {
 		expect(fn.getParameters()).toHaveLength(1);
 	});
 
-	it("メソッド宣言を取得できる", () => {
+	it("retrieves a method declaration", () => {
 		const project = setup({
 			"/a.ts": "export class C { foo(a: number) { return a; } }",
 		});
@@ -238,7 +238,7 @@ describe("findFunctionLikeDeclaration", () => {
 		expect(fn.getParameters()).toHaveLength(1);
 	});
 
-	it("GetAccessor / SetAccessor を取得できる", () => {
+	it("retrieves GetAccessor / SetAccessor", () => {
 		const project = setup({
 			"/a.ts": [
 				"export class C {",
@@ -263,19 +263,19 @@ describe("findFunctionLikeDeclaration", () => {
 		);
 	});
 
-	it("関数でない位置 (パラメータ) を指すと種別を含むエラー", () => {
+	it("throws an error including the node kind when pointing to a non-function position (parameter)", () => {
 		const project = setup({
 			"/a.ts": "export function bar(foo: string) { return foo; }",
 		});
 		const id = findIdentifierNode(project, "/a.ts", { line: 1, column: 21 });
 		expect(() => findFunctionLikeDeclaration(id)).toThrow(
-			/関数宣言\/メソッド\/関数式ではありません.*Parameter/,
+			/is not a function declaration\/method\/function expression.*Parameter/,
 		);
 	});
 });
 
 describe("getAllRelatedFunctionDeclarations", () => {
-	it("オーバーロード無しなら単独", () => {
+	it("returns a single declaration when there are no overloads", () => {
 		const project = setup({
 			"/a.ts": "export function foo(a: number) { return a; }",
 		});
@@ -284,7 +284,7 @@ describe("getAllRelatedFunctionDeclarations", () => {
 		expect(getAllRelatedFunctionDeclarations(fn)).toHaveLength(1);
 	});
 
-	it("オーバーロード implementation を指せば全 signature を返す", () => {
+	it("returns all signatures when pointing to overload implementation", () => {
 		const project = setup({
 			"/a.ts": [
 				"export function foo(a: string): string;",
@@ -298,7 +298,7 @@ describe("getAllRelatedFunctionDeclarations", () => {
 		expect(all).toHaveLength(3);
 	});
 
-	it("オーバーロード signature 側を指しても全 signature を返す", () => {
+	it("returns all signatures even when pointing to an overload signature side", () => {
 		const project = setup({
 			"/a.ts": [
 				"export function foo(a: string): string;",
@@ -314,7 +314,7 @@ describe("getAllRelatedFunctionDeclarations", () => {
 });
 
 describe("filterCallSites", () => {
-	it("呼び出し位置のみを抽出する (代入や型注釈は含めない)", () => {
+	it("extracts only call sites (excludes assignments and type annotations)", () => {
 		const project = setup({
 			"/a.ts": [
 				"export function foo(a: number) { return a; }",
@@ -332,7 +332,7 @@ describe("filterCallSites", () => {
 	});
 });
 
-// ---- 統合テスト (実 changeSignatureOnProject を通す) ----
+// ---- Integration tests (going through the real changeSignatureOnProject) ----
 
 async function run(
 	project: Project,
@@ -345,12 +345,12 @@ async function run(
 ) {
 	return changeSignatureOnProject(project, {
 		...args,
-		dryRun: true, // テストでは保存しない
+		dryRun: true, // do not save in tests
 	});
 }
 
 describe("changeSignatureOnProject", () => {
-	it("add: 末尾にデフォルト値付きパラメータを追加し、呼び出し側は変えない", async () => {
+	it("add: appends a parameter with default value to the end without changing call sites", async () => {
 		const project = setup({
 			"/a.ts": ["export function foo(a: number) { return a; }", "foo(1);"].join(
 				"\n",
@@ -372,7 +372,7 @@ describe("changeSignatureOnProject", () => {
 		expect(b).toContain("foo(2);");
 	});
 
-	it("add: 先頭に必須パラメータを追加し、全呼び出しに引数を挿入", async () => {
+	it("add: prepends a required parameter and inserts argument at all call sites", async () => {
 		const project = setup({
 			"/a.ts": ["export function foo(a: number) {}", "foo(1);"].join("\n"),
 			"/b.ts": ['import { foo } from "./a";', "foo(2);", "foo(3);"].join("\n"),
@@ -399,7 +399,7 @@ describe("changeSignatureOnProject", () => {
 		expect(b).toContain('foo("ctx", 3);');
 	});
 
-	it("remove: パラメータと対応する引数を削除", async () => {
+	it("remove: removes a parameter and its corresponding argument", async () => {
 		const project = setup({
 			"/a.ts": [
 				"export function foo(a: number, b: string, c: boolean) {}",
@@ -417,7 +417,7 @@ describe("changeSignatureOnProject", () => {
 		expect(a).toContain("foo(1, true);");
 	});
 
-	it("reorder: パラメータと引数を並び替え", async () => {
+	it("reorder: reorders parameters and arguments", async () => {
 		const project = setup({
 			"/a.ts": [
 				"export function foo(a: number, b: string, c: boolean) {}",
@@ -435,7 +435,7 @@ describe("changeSignatureOnProject", () => {
 		expect(a).toContain('foo(true, 1, "x");');
 	});
 
-	it("メソッド呼び出しも更新する", async () => {
+	it("also updates method call sites", async () => {
 		const project = setup({
 			"/a.ts": [
 				"export class C {",
@@ -464,7 +464,7 @@ describe("changeSignatureOnProject", () => {
 		expect(text).toContain('c.foo("x", 1);');
 	});
 
-	it("オーバーロード関数: 全 signature と implementation を同時に更新", async () => {
+	it("overloaded function: updates all signatures and implementation simultaneously", async () => {
 		const project = setup({
 			"/a.ts": [
 				"export function foo(a: string): string;",
@@ -496,7 +496,7 @@ describe("changeSignatureOnProject", () => {
 		expect(a).toContain('foo("c", 1);');
 	});
 
-	it("スプレッド呼び出しがあり引数を変更する場合はエラー (部分適用しない)", async () => {
+	it("throws an error when spread call exists and arguments need to change (does not partially apply)", async () => {
 		const original = [
 			"export function foo(a: number, b: number) {}",
 			"const args: [number, number] = [1, 2];",
@@ -512,25 +512,25 @@ describe("changeSignatureOnProject", () => {
 				functionName: "foo",
 				changes: [{ kind: "remove", index: 0 }],
 			}),
-		).rejects.toThrow(/スプレッド引数/);
+		).rejects.toThrow(/spread arguments/);
 
-		// 部分適用されていないこと (foo(3, 4) が元のまま)
+		// confirm that no partial application occurred (foo(3, 4) remains unchanged)
 		expect(project.getSourceFileOrThrow("/a.ts").getFullText()).toContain(
 			"foo(3, 4);",
 		);
 	});
 
-	it("plan フェーズで検証エラー: 呼び出しの引数数不足が混在 → 部分適用しない", async () => {
+	it("plan phase validation error: mixed insufficient argument counts — does not partially apply", async () => {
 		const project = setup({
 			"/a.ts": [
 				"export function foo(a: number, b: number) { return a + b; }",
 				"foo(1, 2);",
 				"foo(3, 4);",
 			].join("\n"),
-			// 引数数が足りない呼び出しを別ファイルに置く
+			// intentionally put a call with insufficient arguments in a separate file
 			"/b.ts": [
 				'import { foo } from "./a";',
-				"// @ts-expect-error 引数不足を意図的に",
+				"// @ts-expect-error intentionally missing argument",
 				"foo(99);",
 			].join("\n"),
 		});
@@ -544,13 +544,13 @@ describe("changeSignatureOnProject", () => {
 			}),
 		).rejects.toThrow(/Reorder requires/);
 
-		// 部分適用されていないこと (a.ts の呼び出しは元のまま)
+		// confirm that no partial application occurred (calls in a.ts remain unchanged)
 		const a = project.getSourceFileOrThrow("/a.ts").getFullText();
 		expect(a).toContain("foo(1, 2);");
 		expect(a).toContain("foo(3, 4);");
 	});
 
-	it("add 中間挿入で argumentForCallers が無いとエラー", async () => {
+	it("throws an error when mid-list add is missing argumentForCallers", async () => {
 		const project = setup({
 			"/a.ts": [
 				"export function foo(a: string, b: string) {}",
@@ -564,10 +564,10 @@ describe("changeSignatureOnProject", () => {
 				functionName: "foo",
 				changes: [{ kind: "add", index: 1, name: "ctx", typeText: "string" }],
 			}),
-		).rejects.toThrow(/argumentForCallers が必須/);
+		).rejects.toThrow(/argumentForCallers is required/);
 	});
 
-	it("rest パラメータの後ろに add するとエラー", async () => {
+	it("throws an error when adding after a rest parameter", async () => {
 		const project = setup({
 			"/a.ts": "export function foo(...rest: number[]) {}\nfoo(1, 2);",
 		});
@@ -585,6 +585,6 @@ describe("changeSignatureOnProject", () => {
 					},
 				],
 			}),
-		).rejects.toThrow(/rest パラメータ/);
+		).rejects.toThrow(/rest parameter/);
 	});
 });

@@ -6,14 +6,14 @@ import * as os from "node:os";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 /**
- * テスト用の一時ディレクトリを作成
+ * Creates a temporary directory for tests
  */
 function createTempDir(): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), "mcp-integration-test-"));
 }
 
 /**
- * ディレクトリを再帰的に削除
+ * Recursively removes a directory
  */
 function removeTempDir(dir: string): void {
 	if (fs.existsSync(dir)) {
@@ -22,7 +22,7 @@ function removeTempDir(dir: string): void {
 }
 
 /**
- * ツールの結果の型
+ * Type of tool result
  */
 interface ToolResult {
 	content: Array<{
@@ -33,12 +33,12 @@ interface ToolResult {
 }
 
 /**
- * ツールハンドラーの型
+ * Type of tool handler
  */
 type ToolHandler<T = unknown> = (args: T) => Promise<ToolResult>;
 
 /**
- * MCPサーバーのモック
+ * Mock MCP server
  */
 interface MockServer {
 	tool: <T>(
@@ -51,7 +51,7 @@ interface MockServer {
 }
 
 /**
- * MCPサーバーのモックを作成
+ * Creates a mock MCP server
  */
 function createMockServer(): MockServer {
 	const tools = new Map<string, { handler: ToolHandler<unknown> }>();
@@ -75,7 +75,7 @@ function createMockServer(): MockServer {
 	};
 }
 
-describe("MCP Tools 統合テスト", () => {
+describe("MCP Tools integration tests", () => {
 	let tempDir: string;
 	let tsconfigPath: string;
 	let srcDir: string;
@@ -87,7 +87,7 @@ describe("MCP Tools 統合テスト", () => {
 		srcDir = path.join(tempDir, "src");
 		fs.mkdirSync(srcDir, { recursive: true });
 
-		// tsconfig.json を作成
+		// Create tsconfig.json
 		fs.writeFileSync(
 			tsconfigPath,
 			JSON.stringify(
@@ -110,10 +110,10 @@ describe("MCP Tools 統合テスト", () => {
 			),
 		);
 
-		// モックサーバーを作成してツールを登録
+		// Create mock server and register tools
 		mockServer = createMockServer();
-		// テスト用モックをMcpServerとしてキャスト
-		// 実装を変更せずテスト側で対応
+		// Cast the test mock as McpServer
+		// Handle on the test side without changing the implementation
 		registerTsMorphTools(mockServer as unknown as McpServer);
 	});
 
@@ -122,7 +122,7 @@ describe("MCP Tools 統合テスト", () => {
 	});
 
 	describe("rename_symbol_by_tsmorph", () => {
-		it("シンボルのリネームが正しく動作する", async () => {
+		it("symbol renaming works correctly", async () => {
 			const utilsPath = path.join(srcDir, "utils.ts");
 			const mainPath = path.join(srcDir, "main.ts");
 
@@ -146,17 +146,17 @@ console.log(VERSION);
 `,
 			);
 
-			// rename_symbol_by_tsmorph ツールを呼び出し
+			// Call rename_symbol_by_tsmorph tool
 			await mockServer.callTool("rename_symbol_by_tsmorph", {
 				tsconfigPath,
 				targetFilePath: utilsPath,
-				position: { line: 1, column: 17 }, // "calculateSum" の位置
+				position: { line: 1, column: 17 }, // position of "calculateSum"
 				symbolName: "calculateSum",
 				newName: "addNumbers",
 				dryRun: false,
 			});
 
-			// ファイルが更新されていることを確認
+			// Verify that the files have been updated
 			const updatedUtilsContent = fs.readFileSync(utilsPath, "utf-8");
 			const updatedMainContent = fs.readFileSync(mainPath, "utf-8");
 
@@ -165,7 +165,7 @@ console.log(VERSION);
 			expect(updatedMainContent).toContain("addNumbers(10, 20)");
 		});
 
-		it("dryRunモードで変更をプレビューできる", async () => {
+		it("can preview changes in dryRun mode", async () => {
 			const filePath = path.join(srcDir, "test.ts");
 
 			fs.writeFileSync(
@@ -175,17 +175,17 @@ console.log(oldName);
 `,
 			);
 
-			// dryRunモードで実行
+			// Run in dryRun mode
 			await mockServer.callTool("rename_symbol_by_tsmorph", {
 				tsconfigPath,
 				targetFilePath: filePath,
-				position: { line: 1, column: 7 }, // "oldName" の位置
+				position: { line: 1, column: 7 }, // position of "oldName"
 				symbolName: "oldName",
 				newName: "newName",
 				dryRun: true,
 			});
 
-			// ファイルが変更されていないことを確認
+			// Verify that the file has not been changed
 			const content = fs.readFileSync(filePath, "utf-8");
 			expect(content).toContain("oldName");
 			expect(content).not.toContain("newName");
@@ -193,7 +193,7 @@ console.log(oldName);
 	});
 
 	describe("find_references_by_tsmorph", () => {
-		it("シンボルの参照を見つけることができる", async () => {
+		it("can find references to a symbol", async () => {
 			const libPath = path.join(srcDir, "lib.ts");
 			const app1Path = path.join(srcDir, "app1.ts");
 			const app2Path = path.join(srcDir, "app2.ts");
@@ -227,15 +227,15 @@ logger.log("Hello from app2");
 `,
 			);
 
-			// find_references_by_tsmorph ツールを呼び出し
+			// Call find_references_by_tsmorph tool
 			const result = await mockServer.callTool("find_references_by_tsmorph", {
 				tsconfigPath,
 				targetFilePath: libPath,
-				position: { line: 1, column: 14 }, // "Logger" クラスの位置
+				position: { line: 1, column: 14 }, // position of "Logger" class
 			});
 
 			expect(result).toBeDefined();
-			// 結果の構造を確認（実際の実装に応じて調整）
+			// Verify the result structure (adjust according to the actual implementation)
 			expect(result).toHaveProperty("content");
 			const content = result.content[0]?.text || "";
 			expect(content.toLowerCase()).toContain("reference");
@@ -243,7 +243,7 @@ logger.log("Hello from app2");
 	});
 
 	describe("remove_path_alias_by_tsmorph", () => {
-		it("パスエイリアスを相対パスに変換できる", async () => {
+		it("can convert path aliases to relative paths", async () => {
 			const utilsPath = path.join(srcDir, "utils", "math.ts");
 			const appPath = path.join(srcDir, "app.ts");
 
@@ -265,14 +265,14 @@ console.log(multiply(3, 4));
 `,
 			);
 
-			// remove_path_alias_by_tsmorph ツールを呼び出し
+			// Call remove_path_alias_by_tsmorph tool
 			await mockServer.callTool("remove_path_alias_by_tsmorph", {
 				tsconfigPath,
 				targetPath: appPath,
 				dryRun: false,
 			});
 
-			// パスエイリアスが相対パスに変換されていることを確認
+			// Verify that the path alias has been converted to a relative path
 			const updatedContent = fs.readFileSync(appPath, "utf-8");
 			expect(updatedContent).toContain('from "./utils/math"');
 			expect(updatedContent).not.toContain('from "@/utils/math"');
@@ -280,7 +280,7 @@ console.log(multiply(3, 4));
 	});
 
 	describe("rename_filesystem_entry_by_tsmorph", () => {
-		it("ファイル名を変更してインポートを更新できる", async () => {
+		it("can rename a file and update imports", async () => {
 			const oldPath = path.join(srcDir, "old-name.ts");
 			const newPath = path.join(srcDir, "new-name.ts");
 			const importerPath = path.join(srcDir, "importer.ts");
@@ -295,25 +295,25 @@ console.log(data.value);
 `,
 			);
 
-			// rename_filesystem_entry_by_tsmorph ツールを呼び出し
+			// Call rename_filesystem_entry_by_tsmorph tool
 			await mockServer.callTool("rename_filesystem_entry_by_tsmorph", {
 				tsconfigPath,
 				renames: [{ oldPath, newPath }],
 				dryRun: false,
 			});
 
-			// ファイルがリネームされていることを確認
+			// Verify that the file has been renamed
 			expect(fs.existsSync(newPath)).toBe(true);
 			expect(fs.existsSync(oldPath)).toBe(false);
 
-			// インポートが更新されていることを確認
+			// Verify that the import has been updated
 			const updatedImporterContent = fs.readFileSync(importerPath, "utf-8");
 			expect(updatedImporterContent).toContain('from "./new-name"');
 		});
 	});
 
 	describe("move_symbol_to_file_by_tsmorph", () => {
-		it("シンボルを別ファイルに移動できる", async () => {
+		it("can move a symbol to another file", async () => {
 			const sourcePath = path.join(srcDir, "source.ts");
 			const targetPath = path.join(srcDir, "target.ts");
 			const consumerPath = path.join(srcDir, "consumer.ts");
@@ -339,27 +339,27 @@ console.log(funcToStay());
 `,
 			);
 
-			// move_symbol_to_file_by_tsmorph ツールを呼び出し
+			// Call move_symbol_to_file_by_tsmorph tool
 			await mockServer.callTool("move_symbol_to_file_by_tsmorph", {
 				tsconfigPath,
-				originalFilePath: sourcePath, // sourceFilePathではなくoriginalFilePath
+				originalFilePath: sourcePath, // originalFilePath, not sourceFilePath
 				targetFilePath: targetPath,
-				symbolToMove: "funcToMove", // symbolNameではなくsymbolToMove
+				symbolToMove: "funcToMove", // symbolToMove, not symbolName
 				declarationKindString: "FunctionDeclaration",
 				dryRun: false,
 			});
 
-			// ターゲットファイルが作成され、シンボルが移動していることを確認
+			// Verify that the target file has been created and the symbol has been moved
 			expect(fs.existsSync(targetPath)).toBe(true);
 			const targetContent = fs.readFileSync(targetPath, "utf-8");
 			expect(targetContent).toContain("function funcToMove");
 
-			// ソースファイルからシンボルが削除されていることを確認
+			// Verify that the symbol has been removed from the source file
 			const sourceContent = fs.readFileSync(sourcePath, "utf-8");
 			expect(sourceContent).not.toContain("function funcToMove");
 			expect(sourceContent).toContain("function funcToStay");
 
-			// コンシューマーのインポートが更新されていることを確認
+			// Verify that the consumer's import has been updated
 			const consumerContent = fs.readFileSync(consumerPath, "utf-8");
 			expect(consumerContent).toContain('from "./target"');
 			expect(consumerContent).toContain('from "./source"');
@@ -367,7 +367,7 @@ console.log(funcToStay());
 	});
 
 	describe("change_signature_by_tsmorph", () => {
-		it("先頭に必須パラメータを追加し、呼び出し側を更新する", async () => {
+		it("adds a required parameter at the beginning and updates callers", async () => {
 			const utilsPath = path.join(srcDir, "utils.ts");
 			const consumerPath = path.join(srcDir, "consumer.ts");
 
@@ -390,7 +390,7 @@ console.log(greet("there"));
 			const result = await mockServer.callTool("change_signature_by_tsmorph", {
 				tsconfigPath,
 				targetFilePath: utilsPath,
-				position: { line: 1, column: 17 }, // "greet" の位置
+				position: { line: 1, column: 17 }, // position of "greet"
 				functionName: "greet",
 				changes: [
 					{
@@ -415,7 +415,7 @@ console.log(greet("there"));
 			expect(updatedConsumer).toContain('greet("en", "there")');
 		});
 
-		it("dryRun ではファイルを変更しない", async () => {
+		it("does not modify files in dryRun mode", async () => {
 			const filePath = path.join(srcDir, "fn.ts");
 			fs.writeFileSync(
 				filePath,
@@ -441,7 +441,7 @@ foo(1);
 	});
 
 	describe("get_type_at_position_by_tsmorph", () => {
-		it("変数の型情報を取得できる", async () => {
+		it("can retrieve type information for a variable", async () => {
 			const filePath = path.join(srcDir, "types.ts");
 			fs.writeFileSync(
 				filePath,
@@ -468,7 +468,7 @@ console.log(user);
 			expect(text).toContain(`Declared at: ${filePath}:1:`);
 		});
 
-		it("関数のシグネチャを call style で展開する", async () => {
+		it("expands a function signature in call style", async () => {
 			const filePath = path.join(srcDir, "fn.ts");
 			fs.writeFileSync(
 				filePath,
@@ -493,7 +493,7 @@ greet("world");
 			expect(text).toContain("(name: string) => string");
 		});
 
-		it("import された symbol の宣言位置は元ファイル", async () => {
+		it("declaration location of an imported symbol points to the original file", async () => {
 			const libPath = path.join(srcDir, "lib.ts");
 			const appPath = path.join(srcDir, "app.ts");
 			fs.writeFileSync(
@@ -523,7 +523,7 @@ helper(1);
 			expect(text).toContain(`Declared at: ${libPath}:1:`);
 		});
 
-		it("範囲外の位置でエラー", async () => {
+		it("returns an error for an out-of-range position", async () => {
 			const filePath = path.join(srcDir, "small.ts");
 			fs.writeFileSync(filePath, "const x = 1;\n");
 
@@ -542,7 +542,7 @@ helper(1);
 	});
 
 	describe("find_unused_exports_by_tsmorph", () => {
-		it("どこからも import されない export を候補として列挙する", async () => {
+		it("lists exports not imported from anywhere as candidates", async () => {
 			const aPath = path.join(srcDir, "a.ts");
 			const bPath = path.join(srcDir, "b.ts");
 			fs.writeFileSync(
@@ -568,12 +568,12 @@ used();
 			expect(text).toContain("Unused export candidates");
 			expect(text).toContain("unused (FunctionDeclaration)");
 			expect(text).not.toContain(" used (");
-			// 出力行に textHits / sameFileRefs が含まれる (削除 vs unexport 判断用)
+			// Output lines include textHits / sameFileRefs (for deciding delete vs unexport)
 			expect(text).toMatch(/unused \(FunctionDeclaration\).*sameFileRefs=0/);
 			expect(text).toContain("textHits=");
 		});
 
-		it("候補ゼロの場合は明示的に伝える", async () => {
+		it("explicitly reports when there are zero candidates", async () => {
 			const aPath = path.join(srcDir, "a.ts");
 			const bPath = path.join(srcDir, "b.ts");
 			fs.writeFileSync(aPath, "export function used(): void {}\n");
@@ -589,7 +589,7 @@ used();
 			expect(text).toContain("No unused exports found");
 		});
 
-		it("responseFormat=summary は行列挙せず集計を返す", async () => {
+		it("responseFormat=summary returns aggregated results without listing each line", async () => {
 			const aPath = path.join(srcDir, "a.ts");
 			const bPath = path.join(srcDir, "b.ts");
 			fs.writeFileSync(
@@ -610,15 +610,15 @@ console.log(u);
 			expect(result).toHaveProperty("isError", false);
 			const text = result.content[0]?.text || "";
 			expect(text).toContain("Unused export summary");
-			// 削除安全性の内訳: DeadType=deletable(0), onlyLocal=unexport-only(1)
+			// Deletion-safety breakdown: DeadType=deletable(0), onlyLocal=unexport-only(1)
 			expect(text).toContain("deletable (sameFileRefs=0) = 1");
 			expect(text).toContain("unexport-only (sameFileRefs>=1) = 1");
 			expect(text).toContain("By kind:");
-			// 1 行ずつの候補列挙 (file:line:column 形式) は含まれない
+			// Per-line candidate listing (file:line:column format) is not included
 			expect(text).not.toMatch(/:\d+:\d+ {2}DeadType/);
 		});
 
-		it("entryPoints の export は対象外", async () => {
+		it("exports from entryPoints are excluded from candidates", async () => {
 			const publicPath = path.join(srcDir, "public.ts");
 			const internalPath = path.join(srcDir, "internal.ts");
 			fs.writeFileSync(publicPath, "export function publicFn(): void {}\n");
@@ -636,8 +636,8 @@ console.log(u);
 		});
 	});
 
-	describe("エラーハンドリング", () => {
-		it("存在しないファイルに対してエラーを返す", async () => {
+	describe("error handling", () => {
+		it("returns an error for a file that does not exist", async () => {
 			const nonExistentPath = path.join(srcDir, "non-existent.ts");
 
 			const result = await mockServer.callTool("rename_symbol_by_tsmorph", {
@@ -649,12 +649,12 @@ console.log(u);
 				dryRun: false,
 			});
 
-			// MCPツールはエラーを返すが、throwしない
+			// The MCP tool returns an error but does not throw
 			expect(result).toHaveProperty("isError", true);
 			expect(result.content[0]?.text).toContain("Error");
 		});
 
-		it("不正なシンボル名でエラーを返す", async () => {
+		it("returns an error for an invalid symbol name", async () => {
 			const testPath = path.join(srcDir, "test.ts");
 
 			fs.writeFileSync(testPath, `const validName = "test";`);
@@ -663,12 +663,12 @@ console.log(u);
 				tsconfigPath,
 				targetFilePath: testPath,
 				position: { line: 1, column: 7 },
-				symbolName: "wrongName", // 実際のシンボル名と異なる
+				symbolName: "wrongName", // differs from the actual symbol name
 				newName: "renamed",
 				dryRun: false,
 			});
 
-			// MCPツールはエラーを返すが、throwしない
+			// The MCP tool returns an error but does not throw
 			expect(result).toHaveProperty("isError", true);
 			expect(result.content[0]?.text).toContain("Error");
 		});

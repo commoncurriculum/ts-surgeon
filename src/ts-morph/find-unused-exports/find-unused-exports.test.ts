@@ -16,8 +16,8 @@ function names(result: { unusedExports: { name: string }[] }): string[] {
 }
 
 describe("findUnusedExports", () => {
-	describe("基本", () => {
-		it("どこからも import されない関数 export は未使用として報告される", () => {
+	describe("basics", () => {
+		it("a function export not imported from anywhere is reported as unused", () => {
 			const project = setup({
 				"/a.ts": "export function unused(): void {}",
 				"/b.ts": "const x = 1;",
@@ -33,7 +33,7 @@ describe("findUnusedExports", () => {
 			});
 		});
 
-		it("他ファイルから import されている関数 export は報告されない", () => {
+		it("a function export that is imported from another file is not reported", () => {
 			const project = setup({
 				"/a.ts": "export function used(): void {}",
 				"/b.ts": ['import { used } from "./a";', "used();"].join("\n"),
@@ -42,7 +42,7 @@ describe("findUnusedExports", () => {
 			expect(result.unusedExports).toEqual([]);
 		});
 
-		it("同一ファイル内でのみ使われている export は未使用として報告される", () => {
+		it("an export used only within the same file is reported as unused", () => {
 			const project = setup({
 				"/a.ts": [
 					"export function onlyLocal(): number { return 1; }",
@@ -54,7 +54,7 @@ describe("findUnusedExports", () => {
 			expect(names(result)).toEqual(["onlyLocal"]);
 		});
 
-		it("複数種類の宣言を同時に検出できる", () => {
+		it("multiple declaration kinds are detected simultaneously", () => {
 			const project = setup({
 				"/a.ts": [
 					"export function fnA(): void {}",
@@ -78,7 +78,7 @@ describe("findUnusedExports", () => {
 	});
 
 	describe("default export", () => {
-		it("export default function はどこからも import されないなら報告される", () => {
+		it("export default function is reported if not imported from anywhere", () => {
 			const project = setup({
 				"/a.ts": "export default function answer(): number { return 42; }",
 			});
@@ -91,7 +91,7 @@ describe("findUnusedExports", () => {
 			});
 		});
 
-		it("export default Identifier は default import 経由で参照されれば報告されない", () => {
+		it("export default Identifier is not reported when referenced via a default import", () => {
 			const project = setup({
 				"/a.ts": [
 					"function answer(): number { return 42; }",
@@ -103,7 +103,7 @@ describe("findUnusedExports", () => {
 			expect(result.unusedExports).toEqual([]);
 		});
 
-		it("export default <リテラル式> は識別子が無いので候補から外す", () => {
+		it("export default <literal expression> has no identifier and is excluded from candidates", () => {
 			const project = setup({
 				"/a.ts": "export default 42;",
 			});
@@ -112,18 +112,18 @@ describe("findUnusedExports", () => {
 		});
 	});
 
-	describe("再エクスポート (barrel)", () => {
-		it("barrel 経由でしか再エクスポートされず外部利用がない export は未使用として報告される", () => {
+	describe("re-export (barrel)", () => {
+		it("an export that is only re-exported via a barrel with no external consumers is reported as unused", () => {
 			const project = setup({
 				"/lib.ts": "export function helper(): void {}",
 				"/index.ts": 'export * from "./lib";',
 			});
 			const result = findUnusedExports(project);
-			// helper は再エクスポートのみで実利用が無いので未使用
+			// helper is only re-exported and has no actual consumers, so it is unused
 			expect(names(result)).toContain("helper");
 		});
 
-		it("barrel 経由で他ファイルから利用されている export は報告されない", () => {
+		it("an export that is consumed via a barrel by another file is not reported", () => {
 			const project = setup({
 				"/lib.ts": "export function helper(): void {}",
 				"/index.ts": 'export { helper } from "./lib";',
@@ -136,8 +136,8 @@ describe("findUnusedExports", () => {
 		});
 	});
 
-	describe("entryPoints オプション", () => {
-		it("entryPoints に含まれるファイルの export は走査対象から外れて報告されない", () => {
+	describe("entryPoints option", () => {
+		it("exports in files listed in entryPoints are excluded from scanning and not reported", () => {
 			const project = setup({
 				"/public-api.ts": "export function publicFn(): void {}",
 				"/internal.ts": "export function internalFn(): void {}",
@@ -149,8 +149,8 @@ describe("findUnusedExports", () => {
 		});
 	});
 
-	describe("excludeFilePatterns オプション", () => {
-		it("パターンを含むファイルは走査対象から外れる", () => {
+	describe("excludeFilePatterns option", () => {
+		it("files matching a pattern are excluded from scanning", () => {
 			const project = setup({
 				"/src/a.ts": "export function fn(): void {}",
 				"/src/a.test.ts": "export function helper(): void {}",
@@ -162,8 +162,8 @@ describe("findUnusedExports", () => {
 		});
 	});
 
-	describe("maxResults オプション", () => {
-		it("件数が上限に達したら truncated=true を返して打ち切る", () => {
+	describe("maxResults option", () => {
+		it("when the limit is reached, truncated=true is returned and scanning stops", () => {
 			const project = setup({
 				"/a.ts": [
 					"export const a = 1;",
@@ -176,7 +176,7 @@ describe("findUnusedExports", () => {
 			expect(result.truncated).toBe(true);
 		});
 
-		it("件数が上限以下なら truncated=false", () => {
+		it("when the count is below the limit, truncated=false", () => {
 			const project = setup({
 				"/a.ts": ["export const a = 1;", "export const b = 2;"].join("\n"),
 			});
@@ -185,18 +185,18 @@ describe("findUnusedExports", () => {
 			expect(result.truncated).toBe(false);
 		});
 
-		it("maxResults が不正な値ならエラー", () => {
+		it("an invalid maxResults value throws an error", () => {
 			const project = setup({ "/a.ts": "export const a = 1;" });
 			expect(() => findUnusedExports(project, { maxResults: 0 })).toThrow(
-				/1 以上の整数/,
+				/integer of 1 or greater/,
 			);
 			expect(() => findUnusedExports(project, { maxResults: -1 })).toThrow();
 			expect(() => findUnusedExports(project, { maxResults: 1.5 })).toThrow();
 		});
 	});
 
-	describe("除外対象", () => {
-		it("宣言ファイル (.d.ts) は走査対象から外れる", () => {
+	describe("exclusions", () => {
+		it("declaration files (.d.ts) are excluded from scanning", () => {
 			const project = setup({
 				"/types.d.ts": "export declare function ambient(): void;",
 				"/a.ts": "export function used(): void {}",
@@ -207,8 +207,8 @@ describe("findUnusedExports", () => {
 		});
 	});
 
-	describe("textOccurrences (名前テキスト出現数)", () => {
-		it("どこにも名前が出現しない場合は 0", () => {
+	describe("textOccurrences (name text occurrence count)", () => {
+		it("returns 0 when the name appears nowhere", () => {
 			const project = setup({
 				"/a.ts": "export function reallyDead(): void {}",
 				"/b.ts": "const x = 1;",
@@ -218,10 +218,10 @@ describe("findUnusedExports", () => {
 			expect(entry?.textOccurrences).toBe(0);
 		});
 
-		it("文字列リテラル内に名前が出現すれば 1+", () => {
+		it("returns 1+ when the name appears in a string literal", () => {
 			const project = setup({
 				"/a.ts": "export function dynamicCalled(): void {}",
-				// 動的参照: 静的 import ではないため findReferences は拾わない
+				// dynamic reference: not picked up by findReferences since it's not a static import
 				"/b.ts": 'const name = "dynamicCalled"; console.log(name);',
 			});
 			const result = findUnusedExports(project);
@@ -231,9 +231,9 @@ describe("findUnusedExports", () => {
 			expect(entry?.textOccurrences).toBeGreaterThan(0);
 		});
 
-		it("宣言ファイル自身の出現はカウントしない", () => {
+		it("occurrences in the declaring file itself are not counted", () => {
 			const project = setup({
-				// 宣言ファイル内には "selfRef" が複数回出現する (declaration + 内部 self-call)
+				// the declaring file contains "selfRef" multiple times (declaration + internal self-call)
 				"/a.ts": [
 					"export function selfRef(): void {",
 					"  selfRef();",
@@ -245,10 +245,10 @@ describe("findUnusedExports", () => {
 			expect(entry?.textOccurrences).toBe(0);
 		});
 
-		it("合成 import で注入した名前はカウントしない (namespace 展開時の自己汚染回避)", () => {
+		it("names injected by synthetic imports are not counted (avoids self-pollution during namespace expansion)", () => {
 			const project = setup({
-				// foo は actions.ts で宣言され、bundle.ts で `import * as`-スプレッドされる
-				// 展開有効時、bundle.ts には合成 import が追加されるが、その中の "foo" は除外したい
+				// foo is declared in actions.ts and spread via `import * as` in bundle.ts
+				// with expansion enabled, bundle.ts gets a synthetic import, but "foo" in it should be excluded
 				"/actions.ts": "export const foo = 1;",
 				"/bundle.ts": [
 					'import * as actions from "./actions";',
@@ -260,15 +260,15 @@ describe("findUnusedExports", () => {
 				].join("\n"),
 			});
 			const result = findUnusedExports(project);
-			// foo は namespace スプレッド経由で "使用中" 判定 → 候補に含まれない想定
+			// foo is judged "used" via namespace spread → expected not to appear in candidates
 			expect(
 				result.unusedExports.find((e) => e.name === "foo"),
 			).toBeUndefined();
 		});
 	});
 
-	describe("sameFileReferenceCount (同一ファイル内参照数)", () => {
-		it("どこからも使われない export は 0 (宣言ごと削除して安全)", () => {
+	describe("sameFileReferenceCount (same-file reference count)", () => {
+		it("an export used nowhere has count 0 (safe to delete the whole declaration)", () => {
 			const project = setup({
 				"/a.ts": "export function reallyDead(): void {}",
 				"/b.ts": "const x = 1;",
@@ -278,7 +278,7 @@ describe("findUnusedExports", () => {
 			expect(entry?.sameFileReferenceCount).toBe(0);
 		});
 
-		it("同一ファイル内でのみ使われる export は 1+ (export キーワードのみ不要)", () => {
+		it("an export used only within the same file has count 1+ (only the export keyword is unnecessary)", () => {
 			const project = setup({
 				"/a.ts": [
 					"export function onlyLocal(): number { return 1; }",
@@ -288,11 +288,11 @@ describe("findUnusedExports", () => {
 			});
 			const result = findUnusedExports(project);
 			const entry = result.unusedExports.find((e) => e.name === "onlyLocal");
-			// 外部未参照だが同一ファイル内で 1 回使用
+			// externally unreferenced but used once within the same file
 			expect(entry?.sameFileReferenceCount).toBe(1);
 		});
 
-		it("同一ファイル内の複数回使用を数える", () => {
+		it("counts multiple uses within the same file", () => {
 			const project = setup({
 				"/a.ts": [
 					"export const seed = 1;",
@@ -306,7 +306,7 @@ describe("findUnusedExports", () => {
 			expect(entry?.sameFileReferenceCount).toBe(2);
 		});
 
-		it("宣言自身の識別子は同一ファイル内参照に数えない", () => {
+		it("the declaration identifier itself is not counted as a same-file reference", () => {
 			const project = setup({
 				"/a.ts": "export function lonely(): void {}",
 			});
@@ -315,7 +315,7 @@ describe("findUnusedExports", () => {
 			expect(entry?.sameFileReferenceCount).toBe(0);
 		});
 
-		it("同一ファイル内の再エクスポートサイト (export { x }) は参照に数えない", () => {
+		it("a same-file re-export site (export { x }) is not counted as a reference", () => {
 			const project = setup({
 				"/a.ts": [
 					"function localOnly(): void {}",
@@ -324,13 +324,13 @@ describe("findUnusedExports", () => {
 			});
 			const result = findUnusedExports(project);
 			const entry = result.unusedExports.find((e) => e.name === "localOnly");
-			// 再エクスポートのみで実利用は無い → 0 (宣言ごと削除可能なデッド)
+			// only re-exported, no actual usage → 0 (dead, safe to delete)
 			expect(entry?.sameFileReferenceCount).toBe(0);
 		});
 	});
 
-	describe("namespace import 展開", () => {
-		it("`import * as ns` + `{ ...ns }` でのみ使われる export はデフォルトで使用中扱い", () => {
+	describe("namespace import expansion", () => {
+		it("an export used only via `import * as ns` + `{ ...ns }` is treated as used by default", () => {
 			const project = setup({
 				"/actions.ts": [
 					"export const addToast = () => {};",
@@ -345,12 +345,12 @@ describe("findUnusedExports", () => {
 				),
 			});
 			const result = findUnusedExports(project);
-			// 展開なしなら addToast / resetToast の両方が偽陽性で出る。展開有りなら 0 件。
+			// without expansion both addToast and resetToast would appear as false positives; with expansion: 0 results
 			expect(names(result)).not.toContain("addToast");
 			expect(names(result)).not.toContain("resetToast");
 		});
 
-		it("expandNamespaceImports: false で展開を OFF にすると namespace 経由は検出されない", () => {
+		it("with expandNamespaceImports: false, namespace-only exports are detected as unused", () => {
 			const project = setup({
 				"/actions.ts": [
 					"export const addToast = () => {};",
@@ -371,7 +371,7 @@ describe("findUnusedExports", () => {
 			expect(names(result)).toContain("resetToast");
 		});
 
-		it("namespace 経由を含めて本当にどこからも使われない export は引き続き検出される", () => {
+		it("an export that is truly unused even considering namespace access continues to be detected", () => {
 			const project = setup({
 				"/actions.ts": [
 					"export const used = () => {};",
@@ -383,17 +383,16 @@ describe("findUnusedExports", () => {
 				].join("\n"),
 				"/main.ts": ['import { all } from "./bundle";', "all();"].join("\n"),
 			});
-			// reallyUnused は namespace ns.X でもアクセスされていないが、
-			// namespace 展開は「使われる可能性がある」を保守的に扱う方針なので "使用中" と判定される。
-			// = 真陽性を 1 件犠牲にして 偽陽性を撲滅する設計トレードオフを明示するテスト。
+			// reallyUnused is not accessed even via ns.X, but namespace expansion conservatively
+			// treats it as "possibly used" — this test documents that design tradeoff explicitly.
 			const result = findUnusedExports(project);
 			expect(names(result)).not.toContain("reallyUnused");
 			expect(names(result)).not.toContain("used");
 		});
 	});
 
-	describe("namespace import 展開: 副作用・衝突回避", () => {
-		it("呼び出し後の Project テキストには synthetic ImportDeclaration が残らない", () => {
+	describe("namespace import expansion: side effects and collision avoidance", () => {
+		it("the Project text contains no synthetic ImportDeclarations after the call", () => {
 			const project = setup({
 				"/actions.ts": "export const addToast = () => {};",
 				"/bundle.ts": [
@@ -402,8 +401,8 @@ describe("findUnusedExports", () => {
 				].join("\n"),
 			});
 			findUnusedExports(project);
-			// 内容が clean であれば、後段の project.save() は元のテキストを書き戻すだけ。
-			// `isSaved()` のフラグは追加→削除でも dirty のまま残るのが ts-morph の仕様なのでチェックしない。
+			// If the content is clean, a subsequent project.save() will simply write back the original text.
+			// The isSaved() flag may still be dirty after add+remove — that is ts-morph's expected behavior, so we don't check it.
 			for (const sf of project.getSourceFiles()) {
 				expect(sf.getFullText()).not.toContain(
 					"__find_unused_exports_ns_ref__",
@@ -411,7 +410,7 @@ describe("findUnusedExports", () => {
 			}
 		});
 
-		it("同名 export を別モジュールから namespace import しても alias 衝突しない", () => {
+		it("same-name exports from different modules imported via namespace do not cause alias collisions", () => {
 			const project = setup({
 				"/libA.ts": "export const addToast = () => {};",
 				"/libB.ts": "export const addToast = () => {};",
@@ -420,11 +419,11 @@ describe("findUnusedExports", () => {
 					'import * as b from "./libB";',
 					"export const all = { ...a, ...b };",
 				].join("\n"),
-				// 実利用がある side
+				// side with actual usage
 				"/main.ts": ['import { all } from "./consumer";', "all;"].join("\n"),
 			});
-			// 衝突で findReferences が throw すると logger.warn 経由で false negative になるが、
-			// alias を unique にしているので throw なしで動作する想定。両方 addToast が "使用中" 判定 → 候補に出ない。
+			// A collision causing findReferences to throw would produce false negatives via logger.warn + catch,
+			// but unique aliases prevent throwing. Both addToast entries should be judged "used" → not in candidates.
 			const result = findUnusedExports(project);
 			expect(
 				result.unusedExports.map((e) => `${e.filePath}::${e.name}`),
@@ -434,7 +433,7 @@ describe("findUnusedExports", () => {
 			).not.toContain("/libB.ts::addToast");
 		});
 
-		it("type-only export は value-import として注入されない (型 export の未使用検出を保つ)", () => {
+		it("type-only exports are not injected as value imports (preserving detection of unused type exports)", () => {
 			const project = setup({
 				"/types.ts": [
 					"export interface Foo { v: number }",
@@ -446,12 +445,12 @@ describe("findUnusedExports", () => {
 				].join("\n"),
 			});
 			const result = findUnusedExports(project);
-			// type-only export は synthetic から除外されるため、未使用なら引き続き検出される
+			// type-only exports are excluded from synthetic imports, so they are still detected as unused
 			expect(names(result)).toContain("Foo");
 			expect(names(result)).toContain("Bar");
 		});
 
-		it("同一モジュールを複数の `import * as` で読んでも synthetic は 1 回だけ注入される", () => {
+		it("reading the same module via multiple `import * as` declarations injects the synthetic import only once", () => {
 			const project = setup({
 				"/mod.ts": "export const foo = 1;",
 				"/consumer.ts": [
@@ -461,28 +460,28 @@ describe("findUnusedExports", () => {
 				].join("\n"),
 				"/main.ts": ['import { all } from "./consumer";', "all;"].join("\n"),
 			});
-			// 後始末されることだけ確認 (synthetic 重複生成で TS エラー → throw → catch swallow を踏まない)
+			// Just verify cleanup (no TS error from duplicate synthetic imports → throw → swallowed catch)
 			const result = findUnusedExports(project);
 			expect(result.unusedExports.map((e) => e.name)).not.toContain("foo");
 		});
 	});
 
-	describe("Unicode 識別子のテキスト出現カウント", () => {
-		it("非 ASCII 名 (日本語) でも textOccurrences が正しく数えられる", () => {
+	describe("Unicode identifier text occurrence counting", () => {
+		it("textOccurrences is counted correctly for non-ASCII names", () => {
 			const project = setup({
-				"/a.ts": "export function 集計(): void {}",
-				// 名前のみ string literal で出現
-				"/b.ts": 'const name = "集計"; console.log(name);',
+				"/a.ts": "export function café(): void {}",
+				// the name appears only in a string literal
+				"/b.ts": 'const name = "café"; console.log(name);',
 			});
 			const result = findUnusedExports(project);
-			const entry = result.unusedExports.find((e) => e.name === "集計");
+			const entry = result.unusedExports.find((e) => e.name === "café");
 			expect(entry?.textOccurrences).toBeGreaterThan(0);
 		});
 
-		it("非 ASCII 名でも IdentifierPart 境界を正しく扱う", () => {
+		it("IdentifierPart boundaries are handled correctly for non-ASCII names", () => {
 			const project = setup({
 				"/a.ts": "export function λ(): void {}",
-				// `λ` を JSX-like 位置に
+				// `λ` in a JSX-like position
 				"/b.ts": 'const name = "λ";',
 			});
 			const result = findUnusedExports(project);
@@ -491,8 +490,8 @@ describe("findUnusedExports", () => {
 		});
 	});
 
-	describe("entryPoints の path 正規化", () => {
-		it("非正規形 (`..` 含む) でも正規化されてマッチする", () => {
+	describe("entryPoints path normalization", () => {
+		it("non-normalized paths (containing `..`) are normalized before matching", () => {
 			const project = setup({
 				"/src/public-api.ts": "export function publicFn(): void {}",
 				"/src/internal.ts": "export function internalFn(): void {}",
@@ -500,13 +499,13 @@ describe("findUnusedExports", () => {
 			const result = findUnusedExports(project, {
 				entryPoints: ["/src/sub/../public-api.ts"],
 			});
-			// 正規化されないと entryPoint が無視され publicFn も報告されてしまう
+			// without normalization the entryPoint would be ignored and publicFn would also be reported
 			expect(names(result)).toEqual(["internalFn"]);
 		});
 	});
 
-	describe("結果の付帯情報", () => {
-		it("scannedFiles はフィルタ後のファイル数を返す", () => {
+	describe("result metadata", () => {
+		it("scannedFiles returns the file count after filtering", () => {
 			const project = setup({
 				"/a.ts": "export function fn(): void {}",
 				"/b.ts": "const x = 1;",
@@ -518,7 +517,7 @@ describe("findUnusedExports", () => {
 			expect(result.scannedFiles).toBe(2);
 		});
 
-		it("位置情報は識別子の位置を返す", () => {
+		it("position information reflects the identifier's position", () => {
 			const project = setup({
 				"/a.ts": [
 					"// header comment",
@@ -530,7 +529,7 @@ describe("findUnusedExports", () => {
 				line: 2,
 				name: "target",
 			});
-			// "export function target" の "target" は 17 文字目あたり (1-based)
+			// "target" in "export function target" is around column 17 (1-based)
 			expect(result.unusedExports[0].column).toBeGreaterThan(1);
 		});
 	});

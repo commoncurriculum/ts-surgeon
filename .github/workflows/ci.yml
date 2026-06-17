@@ -12,15 +12,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ── 全 Action は commit SHA でピン留め (タグ retag によるサプライチェーン攻撃を防ぐ)。
-      # release.yml と同じバージョン (v4 系は Node.js 20 ベースで 2026-09-16 に runner から
-      # 削除予定のため、Node.js 24 ベースの v6 系に上げている)。
+      # ── All Actions are pinned by commit SHA (to prevent supply-chain attacks via tag retag).
+      # Same versions as release.yml (v4 series is Node.js 20-based and scheduled for removal
+      # from runners on 2026-09-16, so we have upgraded to the v6 series based on Node.js 24).
       - name: Checkout code
         # actions/checkout@v6.0.2
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Set up pnpm
-        # pnpm/action-setup@v6.0.8 — version は package.json の packageManager から取る
+        # pnpm/action-setup@v6.0.8 — version is taken from packageManager in package.json
         uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
 
       - name: Set up Node.js
@@ -33,9 +33,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      # main ブランチ上 / PR 内では package.json.version と src/version.ts の
-      # VERSION が常に "0.0.0-development" に固定されていなければならない。
-      # 実際の値は release.yml が tag から bake する。ここでハンド bump を弾く。
+      # On the main branch and in PRs, the VERSION in package.json and src/version.ts
+      # must always be pinned to "0.0.0-development".
+      # The actual value is baked from the tag by release.yml. This step rejects manual bumps.
       - name: Verify version is pinned to placeholder
         run: node scripts/release-version.mjs --check
 

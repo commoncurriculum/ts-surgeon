@@ -25,7 +25,7 @@ const setupProject = () => {
 };
 
 describe("findIdentifierNode", () => {
-	it("指定された位置の関数識別子を見つけられること", () => {
+	it("finds the function identifier at the specified position", () => {
 		const { getIdentifier } = setupProject();
 		const fileContent = "function myFunction() {}";
 		const identifier = getIdentifier(fileContent, { line: 1, column: 10 });
@@ -35,7 +35,7 @@ describe("findIdentifierNode", () => {
 		);
 	});
 
-	it("指定された位置の変数識別子を見つけられること", () => {
+	it("finds the variable identifier at the specified position", () => {
 		const { getIdentifier } = setupProject();
 		const fileContent = "const myVariable = 1;";
 		const identifier = getIdentifier(fileContent, { line: 1, column: 7 });
@@ -45,41 +45,47 @@ describe("findIdentifierNode", () => {
 		);
 	});
 
-	it("指定位置が識別子のテキスト内であっても識別子を見つけられること", () => {
+	it("finds the identifier even when the position is in the middle of the identifier text", () => {
 		const { getIdentifier } = setupProject();
 		const fileContent = "function myFunction() {}";
 		const identifier = getIdentifier(fileContent, { line: 1, column: 12 });
 		expect(identifier.getText()).toBe("myFunction");
 	});
 
-	it("ファイルが存在しない場合にエラーをスローすること", () => {
+	it("throws an error when the file does not exist", () => {
 		const { project } = setupProject();
 		expect(() =>
 			findIdentifierNode(project, "/nonexistent.ts", { line: 1, column: 1 }),
-		).toThrowError(new Error("ファイルが見つかりません: /nonexistent.ts"));
+		).toThrowError(new Error("File not found: /nonexistent.ts"));
 	});
 
-	it("指定位置にノードが見つからない場合（範囲外）にエラーをスローすること", () => {
+	it("throws an error when no node is found at the position (out of range)", () => {
 		const { project } = setupProject();
 		const fileContent = "const x = 1;";
 		project.createSourceFile(TEST_FILE_PATH, fileContent);
 		expect(() =>
 			findIdentifierNode(project, TEST_FILE_PATH, { line: 5, column: 1 }),
-		).toThrowError(new Error("指定位置 (5:1) はファイルの範囲外か無効です"));
+		).toThrowError(
+			new Error("The specified position (5:1) is out of range or invalid"),
+		);
 	});
 
-	it("指定位置のノードが識別子でない場合（例：キーワード）にエラーをスローすること", () => {
+	it("throws an error when the node at the position is not an identifier (e.g. a keyword)", () => {
 		const { project } = setupProject();
 		const fileContent = "function myFunction() {}";
 		project.createSourceFile(TEST_FILE_PATH, fileContent);
 		expect(() =>
 			findIdentifierNode(project, TEST_FILE_PATH, { line: 1, column: 3 }),
-		).toThrowError(new Error("指定位置 (1:3) は Identifier ではありません"));
+		).toThrowError(
+			new Error(
+				"The node at the specified position (1:3) is not an Identifier",
+			),
+		);
 	});
 });
 
 describe("validateSymbol", () => {
-	it("シンボル名が一致する場合、エラーは発生しないこと", () => {
+	it("does not throw when the symbol name matches", () => {
 		const { getIdentifier } = setupProject();
 		const identifier = getIdentifier("function myFunc() {}", {
 			line: 1,
@@ -87,20 +93,20 @@ describe("validateSymbol", () => {
 		});
 		expect(() => validateSymbol(identifier, "myFunc")).not.toThrow();
 	});
-	it("シンボル名が一致しない場合にエラーをスローすること", () => {
+	it("throws an error when the symbol name does not match", () => {
 		const { getIdentifier } = setupProject();
 		const identifier = getIdentifier("function myFunc() {}", {
 			line: 1,
 			column: 10,
 		});
 		expect(() => validateSymbol(identifier, "wrongName")).toThrowError(
-			new Error("シンボル名が一致しません (期待: wrongName, 実際: myFunc)"),
+			new Error("Symbol name mismatch (expected: wrongName, actual: myFunc)"),
 		);
 	});
 });
 
 describe("findAllReferencesAsNodes", () => {
-	it("シンボルの定義と参照を全て返す", () => {
+	it("returns all definitions and references of the symbol", () => {
 		const project = createInMemoryProject();
 		project.createSourceFile(
 			"/src/lib.ts",

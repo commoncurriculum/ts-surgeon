@@ -5,7 +5,7 @@ import { getFileText } from "../_test-utils/get-file-text";
 import { moveSymbolToFile } from "./move-symbol-to-file";
 
 describe("moveSymbolToFile (Dependency Cases)", () => {
-	it("同じファイル内の他のシンボルに依存するシンボルを移動し、依存関係も新しいファイルに含める", async () => {
+	it("moves a symbol that depends on other symbols in the same file, including the dependencies in the new file", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/module.ts";
 		const newFilePath = "/src/moved-module.ts";
@@ -52,7 +52,7 @@ console.log(dependentFunc());`,
 		);
 	});
 
-	it("他に参照される内部依存シンボルがある場合、そのシンボルは元ファイルに残り、新しいファイルからインポートされる", async () => {
+	it("when an internal dependency is referenced by other symbols, it stays in the original file and is imported by the new file", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/shared-logic.ts";
 		const newFilePath = "/src/feature-a.ts";
@@ -60,7 +60,7 @@ console.log(dependentFunc());`,
 
 		project.createSourceFile(
 			oldFilePath,
-			`export const sharedUtil = { value: 'shared' }; // export しておく必要がある
+			`export const sharedUtil = { value: 'shared' }; // must be exported
 
 export const featureAFunc = () => {
   return 'Feature A using ' + sharedUtil.value;
@@ -93,7 +93,7 @@ export const featureAFunc = () => {
 `,
 		);
 		expect(getFileText(project, oldFilePath)).toBe(
-			`export const sharedUtil = { value: 'shared' }; // export しておく必要がある
+			`export const sharedUtil = { value: 'shared' }; // must be exported
 export const anotherFunc = () => {
   return 'Another using ' + sharedUtil.value;
 };`,
@@ -104,14 +104,14 @@ console.log(featureAFunc());`,
 		);
 	});
 
-	it("exportされていない内部依存シンボルが他からも参照される場合、元ファイルにexportが追加され、新しいファイルからインポートされる", async () => {
+	it("when an unexported internal dependency is also referenced by others, export is added to the original file and it is imported by the new file", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/core-utils.ts";
 		const newFilePath = "/src/ui-helper.ts";
 
 		project.createSourceFile(
 			oldFilePath,
-			`const internalCalculator = (x: number) => x * x; // export なし
+			`const internalCalculator = (x: number) => x * x; // not exported
 
 export const formatDisplayValue = (val: number) => {
   return \`Value: \${internalCalculator(val)}\`;
@@ -140,7 +140,7 @@ export const formatDisplayValue = (val: number) => {
 `,
 		);
 		expect(getFileText(project, oldFilePath)).toBe(
-			`export const internalCalculator = (x: number) => x * x; // export なし
+			`export const internalCalculator = (x: number) => x * x; // not exported
 export const generateReport = (data: number[]) => {
   const total = data.reduce((sum, x) => sum + internalCalculator(x), 0);
   return \`Report Total: \${total}\`;
@@ -148,7 +148,7 @@ export const generateReport = (data: number[]) => {
 		);
 	});
 
-	it("移動したシンボルが移動元のファイル内で使われていた場合、移動元にインポート文が追加される", async () => {
+	it("when the moved symbol is used within the source file, an import statement is added to the source file", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/original.ts";
 		const newFilePath = "/src/helper.ts";
@@ -160,7 +160,7 @@ export const generateReport = (data: number[]) => {
 }
 
 export function mainFunc(): string {
-  // helperFunc を使用
+  // using helperFunc
   const result = helperFunc();
   return \`Main using \${result}\`;
 }`,
@@ -179,19 +179,19 @@ export function mainFunc(): string {
   return 'Helper result';
 }`,
 		);
-		// import 挿入時に関数本文内のコメントが保持されることを保証する
+		// ensures that comments inside the function body are preserved after import insertion
 		expect(getFileText(project, oldFilePath).trim()).toBe(
 			`import { helperFunc } from "./helper";
 
 export function mainFunc(): string {
-  // helperFunc を使用
+  // using helperFunc
   const result = helperFunc();
   return \`Main using \${result}\`;
 }`,
 		);
 	});
 
-	it("名前空間インポート (import * as) に依存するシンボルを移動する", async () => {
+	it("moves a symbol that depends on a namespace import (import * as)", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/path-utils.ts";
 		const newFilePath = "/src/moved-path-utils.ts";
@@ -236,7 +236,7 @@ console.log(resolved);`,
 		);
 	});
 
-	it("既存のファイルにシンボルを移動し、既存の内容とマージされる（移動元から既にインポートがある場合）", async () => {
+	it("moves a symbol to an existing file and merges with existing content (when the destination already imports from the source)", async () => {
 		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/source.ts";
 		const existingFilePath = "/src/destination.ts";

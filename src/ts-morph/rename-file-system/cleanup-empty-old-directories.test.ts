@@ -5,7 +5,7 @@ import { cleanupEmptyOldDirectories } from "./cleanup-empty-old-directories";
 vi.mock("../../utils/logger");
 
 describe("cleanupEmptyOldDirectories", () => {
-	it("空のディレクトリが残っている場合、削除する", () => {
+	it("removes an empty directory that remains after files have been moved", () => {
 		const project = createInMemoryProject();
 		const fs = project.getFileSystem();
 		const sf = project.createSourceFile("/src/old/a.ts", "export const a = 1;");
@@ -19,7 +19,7 @@ describe("cleanupEmptyOldDirectories", () => {
 		expect(fs.directoryExistsSync("/src/old")).toBe(false);
 	});
 
-	it("untracked ファイルが残っているディレクトリは削除しない", () => {
+	it("does not delete a directory that still contains untracked files", () => {
 		const project = createInMemoryProject();
 		const fs = project.getFileSystem();
 		const sf = project.createSourceFile("/src/old/a.ts", "export const a = 1;");
@@ -35,21 +35,21 @@ describe("cleanupEmptyOldDirectories", () => {
 		expect(fs.readFileSync("/src/old/README.md")).toBe("stay");
 	});
 
-	it("directoryRenames が空の場合、何もしない", () => {
+	it("does nothing when directoryRenames is empty", () => {
 		const project = createInMemoryProject();
 		expect(() => cleanupEmptyOldDirectories(project, [])).not.toThrow();
 	});
 
-	it("旧ディレクトリが既に存在しない場合、何もしない (forget のみ)", () => {
+	it("does nothing when the old directory no longer exists (only forgets it)", () => {
 		const project = createInMemoryProject();
-		// project tree に存在しないディレクトリ
+		// directory that does not exist in the project tree
 		cleanupEmptyOldDirectories(project, [
 			{ oldPath: "/src/nonexistent", newPath: "/src/new" },
 		]);
-		// throw しなければOK
+		// passes as long as it does not throw
 	});
 
-	it("AbortSignal で中断できる", () => {
+	it("can be aborted via AbortSignal", () => {
 		const project = createInMemoryProject();
 		project.createSourceFile("/src/old/a.ts", "export const a = 1;");
 		const controller = new AbortController();

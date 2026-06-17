@@ -5,11 +5,11 @@ import { type RunResult, run as runChild } from "./_child-process";
 import { type TargetRepo, targetCheckoutDir } from "./targets";
 
 export interface HealthResult {
-	/** tsc が報告した型エラー件数 */
+	/** Number of type errors reported by tsc. */
 	typeErrorCount: number;
-	/** 失敗したユニットテストの識別子（"file > suite > test"）の集合 */
+	/** Set of failed unit test identifiers ("file > suite > test"). */
 	failedTests: string[];
-	/** 失敗時の診断用（型チェック・テストの出力末尾） */
+	/** Diagnostic output for failures (tail of type-check and test output). */
 	detail: string;
 }
 
@@ -17,7 +17,7 @@ function binPath(dir: string, bin: string): string {
 	return path.join(dir, "node_modules", ".bin", bin);
 }
 
-/** 検証用の子プロセスは常に CI モード・色なしで実行する。 */
+/** Verification child processes always run in CI mode with colors disabled. */
 function run(cmd: string, args: readonly string[], cwd: string): RunResult {
 	return runChild(cmd, args, cwd, { CI: "true", FORCE_COLOR: "0" });
 }
@@ -69,8 +69,9 @@ function parseFailedTests(jsonFile: string, repoDir: string): string[] {
 }
 
 /**
- * 対象リポジトリの健全性（型エラー件数 + 失敗テスト集合）を取得する。
- * 絶対的な緑は要求せず、リファクタ前後でこの結果を比較（差分緑）する。
+ * Captures the health of the target repository (type error count + set of failing tests).
+ * Absolute green is not required; this result is compared before and after refactoring
+ * (differential green).
  */
 export function checkHealth(target: TargetRepo): HealthResult {
 	const dir = targetCheckoutDir(target);
@@ -117,11 +118,13 @@ export interface RegressionResult {
 }
 
 /**
- * リファクタ後 (after) が baseline に対して退行していないかを判定する（差分緑）。
- * - 新規の型エラーが無い（after の型エラー件数 <= baseline）
- * - 新規に失敗したテストが無い（after の失敗テスト ⊆ baseline の失敗テスト）
+ * Determines whether the post-refactor state (after) has regressed relative to
+ * the baseline (differential green).
+ * - No new type errors (after type error count <= baseline).
+ * - No newly failing tests (after failing tests ⊆ baseline failing tests).
  *
- * baseline 時点で既に失敗している環境依存テストは退行扱いしない。
+ * Environment-dependent tests that were already failing at baseline time are
+ * not treated as regressions.
  */
 export function assertNoRegression(
 	baseline: HealthResult,
@@ -133,16 +136,16 @@ export function assertNoRegression(
 
 	const ok = !newTypeErrors && newlyFailed.length === 0;
 	if (ok) {
-		return { ok, detail: "退行なし" };
+		return { ok, detail: "No regression" };
 	}
 	return {
 		ok,
 		detail: [
 			newTypeErrors
-				? `新規の型エラー: baseline=${baseline.typeErrorCount} -> after=${after.typeErrorCount}`
+				? `New type errors: baseline=${baseline.typeErrorCount} -> after=${after.typeErrorCount}`
 				: "",
 			newlyFailed.length > 0
-				? `新規に失敗したテスト:\n  ${newlyFailed.join("\n  ")}`
+				? `Newly failing tests:\n  ${newlyFailed.join("\n  ")}`
 				: "",
 			"--- after detail ---",
 			after.detail,
@@ -153,7 +156,7 @@ export function assertNoRegression(
 }
 
 /**
- * 作業ツリーが clean かどうか（rename 往復の同一性検証に使う）。
+ * Returns whether the working tree is clean (used to verify round-trip rename identity).
  */
 export function isWorkingTreeClean(target: TargetRepo): boolean {
 	const dir = targetCheckoutDir(target);
@@ -162,18 +165,18 @@ export function isWorkingTreeClean(target: TargetRepo): boolean {
 }
 
 /**
- * リファクタで変更したファイルを git の管理状態に戻す。
+ * Restores files changed by refactoring to their git-managed state.
  */
 export function resetTarget(target: TargetRepo): void {
 	const dir = targetCheckoutDir(target);
 	const checkout = run("git", ["checkout", "-q", "--", "."], dir);
 	if (!checkout.ok) {
 		throw new Error(
-			`[e2e] ${target.name}: git checkout に失敗\n${checkout.output}`,
+			`[e2e] ${target.name}: git checkout failed\n${checkout.output}`,
 		);
 	}
 	const clean = run("git", ["clean", "-fdq"], dir);
 	if (!clean.ok) {
-		throw new Error(`[e2e] ${target.name}: git clean に失敗\n${clean.output}`);
+		throw new Error(`[e2e] ${target.name}: git clean failed\n${clean.output}`);
 	}
 }

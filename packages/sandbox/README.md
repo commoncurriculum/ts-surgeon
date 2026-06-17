@@ -1,19 +1,28 @@
-# MCP ツールテスト用サンドボックスプロジェクト
+# Sandbox Project for MCP Tool Testing
 
-このディレクトリには、MCP (Meta Code Programming) ツール、特に ts-morph を使用したコード操作とリファクタリングに関連する機能のテストとデモンストレーションのみを目的とした、サンプル TypeScript プロジェクトが含まれています。
+This directory contains a sample TypeScript project whose sole purpose is
+testing and demonstrating MCP (Model Context Protocol) tools, in particular
+those that perform code manipulation and refactoring via ts-morph.
 
-**目的:**
+**Purpose:**
 
-*   **隔離された環境:** メインのツールコードベース (`src/`) に影響を与えることなく、MCP ツールの操作を実行するための安全で隔離されたスペースを提供します。
-*   **デモンストレーション:** シンプルで代表的なプロジェクト構造上で、さまざまな MCP ツールがどのように機能するかを示します。
-*   **再現性:** MCP ツールのテストまたはデバッグのために、特定のシナリオを簡単にセットアップおよび再現できるようにします。
+*   **Isolated environment:** Provides a safe, isolated space for exercising
+    MCP tool operations without affecting the main tool codebase (`src/`).
+*   **Demonstration:** Shows how various MCP tools work against a simple,
+    representative project structure.
+*   **Reproducibility:** Makes it easy to set up and reproduce specific
+    scenarios for testing or debugging MCP tools.
 
-**構造:**
+**Structure:**
 
-`src/` ディレクトリには、リファクタリングツールのさまざまな側面をテストするために設計された、多様な依存関係と構造を持つ TypeScript モジュール（`moduleA.ts`、`moduleB.ts`、`utils.ts` など）の例が含まれています。
+The `src/` directory contains example TypeScript modules (`moduleA.ts`,
+`moduleB.ts`, `utils.ts`, etc.) with a variety of dependency patterns and
+structures, designed to exercise different aspects of the refactoring tools.
 
-**使用方法:**
+**Usage:**
 
-開発中またはテスト中に MCP ツールコマンド（`moveSymbolToFile`、`renameFileSystemEntry` など）を実行する際のターゲットとして、このサンドボックスプロジェクトを使用してください。
+Use this sandbox project as the target when running MCP tool commands
+(e.g. `moveSymbolToFile`, `renameFileSystemEntry`) during development or
+testing.
 
-**注意:** これは機能するアプリケーションではなく、専用のテストベッドです。 
+**Note:** This is not a functional application — it is a dedicated test bed.

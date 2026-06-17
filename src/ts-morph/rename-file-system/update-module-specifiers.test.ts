@@ -13,7 +13,7 @@ const refOp = (
 ): RenameOperation => ({ sourceFile, oldPath, newPath });
 
 describe("updateModuleSpecifiers", () => {
-	it("通常の import 文を新しいパスに書き換える", () => {
+	it("rewrites a normal import statement to the new path", () => {
 		const project = createInMemoryProject();
 		const target = project.createSourceFile(
 			"/src/old.ts",
@@ -40,7 +40,7 @@ describe("updateModuleSpecifiers", () => {
 		expect(importDecl.getModuleSpecifierValue()).toBe("./new");
 	});
 
-	it("module specifier がない declaration はスキップし、宣言を変更しない", () => {
+	it("skips declarations with no module specifier and leaves the declaration unchanged", () => {
 		const project = createInMemoryProject();
 		const sf = project.createSourceFile("/src/a.ts", "export {};");
 		const exportDecl = sf.addExportDeclaration({ namedExports: [] });
@@ -62,7 +62,7 @@ describe("updateModuleSpecifiers", () => {
 		expect(exportDecl.getText()).toBe(before);
 	});
 
-	it("resolvedPath にマッチするリネームがない場合はスキップする", () => {
+	it("skips when no rename operation matches the resolvedPath", () => {
 		const project = createInMemoryProject();
 		const target = project.createSourceFile(
 			"/src/other.ts",
@@ -89,7 +89,7 @@ describe("updateModuleSpecifiers", () => {
 		expect(importDecl.getModuleSpecifierValue()).toBe("./other");
 	});
 
-	it(".js 拡張子付き specifier は拡張子を保持する", () => {
+	it("preserves the .js extension when the specifier includes it", () => {
 		const project = createInMemoryProject();
 		const target = project.createSourceFile(
 			"/src/old.js",
@@ -116,7 +116,7 @@ describe("updateModuleSpecifiers", () => {
 		expect(importDecl.getModuleSpecifierValue()).toBe("./new.js");
 	});
 
-	it("path alias 経由のインポートでも相対パスにフォールバックする", () => {
+	it("falls back to a relative path even when the import goes through a path alias", () => {
 		const project = createInMemoryProject();
 		const target = project.createSourceFile(
 			"/src/old.ts",
@@ -144,7 +144,7 @@ describe("updateModuleSpecifiers", () => {
 		expect(importDecl.getModuleSpecifierValue()).toBe("../new");
 	});
 
-	it("setModuleSpecifier が throw した場合はスキップして処理を継続する", () => {
+	it("skips and continues processing when setModuleSpecifier throws", () => {
 		const project = createInMemoryProject();
 		const target = project.createSourceFile(
 			"/src/old.ts",
@@ -156,7 +156,7 @@ describe("updateModuleSpecifiers", () => {
 		);
 		const importDecl = importer.getImportDeclarations()[0];
 
-		// 強制的に throw させる
+		// Force it to throw
 		const original = importDecl.setModuleSpecifier.bind(importDecl);
 		(
 			importDecl as unknown as { setModuleSpecifier: () => never }
@@ -185,7 +185,7 @@ describe("updateModuleSpecifiers", () => {
 		}
 	});
 
-	it("AbortSignal で中断できる", () => {
+	it("can be aborted via AbortSignal", () => {
 		const project = createInMemoryProject();
 		const target = project.createSourceFile(
 			"/src/old.ts",
