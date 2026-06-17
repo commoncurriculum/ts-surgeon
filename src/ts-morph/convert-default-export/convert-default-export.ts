@@ -21,6 +21,100 @@ import type {
 
 const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
+// Reserved words (plus strict-mode future-reserved words and `eval`/`arguments`)
+// that cannot be used as a binding name in a module (modules are always strict).
+const RESERVED_WORDS = new Set([
+	"break",
+	"case",
+	"catch",
+	"class",
+	"const",
+	"continue",
+	"debugger",
+	"default",
+	"delete",
+	"do",
+	"else",
+	"enum",
+	"export",
+	"extends",
+	"false",
+	"finally",
+	"for",
+	"function",
+	"if",
+	"import",
+	"in",
+	"instanceof",
+	"new",
+	"null",
+	"return",
+	"super",
+	"switch",
+	"this",
+	"throw",
+	"true",
+	"try",
+	"typeof",
+	"var",
+	"void",
+	"while",
+	"with",
+	"implements",
+	"interface",
+	"let",
+	"package",
+	"private",
+	"protected",
+	"public",
+	"static",
+	"yield",
+	"await",
+	"eval",
+	"arguments",
+]);
+
+function assertValidNewName(newName: string): void {
+	if (!IDENTIFIER_RE.test(newName) || RESERVED_WORDS.has(newName)) {
+		throw new Error(
+			`Invalid newName: '${newName}' is not a usable identifier (reserved words and non-identifier text are rejected).`,
+		);
+	}
+}
+
+/**
+ * Throws when the target file already exports a symbol named `name`, which would
+ * make the conversion emit a duplicate/conflicting export.
+ */
+function assertExportNameAvailable(sourceFile: SourceFile, name: string): void {
+	// The default export symbol is named "default", so it never collides here.
+	const clash = sourceFile
+		.getExportSymbols()
+		.some((symbol) => symbol.getName() === name);
+	if (clash) {
+		throw new Error(
+			`Cannot create a named export '${name}': ${sourceFile.getFilePath()} already exports a symbol with that name. Resolve the name clash first.`,
+		);
+	}
+}
+
+/**
+ * Replaces `node` with `newText`, re-emitting any leading comments/JSDoc that
+ * `replaceWithText` would otherwise drop (it replaces only the node's own range).
+ */
+function replacePreservingLeadingComments(
+	node: ExportAssignment | FunctionDeclaration | ClassDeclaration,
+	newText: string,
+): void {
+	const comments = node.getLeadingCommentRanges();
+	if (comments.length === 0) {
+		node.replaceWithText(newText);
+		return;
+	}
+	const commentText = comments.map((comment) => comment.getText()).join("\n");
+	node.replaceWithText(`${commentText}\n${newText}`);
+}
+
 /**
  * Converts a file's `export default` into a named export and rewrites every
  * importing/re-exporting site across the project.
@@ -55,9 +149,7 @@ export async function convertDefaultExportToNamedOnProject(
 	const sourceFile = project.getSourceFile(targetFilePath);
 	if (!sourceFile) throw new Error(`File not found: ${targetFilePath}`);
 
-	if (newName !== undefined && !IDENTIFIER_RE.test(newName)) {
-		throw new Error(`Invalid newName: '${newName}' is not a valid identifier`);
-	}
+	if (newName !== undefined) assertValidNewName(newName);
 
 	// Phase 1: convert the default export in the target file and learn its name.
 	const exportName = convertTargetDefaultExport(sourceFile, newName);
@@ -136,6 +228,7 @@ function convertDeclaration(
 	newName: string | undefined,
 ): string {
 	const currentName = declaration.getName();
+	const sourceFile = declaration.getSourceFile();
 
 	if (currentName) {
 		if (newName !== undefined && newName !== currentName) {
@@ -143,6 +236,7 @@ function convertDeclaration(
 				`The default export is already named '${currentName}'. Omit newName to keep it, or rename it first with rename_symbol_by_tsmorph (then convert).`,
 			);
 		}
+		assertExportNameAvailable(sourceFile, currentName);
 		// `removeDefaultExport` (triggered by setIsDefaultExport(false)) strips BOTH
 		// `default` and `export`, so re-add `export` to keep it exported by name.
 		declaration.setIsDefaultExport(false);
@@ -156,9 +250,17 @@ function convertDeclaration(
 			"The default export is anonymous; provide newName for the resulting named export.",
 		);
 	}
+	// An abstract class has no valid expression form, so the `const` rewrite below
+	// would emit invalid TypeScript — require a named declaration instead.
+	if (Node.isClassDeclaration(declaration) && declaration.isAbstract()) {
+		throw new Error(
+			"Cannot convert an anonymous abstract class default export; give the class a name first, then convert.",
+		);
+	}
+	assertExportNameAvailable(sourceFile, newName);
 	// Reinterpret the anonymous declaration as an initializer so we can bind a
 	// name without fragile in-place name insertion (handles generics/`extends`).
-	// `getText()` excludes leading comments/JSDoc, which stay above the node.
+	// `getText()` excludes leading comments/JSDoc, which we re-emit below.
 	const fullText = declaration.getText();
 	const initializer = fullText.replace(/^export\s+default\s+/, "");
 	if (initializer === fullText) {
@@ -166,7 +268,10 @@ function convertDeclaration(
 			`Unsupported anonymous default export form (${declaration.getKindName()}); declare it with a name first, then convert.`,
 		);
 	}
-	declaration.replaceWithText(`export const ${newName} = ${initializer};`);
+	replacePreservingLeadingComments(
+		declaration,
+		`export const ${newName} = ${initializer};`,
+	);
 	return newName;
 }
 
@@ -180,15 +285,20 @@ function convertExportAssignment(
 		);
 	}
 
+	const sourceFile = exportAssignment.getSourceFile();
 	const expression = exportAssignment.getExpression();
 
 	// `export default foo;` — re-export the existing binding by name.
 	if (Node.isIdentifier(expression)) {
 		const localName = expression.getText();
 		const finalName = newName ?? localName;
+		assertExportNameAvailable(sourceFile, finalName);
 		const specifier =
 			finalName === localName ? localName : `${localName} as ${finalName}`;
-		exportAssignment.replaceWithText(`export { ${specifier} };`);
+		replacePreservingLeadingComments(
+			exportAssignment,
+			`export { ${specifier} };`,
+		);
 		return finalName;
 	}
 
@@ -198,7 +308,9 @@ function convertExportAssignment(
 			"The default export is an anonymous expression; provide newName for the resulting named export.",
 		);
 	}
-	exportAssignment.replaceWithText(
+	assertExportNameAvailable(sourceFile, newName);
+	replacePreservingLeadingComments(
+		exportAssignment,
 		`export const ${newName} = ${expression.getText()};`,
 	);
 	return newName;
@@ -211,6 +323,7 @@ function convertExportSpecifierDefault(
 	// `export { foo as default }` → name node is `foo`, alias is `default`.
 	const localName = specifier.getName();
 	const finalName = newName ?? localName;
+	assertExportNameAvailable(specifier.getSourceFile(), finalName);
 	if (finalName === localName) {
 		specifier.removeAlias();
 	} else {
@@ -234,17 +347,30 @@ function updateReferences(
 	for (const sourceFile of project.getSourceFiles()) {
 		if (sourceFile === targetSourceFile) continue;
 
-		// 1. Default imports: `import Foo from "target"` (possibly alongside
-		//    named or namespace imports).
+		// 1. Imports of the default: `import Foo from "target"` and the
+		//    named-specifier form `import { default as Foo } from "target"`.
 		for (const importDecl of sourceFile.getImportDeclarations()) {
 			if (importDecl.getModuleSpecifierSourceFile() !== targetSourceFile) {
 				continue;
 			}
-			const defaultImport = importDecl.getDefaultImport();
-			if (!defaultImport) continue;
 
-			rewriteDefaultImport(importDecl, defaultImport.getText(), exportName);
-			updatedImportSites++;
+			// (a) Default imported via a named specifier: `{ default as Foo }`.
+			for (const named of importDecl.getNamedImports()) {
+				if (named.getName() !== "default") continue;
+				const alias = named.getAliasNode()?.getText();
+				named.setName(exportName);
+				// `{ default as Foo }` → `{ exportName as Foo }`; collapse a
+				// redundant `{ exportName as exportName }` back to `{ exportName }`.
+				if (alias === exportName) named.removeAlias();
+				updatedImportSites++;
+			}
+
+			// (b) Default import clause: `import Foo from "target"`.
+			const defaultImport = importDecl.getDefaultImport();
+			if (defaultImport) {
+				rewriteDefaultImport(importDecl, defaultImport.getText(), exportName);
+				updatedImportSites++;
+			}
 		}
 
 		// 2. Re-exports: `export { default } from "target"` /
@@ -277,21 +403,49 @@ function rewriteDefaultImport(
 			: { name: exportName, alias: localName };
 
 	// A namespace import cannot share a declaration with named imports, so the
-	// default must move into its own `import { ... }` declaration.
-	const namespaceImport = importDecl.getNamespaceImport();
-
-	if (namespaceImport) {
+	// default must move into a separate named-import declaration.
+	if (importDecl.getNamespaceImport()) {
+		const sourceFile = importDecl.getSourceFile();
 		const moduleSpecifier = importDecl.getModuleSpecifierValue();
 		const isTypeOnly = importDecl.isTypeOnly();
 		importDecl.removeDefaultImport();
-		importDecl.getSourceFile().addImportDeclaration({
-			moduleSpecifier,
-			namedImports: [namedImport],
-			isTypeOnly,
-		});
+		// Prefer merging into an existing named-import declaration for the same
+		// module + type-only-ness; otherwise create a new declaration.
+		const mergeTarget = sourceFile
+			.getImportDeclarations()
+			.find(
+				(decl) =>
+					decl !== importDecl &&
+					decl.getModuleSpecifierValue() === moduleSpecifier &&
+					decl.isTypeOnly() === isTypeOnly &&
+					!decl.getNamespaceImport(),
+			);
+		if (mergeTarget) {
+			addNamedImportIfAbsent(mergeTarget, namedImport);
+		} else {
+			sourceFile.addImportDeclaration({
+				moduleSpecifier,
+				namedImports: [namedImport],
+				isTypeOnly,
+			});
+		}
 		return;
 	}
 
 	importDecl.removeDefaultImport();
-	importDecl.addNamedImport(namedImport);
+	addNamedImportIfAbsent(importDecl, namedImport);
+}
+
+/** Adds a named import unless an identical specifier (name + alias) is present. */
+function addNamedImportIfAbsent(
+	importDecl: ImportDeclaration,
+	namedImport: { name: string; alias?: string },
+): void {
+	const exists = importDecl.getNamedImports().some((specifier) => {
+		const alias = specifier.getAliasNode()?.getText();
+		return (
+			specifier.getName() === namedImport.name && alias === namedImport.alias
+		);
+	});
+	if (!exists) importDecl.addNamedImport(namedImport);
 }

@@ -10,7 +10,7 @@ export function registerConvertDefaultExportTool(server: McpServer): void {
 		`[ts-morph] Convert a file's \`export default\` into a named export and rewrite every importing/re-exporting site across the project (default imports become named imports; \`export { default } from\` becomes a named re-export).
 
 ## When to use
-- Migrating a module away from default exports (e.g. enforcing an "no default export" lint rule) without hand-editing every importer.
+- Migrating a module away from default exports (e.g. enforcing a "no default export" lint rule) without hand-editing every importer.
 - A default export is imported under inconsistent local names across the codebase — this normalizes them onto one named export while preserving each importer's local alias.
 
 ## When NOT to use
@@ -25,16 +25,17 @@ export function registerConvertDefaultExportTool(server: McpServer): void {
 - \`export { foo as default };\` → \`export { foo };\` (or \`export { foo as <newName> };\`).
 
 ## Reference updates
-- \`import Foo from "target"\` → \`import { <name> } from "target"\` (or \`{ <name> as Foo }\` when the local name differs).
-- Default imports combined with named imports are merged; combined with a namespace import (\`import Foo, * as ns\`) they are split into a separate \`import { ... }\` declaration.
+- \`import Foo from "target"\` AND the named-specifier form \`import { default as Foo } from "target"\` → \`import { <name> as Foo } from "target"\` (the alias is dropped when the local name already equals \`<name>\`).
+- Default imports combined with named imports are merged (identical specifiers are deduped); combined with a namespace import (\`import Foo, * as ns\`) they are split into a separate \`import { ... }\` declaration, reusing an existing same-module declaration when one exists.
 - \`export { default } from "target"\` → \`export { <name> } from "target"\`; \`export { default as X } from "target"\` → \`export { <name> as X } from "target"\`.
 - Path-alias and relative specifiers are both resolved via the TypeChecker.
 
 ## Critical constraints
 - All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
-- \`newName\` is REQUIRED for anonymous default exports and is REJECTED (when it differs) for already-named function/class default exports — rename those separately first.
+- \`newName\` is REQUIRED for anonymous default exports and is REJECTED (when it differs) for already-named function/class default exports — rename those separately first. It must be a non-reserved identifier.
+- The conversion ABORTS (no changes) if the resulting name already exists as an export in the target file, or for an anonymous \`abstract\` class — neither can be emitted as valid TypeScript.
 - Dynamic/runtime access to the default (e.g. \`import("target").then(m => m.default)\`, \`require("target").default\`) is NOT detected or rewritten; review such call sites manually.
-- Re-exports that forward the default as a default (\`export { default } from "target"\`) become a NAMED re-export, which changes that barrel's public surface — verify downstream consumers.
+- Re-exports that forward the default as a default (\`export { default } from "target"\`) become a NAMED re-export, which changes that barrel's public surface. **Transitive** re-export chains are NOT followed (only sites resolving directly to the target are updated) — verify downstream consumers.
 
 ## Result
 Returns the resulting export name, the number of updated import and re-export sites, and the list of modified (or, in dryRun, to-be-modified) file paths.`,

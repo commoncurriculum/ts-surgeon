@@ -292,6 +292,118 @@ describe("convertDefaultExportToNamed", () => {
 				'import { Button as B } from "./button";\nB();\n',
 			);
 		});
+
+		it("rewrites a default imported via a named specifier `{ default as Foo }`", async () => {
+			const project = setup({
+				"/src/button.ts": "export default function Button() {}\n",
+				"/src/app.ts": 'import { default as Btn } from "./button";\nBtn();\n',
+			});
+
+			const result = await convertDefaultExportToNamedOnProject(project, {
+				targetFilePath: "/src/button.ts",
+			});
+
+			expect(result.updatedImportSites).toBe(1);
+			expect(getFileText(project, "/src/app.ts")).toBe(
+				'import { Button as Btn } from "./button";\nBtn();\n',
+			);
+		});
+
+		it("does not create a duplicate specifier when the named import already exists", async () => {
+			const project = setup({
+				"/src/button.ts": "export default function Button() {}\n",
+				"/src/app.ts":
+					'import Button, { Button as Button2 } from "./button";\nButton();\nButton2();\n',
+			});
+
+			await convertDefaultExportToNamedOnProject(project, {
+				targetFilePath: "/src/button.ts",
+			});
+
+			const app = project.getSourceFileOrThrow("/src/app.ts");
+			const named = app.getImportDeclarations()[0].getNamedImports();
+			// `{ Button as Button2 }` is the renamed default specifier; the default
+			// clause collapses to `{ Button }` without duplicating `Button as Button2`.
+			expect(named.map((n) => n.getText())).toEqual([
+				"Button as Button2",
+				"Button",
+			]);
+		});
+
+		it("merges the namespace-split named import into an existing declaration for the same module", async () => {
+			const project = setup({
+				"/src/m.ts":
+					"export default function Button() {}\nexport const other = 1;\n",
+				"/src/app.ts":
+					'import Button, * as ns from "./m";\nimport { other } from "./m";\nButton();\nconsole.log(ns, other);\n',
+			});
+
+			await convertDefaultExportToNamedOnProject(project, {
+				targetFilePath: "/src/m.ts",
+			});
+
+			const app = project.getSourceFileOrThrow("/src/app.ts");
+			const decls = app.getImportDeclarations();
+			// No third declaration is added; the default folds into `{ other }`.
+			expect(decls).toHaveLength(2);
+			const namedDecl = decls.find((d) => !d.getNamespaceImport());
+			expect(namedDecl?.getNamedImports().map((n) => n.getText())).toEqual([
+				"other",
+				"Button",
+			]);
+		});
+
+		it("preserves type-only-ness when splitting a namespace import", async () => {
+			const project = setup({
+				"/src/types.ts": "type T = { id: number };\nexport default T;\n",
+				"/src/app.ts":
+					'import type Opts, * as ns from "./types";\nconst o: Opts = { id: 1 };\nexport type { ns };\n',
+			});
+
+			await convertDefaultExportToNamedOnProject(project, {
+				targetFilePath: "/src/types.ts",
+			});
+
+			const app = project.getSourceFileOrThrow("/src/app.ts");
+			const namedDecl = app
+				.getImportDeclarations()
+				.find((d) => d.getNamedImports().length > 0);
+			expect(namedDecl?.isTypeOnly()).toBe(true);
+			expect(namedDecl?.getNamedImports().map((n) => n.getText())).toEqual([
+				"T as Opts",
+			]);
+		});
+	});
+
+	describe("comment preservation", () => {
+		it("keeps a leading JSDoc comment when rewriting an anonymous expression", async () => {
+			const project = setup({
+				"/src/fn.ts": "/** my fn */\nexport default () => 1;\n",
+			});
+
+			await convertDefaultExportToNamedOnProject(project, {
+				targetFilePath: "/src/fn.ts",
+				newName: "fn",
+			});
+
+			expect(getFileText(project, "/src/fn.ts")).toBe(
+				"/** my fn */\nexport const fn = () => 1;\n",
+			);
+		});
+
+		it("keeps a leading comment when rewriting `export default <identifier>`", async () => {
+			const project = setup({
+				"/src/value.ts": "const foo = 1;\n/** keep */\nexport default foo;\n",
+			});
+
+			await convertDefaultExportToNamedOnProject(project, {
+				targetFilePath: "/src/value.ts",
+			});
+
+			expect(getFileText(project, "/src/value.ts")).toBe(
+				"const foo = 1;\n/** keep */\nexport { foo };\n",
+			);
+		});
 	});
 
 	describe("re-export rewriting", () => {
@@ -344,10 +456,12 @@ describe("convertDefaultExportToNamed", () => {
 				"/src/app.ts",
 				"/src/button.ts",
 			]);
-			// Nothing has been persisted to the (in-memory) file system yet.
-			expect(
-				project.getSourceFiles().filter((sf) => !sf.isSaved()).length,
-			).toBeGreaterThan(0);
+			// Each touched file is left unsaved (the integration test asserts the
+			// on-disk content is unchanged; in-memory edits apply to the AST only).
+			expect(project.getSourceFileOrThrow("/src/button.ts").isSaved()).toBe(
+				false,
+			);
+			expect(project.getSourceFileOrThrow("/src/app.ts").isSaved()).toBe(false);
 		});
 	});
 
@@ -409,7 +523,58 @@ describe("convertDefaultExportToNamed", () => {
 					targetFilePath: "/src/fn.ts",
 					newName: "not valid",
 				}),
-			).rejects.toThrow(/not a valid identifier/);
+			).rejects.toThrow(/not a usable identifier/);
+		});
+
+		it("throws when newName is a reserved word", async () => {
+			const project = setup({
+				"/src/fn.ts": "export default () => 1;\n",
+			});
+
+			await expect(
+				convertDefaultExportToNamedOnProject(project, {
+					targetFilePath: "/src/fn.ts",
+					newName: "class",
+				}),
+			).rejects.toThrow(/not a usable identifier/);
+		});
+
+		it("throws for an anonymous abstract class default export", async () => {
+			const project = setup({
+				"/src/widget.ts": "export default abstract class {}\n",
+			});
+
+			await expect(
+				convertDefaultExportToNamedOnProject(project, {
+					targetFilePath: "/src/widget.ts",
+					newName: "Widget",
+				}),
+			).rejects.toThrow(/abstract class/);
+		});
+
+		it("throws when the resulting name already exists as a named export", async () => {
+			const project = setup({
+				"/src/value.ts": "export const foo = 1;\nexport default foo;\n",
+			});
+
+			await expect(
+				convertDefaultExportToNamedOnProject(project, {
+					targetFilePath: "/src/value.ts",
+				}),
+			).rejects.toThrow(/already exports a symbol/);
+		});
+
+		it("throws when newName collides with an existing named export", async () => {
+			const project = setup({
+				"/src/fn.ts": "export const run = 0;\nexport default () => 1;\n",
+			});
+
+			await expect(
+				convertDefaultExportToNamedOnProject(project, {
+					targetFilePath: "/src/fn.ts",
+					newName: "run",
+				}),
+			).rejects.toThrow(/already exports a symbol/);
 		});
 	});
 });
