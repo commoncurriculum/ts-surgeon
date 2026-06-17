@@ -859,6 +859,40 @@ console.log(Btn());
 		});
 	});
 
+	describe("add_missing_imports_by_tsmorph", () => {
+		it("adds an import for an unresolved identifier", async () => {
+			const buttonPath = path.join(srcDir, "button.ts");
+			const appPath = path.join(srcDir, "app.ts");
+			fs.writeFileSync(buttonPath, "export function Button() {}\n");
+			fs.writeFileSync(appPath, "Button();\n");
+
+			const result = await mockServer.callTool(
+				"add_missing_imports_by_tsmorph",
+				{ tsconfigPath, filePaths: [appPath], dryRun: false },
+			);
+
+			expect(result).toHaveProperty("isError", false);
+			expect(fs.readFileSync(appPath, "utf-8")).toContain(
+				'import { Button } from "./button"',
+			);
+		});
+
+		it("does not modify files in dryRun mode", async () => {
+			const buttonPath = path.join(srcDir, "button2.ts");
+			const appPath = path.join(srcDir, "app2.ts");
+			fs.writeFileSync(buttonPath, "export function Widget() {}\n");
+			fs.writeFileSync(appPath, "Widget();\n");
+
+			const result = await mockServer.callTool(
+				"add_missing_imports_by_tsmorph",
+				{ tsconfigPath, filePaths: [appPath], dryRun: true },
+			);
+
+			expect(result).toHaveProperty("isError", false);
+			expect(fs.readFileSync(appPath, "utf-8")).not.toContain("import");
+		});
+	});
+
 	describe("error handling", () => {
 		it("returns an error for a file that does not exist", async () => {
 			const nonExistentPath = path.join(srcDir, "non-existent.ts");

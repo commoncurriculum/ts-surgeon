@@ -96,6 +96,7 @@ pnpm inspector    # Debug run with MCP Inspector
      - `organize-imports/`: Removing unused imports, sorting, and coalescing
      - `get-diagnostics/`: Reporting TypeScript type errors/warnings
      - `convert-named-to-default/`: Converting a named export to the default export
+     - `add-missing-imports/`: Adding imports for unresolved identifiers
    - `_utils/`: Shared utilities
      - `ts-morph-project.ts`: Common project creation logic
    - `_test-utils/`: Test helpers
@@ -180,5 +181,6 @@ Controllable via environment variables:
 - **Import organization**: `src/ts-morph/organize-imports/`
 - **Diagnostics retrieval**: `src/ts-morph/get-diagnostics/`
 - **Named-to-default export conversion**: `src/ts-morph/convert-named-to-default/`
+- **Adding missing imports**: `src/ts-morph/add-missing-imports/`
 
 For detailed specifications of each feature, see README.md.

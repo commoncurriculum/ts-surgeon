@@ -47,6 +47,7 @@ Each tool uses `ts-morph` to parse the AST and applies changes while preserving 
 | [`organize_imports_by_tsmorph`](#organize_imports_by_tsmorph) | Remove unused imports, sort, and coalesce them across files |
 | [`get_diagnostics_by_tsmorph`](#get_diagnostics_by_tsmorph) | Report TypeScript type errors/warnings for files or the project |
 | [`convert_named_export_to_default_by_tsmorph`](#convert_named_export_to_default_by_tsmorph) | Convert a named export to the default export and update all importers |
+| [`add_missing_imports_by_tsmorph`](#add_missing_imports_by_tsmorph) | Add imports for unresolved identifiers across files |
 
 ### `rename_symbol_by_tsmorph`
 
@@ -167,6 +168,15 @@ Converts a file's named export into its default export and rewrites every import
 - **Supported target forms**: `export function`/`class Foo` → `export default function`/`class Foo`; `export const/let/var/enum Foo` → keeps the declaration and appends `export default Foo;`; `export { Foo }` / `export { local as Foo }`.
 - **Reference updates**: `import { Foo } from "target"` → `import Foo from "target"` (alias preserved as the default's local name), splitting the default out of any combined named import; `export { Foo [as X] } from "target"` → `export { default as Foo|X } from "target"`.
 - **Note**: Aborts if the file already has a default export, if `exportName` is re-exported from another file (convert it in its source file), or if it is part of a multi-variable `export const a, b` statement. Namespace-member access (`ns.Foo` from `import * as ns`) is not rewritten — review such sites manually.
+
+### `add_missing_imports_by_tsmorph`
+
+Adds import statements for unresolved identifiers (the editor "Add all missing imports" action) in specific files or the whole project.
+
+- **Use case**: After writing or pasting code that references not-yet-imported symbols, or clearing "Cannot find name 'X'" errors in bulk.
+- **Required information**: `tsconfigPath`. `filePaths` is optional — omit it to process every non-declaration source file.
+- **Behavior**: For each unresolved identifier, inserts an import from the best matching export in the project or its dependencies (merging into an existing same-module import where possible), respecting `paths` aliases via the language service.
+- **Note**: When an identifier could come from multiple modules the language service picks one — review ambiguous cases. Nothing is added for names with no resolvable export. Omitting `filePaths` processes the whole project, so prefer the files you touched and/or run with `dryRun: true` first.
 
 ## Logging Configuration
 
