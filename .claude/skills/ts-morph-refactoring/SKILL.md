@@ -1,7 +1,8 @@
 ---
 name: ts-morph-refactoring
 description: >-
-  Drive the commoncurriculum/mcp-ts-morph MCP server for AST-accurate,
+  Drive the commoncurriculum/mcp-ts-morph refactoring tools (CLI via npx, or
+  MCP server) for AST-accurate,
   project-wide TypeScript/JavaScript refactors instead of hand-editing. Use when renaming a
   symbol or file, finding references, moving a symbol between files, changing a
   function signature, converting export styles, organizing/adding imports,
@@ -12,14 +13,13 @@ description: >-
 license: MIT
 ---
 
-# ts-morph Refactoring (MCP)
+# ts-morph Refactoring (CLI)
 
 [`commoncurriculum/mcp-ts-morph`](https://github.com/commoncurriculum/mcp-ts-morph)
-is an MCP server that drives [ts-morph](https://ts-morph.com/) to refactor
-TypeScript/JavaScript through the real AST + TypeScript type checker. Every
-change is resolved project-wide, so import paths, re-exports, and call sites
-stay consistent — something search-and-replace and one-shot LLM edits routinely
-get wrong.
+drives [ts-morph](https://ts-morph.com/) to refactor TypeScript/JavaScript
+through the real AST + TypeScript type checker. Every change is resolved
+project-wide, so import paths, re-exports, and call sites stay consistent —
+something search-and-replace and one-shot LLM edits routinely get wrong.
 
 **Reach for these tools instead of manual edits whenever a change crosses file
 boundaries or touches more than a couple of call sites.** They are the
@@ -29,11 +29,42 @@ green build.
 This file is the decision layer: how to choose and chain tools. For each tool's
 parameters, worked examples, and gotchas, see **[`reference.md`](reference.md)**.
 
-## Setup
+## How to invoke the tools
 
-Point your MCP client at the server with `npx` straight from GitHub — no clone,
-no global install (it builds on first use; npm caches it for later runs). In
-your client config (`mcp.json` or equivalent):
+Run the CLI directly with Bash via `npx` — no clone, no global install, no MCP
+client configuration (it builds on first use; npm caches it for later runs):
+
+```bash
+# Discover tools / a tool's exact parameter schema
+npx -y github:commoncurriculum/mcp-ts-morph list
+npx -y github:commoncurriculum/mcp-ts-morph describe rename_symbol_by_tsmorph
+
+# Run one tool. --params is a JSON object matching the tool's input schema.
+npx -y github:commoncurriculum/mcp-ts-morph call rename_symbol_by_tsmorph --params '{
+  "tsconfigPath": "/abs/path/tsconfig.json",
+  "targetFilePath": "/abs/path/src/utils.ts",
+  "position": { "line": 1, "column": 17 },
+  "symbolName": "calculateSum",
+  "newName": "addNumbers",
+  "dryRun": true
+}'
+```
+
+- For large parameter payloads, use `--params-file <path>` or pipe JSON via
+  stdin instead of an inline `--params`.
+- Exit codes: `0` success, `1` the tool reported an error (read stdout for the
+  reason), `2` usage error.
+- Pin a ref for reproducibility (`github:commoncurriculum/mcp-ts-morph#v1.2.3`);
+  for a private repo the environment needs git access to it.
+
+Everything below applies identically to both invocation styles: the parameter
+JSON in `reference.md` is exactly what `--params` takes.
+
+### Alternative: run as an MCP server
+
+If your client supports MCP and you prefer persistent tools (faster for many
+calls in a row — the process stays warm), add this to `mcp.json` or equivalent;
+tool names and parameters are identical:
 
 ```json
 {
@@ -47,9 +78,8 @@ your client config (`mcp.json` or equivalent):
 }
 ```
 
-Pin a ref for reproducibility (`github:commoncurriculum/mcp-ts-morph#v1.2.3`);
-for a private repo the client's environment needs git access to it. To hack on
-the server itself, build from source — see the repo's `run-mcp-ts-morph` skill.
+To hack on the server itself, build from source — see the repo's
+`run-mcp-ts-morph` skill.
 
 ## The loop
 

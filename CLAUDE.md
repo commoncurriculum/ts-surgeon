@@ -71,8 +71,10 @@ pnpm inspector    # Debug run with MCP Inspector
 ### Core Architecture
 
 1. **Entry point**: `src/index.ts`
-   - MCP server entry point
-   - Starts the STDIO server
+   - With no args (or `serve`): starts the MCP STDIO server
+   - With a subcommand (`list` / `describe <tool>` / `call <tool> --params '<json>'`):
+     one-shot CLI mode via `src/cli.ts`, which drives the same registered tools
+     through an in-memory MCP client/server pair (no logic duplication)
 
 2. **MCP layer** (`src/mcp/`)
    - `stdio.ts`: STDIO server implementation

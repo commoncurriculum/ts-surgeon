@@ -1,8 +1,9 @@
 # Tool reference
 
 Per-tool parameters, worked examples, and gotchas for the
-`commoncurriculum/mcp-ts-morph` MCP server. Read
-[`SKILL.md`](SKILL.md) first for how to choose and chain these tools.
+`commoncurriculum/mcp-ts-morph` refactoring tools (CLI or MCP server — the
+parameter JSON is identical; the CLI takes it via `call <tool> --params`). Read
+[`SKILL.md`](SKILL.md) first for how to choose, chain, and invoke these tools.
 
 All paths are absolute. `tsconfigPath` is required by every tool. Positions are
 1-based and must land on the identifier. Mutating tools accept `dryRun: true` to

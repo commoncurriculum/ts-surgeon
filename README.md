@@ -1,10 +1,11 @@
 # MCP ts-morph Refactoring Tools
 
-An MCP server that uses [ts-morph](https://ts-morph.com/) to provide AST-based refactoring operations for TypeScript / JavaScript codebases. Rename symbols, rename files/folders, find references, and more — all while preserving project-wide consistency.
+An MCP server **and CLI** that uses [ts-morph](https://ts-morph.com/) to provide AST-based refactoring operations for TypeScript / JavaScript codebases. Rename symbols, rename files/folders, find references, and more — all while preserving project-wide consistency.
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+  - [CLI Usage (no MCP client required)](#cli-usage-no-mcp-client-required)
 - [Available Tools](#available-tools)
 - [Logging Configuration](#logging-configuration)
 - [Development](#development)
@@ -28,6 +29,36 @@ Add the following to your MCP client configuration file (`mcp.json` or equivalen
 ```
 
 To customize logging, see [Logging Configuration](#logging-configuration). To run from a local build, see [Development](#development).
+
+### CLI Usage (no MCP client required)
+
+Every tool can also be invoked directly from the command line — the same
+registrations, schemas, and handlers the MCP server exposes, driven one-shot.
+This is the easiest way to use the tools from an agent skill (ast-grep style),
+a shell script, or CI, with no MCP client configuration at all.
+
+```bash
+# Discover tools and their parameter schemas
+npx -y @sirosuzume/mcp-tsmorph-refactor list
+npx -y @sirosuzume/mcp-tsmorph-refactor describe rename_symbol_by_tsmorph
+
+# Run a tool once (params = the tool's MCP input schema, as JSON)
+npx -y @sirosuzume/mcp-tsmorph-refactor call rename_symbol_by_tsmorph --params '{
+  "tsconfigPath": "/abs/path/tsconfig.json",
+  "targetFilePath": "/abs/path/src/utils.ts",
+  "position": { "line": 1, "column": 17 },
+  "symbolName": "calculateSum",
+  "newName": "addNumbers",
+  "dryRun": true
+}'
+```
+
+- `call` also accepts `--params-file <path>` or JSON piped via stdin.
+- Exit codes: `0` success, `1` the tool reported an error, `2` usage error.
+- Tool output goes to stdout; logs go to stderr (`LOG_LEVEL` defaults to `warn`
+  in CLI mode).
+- Running with no arguments (or `serve`) starts the MCP stdio server, so
+  existing MCP client configurations are unaffected.
 
 ## Available Tools
 
