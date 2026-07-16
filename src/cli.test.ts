@@ -381,6 +381,137 @@ describe("CLI", () => {
 			).toBe(true);
 		});
 
+		it("batch chains mutating ops through the shared project", async () => {
+			const filePath = path.join(srcDir, "chain.ts");
+			fs.writeFileSync(filePath, "export function alpha() {}\nalpha();\n");
+			const out = createCapture();
+
+			// op2 renames the symbol op1 just created — only works if op2 sees op1's result
+			const code = await runCli(
+				[
+					"batch",
+					"--params",
+					JSON.stringify([
+						{
+							tool: "rename_symbol",
+							params: {
+								tsconfigPath,
+								targetFilePath: filePath,
+								symbolName: "alpha",
+								newName: "beta",
+							},
+						},
+						{
+							tool: "rename_symbol",
+							params: {
+								tsconfigPath,
+								targetFilePath: filePath,
+								symbolName: "beta",
+								newName: "gamma",
+							},
+						},
+					]),
+				],
+				out,
+				createCapture(),
+			);
+
+			expect(code).toBe(0);
+			const content = fs.readFileSync(filePath, "utf-8");
+			expect(content).toContain("gamma");
+			expect(content).not.toContain("alpha");
+		});
+
+		it("batch does not leak dry-run mutations into later ops", async () => {
+			const filePath = path.join(srcDir, "leak.ts");
+			fs.writeFileSync(filePath, "export function keepMe() {}\nkeepMe();\n");
+			const out = createCapture();
+
+			// If op1's unsaved dry-run rename leaked, op2 could not find 'keepMe'.
+			const code = await runCli(
+				[
+					"batch",
+					"--params",
+					JSON.stringify([
+						{
+							tool: "rename_symbol",
+							params: {
+								tsconfigPath,
+								targetFilePath: filePath,
+								symbolName: "keepMe",
+								newName: "renamed",
+								dryRun: true,
+							},
+						},
+						{
+							tool: "find_references",
+							params: {
+								tsconfigPath,
+								targetFilePath: filePath,
+								symbolName: "keepMe",
+							},
+						},
+					]),
+				],
+				out,
+				createCapture(),
+			);
+
+			expect(code).toBe(0);
+			expect(fs.readFileSync(filePath, "utf-8")).toContain("keepMe");
+			const results = JSON.parse(out.text);
+			expect(results[1].status).toBe("success");
+		});
+
+		it("call --stdin-files reads a file list, skipping non-source and missing paths", async () => {
+			const usedPath = path.join(srcDir, "stdin-used.ts");
+			const appPath = path.join(srcDir, "stdin-app.ts");
+			fs.writeFileSync(
+				usedPath,
+				"export const used = 1;\nexport const dead = 2;\n",
+			);
+			fs.writeFileSync(
+				appPath,
+				'import { used, dead } from "./stdin-used";\nconsole.log(used);\n',
+			);
+			const out = createCapture();
+			const err = createCapture();
+
+			const code = await runCli(
+				[
+					"call",
+					"organize_imports",
+					"--stdin-files",
+					"--tsconfig-path",
+					tsconfigPath,
+				],
+				out,
+				err,
+				{
+					readStdin: () =>
+						`${appPath}\nREADME.md\n${path.join(srcDir, "missing.ts")}\n\n`,
+				},
+			);
+
+			expect(err.text).toBe("");
+			expect(code).toBe(0);
+			expect(fs.readFileSync(appPath, "utf-8")).not.toContain("dead");
+			// the unused-import owner still exports both consts — untouched
+			expect(fs.readFileSync(usedPath, "utf-8")).toContain("dead");
+		});
+
+		it("call --stdin-files exits 2 when no usable files arrive", async () => {
+			const err = createCapture();
+			const code = await runCli(
+				["call", "organize_imports", "--stdin-files"],
+				createCapture(),
+				err,
+				{ readStdin: () => "README.md\ndocs/notes.txt\n" },
+			);
+			expect(code).toBe(2);
+			expect(err.text).toContain("no existing TS/JS source files");
+		});
+
 		it("batch stops at the first error by default and exits 1", async () => {
 			const out = createCapture();
 			const code = await runCli(

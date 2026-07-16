@@ -3,14 +3,48 @@ import * as path from "node:path";
 import { NewLineKind } from "typescript";
 import logger from "../../utils/logger";
 
+/**
+ * When set, initializeProject reuses one Project per tsconfig instead of
+ * re-parsing the whole program on every call. Enabled by the CLI's batch
+ * mode; every tool sees the results of the previous operations because they
+ * share the same (saved) in-memory AST.
+ */
+let projectCache: Map<string, Project> | null = null;
+
+/** Turns on project reuse across tool calls (batch mode). */
+export function enableProjectCache(): void {
+	projectCache = new Map();
+}
+
+/** Turns off project reuse and drops every cached project. */
+export function disableProjectCache(): void {
+	projectCache = null;
+}
+
+/**
+ * Drops cached projects so the next call re-parses from disk. Batch mode
+ * calls this after any operation that may leave the in-memory AST out of
+ * sync with the filesystem: a dry run (mutations are never saved) or a
+ * failed operation (mutations may be partially applied).
+ */
+export function invalidateProjectCache(): void {
+	projectCache?.clear();
+}
+
 export function initializeProject(tsconfigPath: string): Project {
 	const absoluteTsconfigPath = path.resolve(tsconfigPath);
-	return new Project({
+	const cached = projectCache?.get(absoluteTsconfigPath);
+	if (cached) {
+		return cached;
+	}
+	const project = new Project({
 		tsConfigFilePath: absoluteTsconfigPath,
 		manipulationSettings: {
 			newLineKind: NewLineKind.LineFeed,
 		},
 	});
+	projectCache?.set(absoluteTsconfigPath, project);
+	return project;
 }
 
 export function getChangedFiles(project: Project): SourceFile[] {

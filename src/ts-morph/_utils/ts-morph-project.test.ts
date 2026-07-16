@@ -1,10 +1,32 @@
-import { describe, it, expect, vi } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterAll, afterEach, describe, it, expect, vi } from "vitest";
 import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import {
+	disableProjectCache,
+	enableProjectCache,
 	getTsConfigAliasKeys,
 	getTsConfigBaseUrl,
 	getTsConfigPaths,
+	initializeProject,
+	invalidateProjectCache,
 } from "./ts-morph-project";
+
+// Real tsconfig on disk for the cache tests (initializeProject reads the filesystem)
+const cacheFixtureDir = fs.mkdtempSync(
+	path.join(os.tmpdir(), "tsmorph-project-cache-"),
+);
+const cacheTsconfigPath = path.join(cacheFixtureDir, "tsconfig.json");
+fs.writeFileSync(
+	cacheTsconfigPath,
+	JSON.stringify({ compilerOptions: { strict: true }, include: ["*.ts"] }),
+);
+fs.writeFileSync(path.join(cacheFixtureDir, "a.ts"), "export const a = 1;\n");
+
+afterAll(() => {
+	fs.rmSync(cacheFixtureDir, { recursive: true, force: true });
+});
 
 vi.mock("../../utils/logger");
 
@@ -74,5 +96,37 @@ describe("getTsConfigBaseUrl", () => {
 		const project = createInMemoryProject();
 		project.compilerOptions.set({ baseUrl: undefined });
 		expect(getTsConfigBaseUrl(project)).toBeUndefined();
+	});
+});
+
+describe("project cache (batch mode)", () => {
+	afterEach(() => {
+		disableProjectCache();
+	});
+
+	it("returns fresh instances when the cache is off", () => {
+		const a = initializeProject(cacheTsconfigPath);
+		const b = initializeProject(cacheTsconfigPath);
+		expect(a).not.toBe(b);
+	});
+
+	it("reuses one instance per tsconfig while enabled, until invalidated", () => {
+		enableProjectCache();
+		const a = initializeProject(cacheTsconfigPath);
+		const b = initializeProject(cacheTsconfigPath);
+		expect(a).toBe(b);
+
+		invalidateProjectCache();
+		const c = initializeProject(cacheTsconfigPath);
+		expect(c).not.toBe(a);
+		// still enabled: the fresh instance is cached again
+		expect(initializeProject(cacheTsconfigPath)).toBe(c);
+	});
+
+	it("disable drops everything", () => {
+		enableProjectCache();
+		const a = initializeProject(cacheTsconfigPath);
+		disableProjectCache();
+		expect(initializeProject(cacheTsconfigPath)).not.toBe(a);
 	});
 });

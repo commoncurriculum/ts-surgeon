@@ -156,7 +156,8 @@ position. Read-only.
 
 - **When**: "what is the actual type here" without spawning `tsc`; a signature
   without reading a whole `.d.ts`.
-- **Params**: `targetFilePath`, `position {line, column}`.
+- **Params**: `targetFilePath`, plus `symbolName` (declaration name) and/or
+  `position {line, column}`.
 - **Gotchas**: check `nodeKind` in the response — a position on whitespace
   yields the file-level `typeof import(...)`, not what you want; re-target to an
   identifier.

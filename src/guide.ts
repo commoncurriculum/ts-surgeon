@@ -19,6 +19,8 @@ touches more than a couple of call sites.
     tsmorph-refactor describe <tool>               # full docs + JSON input schema
     tsmorph-refactor call <tool> [params]          # run one tool
     tsmorph-refactor batch [--continue-on-error]   # run several tools in one process
+                                                    # (ops share one parsed project per tsconfig — much
+                                                    #  faster; --fresh-project re-parses per op)
 
 Parameters can be passed three ways (flags win over JSON):
 
@@ -39,6 +41,9 @@ Conveniences:
 - Every mutating tool accepts \`--dry-run\` to preview the changed-file list.
 - Tool names accept dashes (\`rename-symbol\`) and the legacy
   \`*_by_tsmorph\` aliases.
+- \`--stdin-files\` turns a piped file list into \`filePaths\`:
+  \`git diff --name-only | tsmorph-refactor call organize_imports --stdin-files\`
+  (non-source and missing paths are skipped).
 - Exit codes: 0 success, 1 the tool reported an error, 2 usage/params error.
 
 ## The loop
@@ -71,8 +76,8 @@ Conveniences:
 
 ## Rules
 
-- rename_symbol, find_references, and change_signature can target a symbol
-  **by declaration name alone** (omit position) when the name is unambiguous
+- rename_symbol, find_references, change_signature, and get_type_at_position
+  can target a symbol **by declaration name alone** (omit position) when the name is unambiguous
   in the file — the error lists candidate positions otherwise. Positions,
   when you do pass them, are **1-based** (line and column) and must land on
   the identifier, not whitespace. Don't count columns by hand — copy them

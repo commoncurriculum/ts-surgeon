@@ -1,6 +1,6 @@
 import type { ToolRegistry } from "./registry";
-import { Project } from "ts-morph";
 import { z } from "zod";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
 import { removePathAlias } from "../ts-morph/remove-path-alias/remove-path-alias";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
@@ -49,7 +49,7 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 				{ targetPath: args.targetPath, dryRun: args.dryRun },
 				async () => {
 					const { tsconfigPath, targetPath, dryRun } = args;
-					const project = new Project({ tsConfigFilePath: tsconfigPath });
+					const project = initializeProject(tsconfigPath);
 					const pathsOption = project.compilerOptions.get().paths ?? {};
 
 					const result = await removePathAlias({

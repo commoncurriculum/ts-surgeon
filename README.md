@@ -36,10 +36,11 @@ npx -y @commoncurriculum/tsmorph-refactor call rename_symbol --params '{
 ```
 
 - **Relative paths** are resolved against the working directory, and **`tsconfigPath` is auto-discovered** (nearest `tsconfig.json` above the target file) when omitted.
-- **`position` is optional** for `rename_symbol` / `find_references` / `change_signature`: when omitted, the symbol is located by its declaration name (`symbolName` / `functionName`), which must be unambiguous in the file — the error lists candidate positions otherwise (`{ "position": { "line": 1, "column": 17 } }`, 1-based).
+- **`position` is optional** for `rename_symbol` / `find_references` / `change_signature` / `get_type_at_position`: when omitted, the symbol is located by its declaration name (`symbolName` / `functionName`), which must be unambiguous in the file — the error lists candidate positions otherwise (`{ "position": { "line": 1, "column": 17 } }`, 1-based).
 - `--json` prints a machine-readable result: `{ tool, status, data, message }` (e.g. `data.changedFiles`).
-- `batch` runs several tools in one process: pass a JSON array of `{ "tool": "...", "params": { ... } }` via `--params`, `--params-file`, or stdin. Output is a JSON array; it stops at the first failure unless `--continue-on-error` is set.
+- `batch` runs several tools in one process: pass a JSON array of `{ "tool": "...", "params": { ... } }` via `--params`, `--params-file`, or stdin. Output is a JSON array; it stops at the first failure unless `--continue-on-error` is set. Operations **share one parsed project per tsconfig** (one AST parse for N operations; later ops see earlier results) — pass `--fresh-project` to re-parse from disk per operation.
 - `call` also accepts `--params-file <path>` or JSON piped via stdin (handy for large payloads); flags win when combined with JSON.
+- `--stdin-files` turns a piped file list into `filePaths` — `git diff --name-only | npx -y @commoncurriculum/tsmorph-refactor call organize_imports --stdin-files` (non-source and missing paths are skipped; refuses to run if nothing usable arrives).
 - Tool names accept dashes (`rename-symbol`) and the legacy `*_by_tsmorph` aliases.
 - Exit codes: `0` success, `1` the tool reported an error, `2` usage error (including params that fail the tool's schema).
 - Tool output goes to stdout; logs go to stderr (`LOG_LEVEL` defaults to `warn`).

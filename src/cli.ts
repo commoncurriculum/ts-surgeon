@@ -2,6 +2,11 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { GUIDE } from "./guide";
 import {
+	disableProjectCache,
+	enableProjectCache,
+	invalidateProjectCache,
+} from "./ts-morph/_utils/ts-morph-project";
+import {
 	ToolParamsError,
 	UnknownToolError,
 	createToolRegistry,
@@ -30,6 +35,10 @@ Params for call (flags win over JSON; both can be combined):
                          camelCase (--target-file-path -> targetFilePath),
                          dots nest (--position.line 1), a flag with no value
                          is boolean true (--dry-run)
+  --stdin-files          Read a newline-separated file list from stdin into
+                         filePaths (non-source and missing paths are skipped),
+                         e.g.: git diff --name-only | tsmorph-refactor call
+                         organize_imports --stdin-files
 
 Conveniences:
   - Relative paths are resolved against the current working directory.
@@ -40,7 +49,9 @@ Conveniences:
 
 Batch: pass a JSON array of { "tool": "...", "params": { ... } } via --params,
 --params-file, or stdin. Output is always JSON. Stops at the first failing
-tool unless --continue-on-error is set.
+tool unless --continue-on-error is set. Operations share one parsed project
+per tsconfig (fast; later ops see earlier results) — pass --fresh-project to
+re-parse from disk for every operation instead.
 
 Examples:
   tsmorph-refactor describe rename_symbol
@@ -197,6 +208,25 @@ export function prepareParams(
 	return resolved;
 }
 
+const SOURCE_FILE_RE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/i;
+
+/**
+ * Parses a newline-separated file list (e.g. `git diff --name-only`) into
+ * absolute paths, keeping only TS/JS source files that exist on disk.
+ */
+export function parseStdinFileList(text: string, cwd: string): string[] {
+	return text
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter((line) => line !== "" && SOURCE_FILE_RE.test(line))
+		.map((line) => path.resolve(cwd, line))
+		.filter((file) => existsSync(file));
+}
+
+type StdinReader = () => string;
+
+const readStdinDefault: StdinReader = () => readFileSync(0, "utf-8");
+
 function parseParamsJson(source: string, origin: string): unknown {
 	try {
 		return JSON.parse(source);
@@ -260,10 +290,14 @@ interface ParsedCallArgs {
  * Parses `call` arguments: --params/--params-file/stdin JSON as the base,
  * with individual --field flags merged on top.
  */
-function readCallParams(rest: string[]): ParsedCallArgs {
+function readCallParams(
+	rest: string[],
+	readStdin: StdinReader,
+): ParsedCallArgs {
 	let paramsJson: string | undefined;
 	let paramsFile: string | undefined;
 	let json = false;
+	let stdinFiles = false;
 	const flagParams: Record<string, unknown> = {};
 	let sawFieldFlags = false;
 
@@ -297,6 +331,9 @@ function readCallParams(rest: string[]): ParsedCallArgs {
 			case "json":
 				json = true;
 				break;
+			case "stdin-files":
+				stdinFiles = true;
+				break;
 			default: {
 				sawFieldFlags = true;
 				const hasValue =
@@ -323,19 +360,26 @@ function readCallParams(rest: string[]): ParsedCallArgs {
 			),
 			`params file '${paramsFile}'`,
 		);
-	} else if (!sawFieldFlags) {
+	} else if (!sawFieldFlags && !stdinFiles) {
 		if (process.stdin.isTTY) {
 			throw new CliUsageError(
 				"No parameters given. Pass --<field> flags, --params '<json>', --params-file <path>, or pipe JSON via stdin.",
 			);
 		}
-		base = asParamsObject(
-			parseParamsJson(readFileSync(0, "utf-8"), "stdin"),
-			"stdin",
-		);
+		base = asParamsObject(parseParamsJson(readStdin(), "stdin"), "stdin");
 	}
 
-	return { json, params: { ...base, ...flagParams } };
+	const params = { ...base, ...flagParams };
+	if (stdinFiles) {
+		const files = parseStdinFileList(readStdin(), process.cwd());
+		if (files.length === 0) {
+			throw new CliUsageError(
+				"--stdin-files: no existing TS/JS source files found on stdin. Refusing to run without filePaths (that would process the whole project).",
+			);
+		}
+		params.filePaths = files;
+	}
+	return { json, params };
 }
 
 interface BatchItem {
@@ -343,18 +387,25 @@ interface BatchItem {
 	params?: Record<string, unknown>;
 }
 
-function readBatchItems(rest: string[]): {
+function readBatchItems(
+	rest: string[],
+	readStdin: StdinReader,
+): {
 	items: BatchItem[];
 	continueOnError: boolean;
+	freshProject: boolean;
 } {
 	let source: string | undefined;
 	let origin = "stdin";
 	let continueOnError = false;
+	let freshProject = false;
 
 	for (let i = 0; i < rest.length; i++) {
 		const arg = rest[i];
 		if (arg === "--continue-on-error") {
 			continueOnError = true;
+		} else if (arg === "--fresh-project") {
+			freshProject = true;
 		} else if (arg === "--params") {
 			source = rest[++i];
 			origin = "--params";
@@ -378,7 +429,7 @@ function readBatchItems(rest: string[]): {
 				"batch needs a JSON array of { tool, params } via --params, --params-file, or stdin.",
 			);
 		}
-		source = readFileSync(0, "utf-8");
+		source = readStdin();
 	}
 
 	const parsed = parseParamsJson(source, origin);
@@ -397,7 +448,7 @@ function readBatchItems(rest: string[]): {
 		}
 		return item as BatchItem;
 	});
-	return { items, continueOnError };
+	return { items, continueOnError, freshProject };
 }
 
 const AGENT_SNIPPET = `## Refactoring (tsmorph-refactor)
@@ -457,9 +508,11 @@ export async function runCli(
 	argv: string[],
 	out: Writer = process.stdout,
 	err: Writer = process.stderr,
+	opts: { readStdin?: StdinReader } = {},
 ): Promise<number> {
 	const [command, ...rest] = argv;
 	const wantsJson = rest.includes("--json");
+	const readStdin = opts.readStdin ?? readStdinDefault;
 
 	try {
 		switch (command) {
@@ -516,7 +569,7 @@ export async function runCli(
 				if (!toolName || toolName.startsWith("-")) {
 					throw new CliUsageError("call requires a tool name.");
 				}
-				const { json, params } = readCallParams(rest.slice(1));
+				const { json, params } = readCallParams(rest.slice(1), readStdin);
 				const registry = createToolRegistry();
 				const name = registry.resolveName(toolName);
 				const outcome = await callToolOnce(name, prepareParams(params));
@@ -539,28 +592,43 @@ export async function runCli(
 				return outcome.isError ? 1 : 0;
 			}
 			case "batch": {
-				const { items, continueOnError } = readBatchItems(rest);
+				const { items, continueOnError, freshProject } = readBatchItems(
+					rest,
+					readStdin,
+				);
 				const registry = createToolRegistry();
 				const results: Array<Record<string, unknown>> = [];
 				let anyError = false;
-				for (const item of items) {
-					const name = registry.resolveName(item.tool);
-					const outcome = await callToolOnce(
-						name,
-						prepareParams(item.params ?? {}),
-					);
-					results.push({
-						tool: name,
-						status: outcome.isError ? "error" : "success",
-						data: outcome.data ?? null,
-						message: outcome.text,
-					});
-					if (outcome.isError) {
-						anyError = true;
-						if (!continueOnError) {
-							break;
+				// Share one parsed Project per tsconfig across the batch (each op
+				// still saves to disk, so later ops see earlier results). A dry run
+				// or a failed op may leave the in-memory AST out of sync with the
+				// filesystem, so the cache is dropped after those.
+				if (!freshProject) {
+					enableProjectCache();
+				}
+				try {
+					for (const item of items) {
+						const name = registry.resolveName(item.tool);
+						const params = prepareParams(item.params ?? {});
+						const outcome = await callToolOnce(name, params);
+						results.push({
+							tool: name,
+							status: outcome.isError ? "error" : "success",
+							data: outcome.data ?? null,
+							message: outcome.text,
+						});
+						if (outcome.isError || params.dryRun === true) {
+							invalidateProjectCache();
+						}
+						if (outcome.isError) {
+							anyError = true;
+							if (!continueOnError) {
+								break;
+							}
 						}
 					}
+				} finally {
+					disableProjectCache();
 				}
 				out.write(`${JSON.stringify(results, null, 2)}\n`);
 				return anyError ? 1 : 0;

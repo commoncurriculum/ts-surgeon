@@ -55,7 +55,10 @@ npx -y @commoncurriculum/tsmorph-refactor call rename_symbol --params '{
 - Relative paths resolve against the working directory, and `tsconfigPath` is
   auto-discovered (nearest `tsconfig.json` above the target file) when omitted.
 - `--json` prints a machine-readable result (`{ tool, status, data, message }`);
-  `batch` runs a JSON array of `{ tool, params }` in one process.
+  `batch` runs a JSON array of `{ tool, params }` in one process, sharing one
+  parsed project per tsconfig (one AST parse for N ops; `--fresh-project` opts
+  out). `--stdin-files` turns a piped file list (e.g. `git diff --name-only`)
+  into `filePaths`.
 - For large parameter payloads, use `--params-file <path>` or pipe JSON via
   stdin instead of an inline `--params`.
 - Exit codes: `0` success, `1` the tool reported an error (read stdout for the
@@ -90,8 +93,9 @@ rhythm:
 - **`tsconfigPath` defines the project graph.** When omitted, the nearest
   `tsconfig.json` above the target file is used; pass it explicitly when the
   project has multiple tsconfigs and the wrong one might win.
-- **Prefer name-based targeting.** `rename_symbol`, `find_references`, and
-  `change_signature` accept just the declaration name (omit `position`) when it
+- **Prefer name-based targeting.** `rename_symbol`, `find_references`,
+  `change_signature`, and `get_type_at_position` accept just the declaration
+  name (omit `position`) when it
   is unambiguous in the file; the error lists candidate positions otherwise.
   When you do pass a **position, it is 1-based** (line *and* column) and must
   land on the **identifier**, not whitespace. Don't count columns by hand —

@@ -2,6 +2,7 @@ import type { ToolRegistry } from "./registry";
 import { z } from "zod";
 import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
 import { getTypeAtPosition } from "../ts-morph/get-type-at-position/get-type-at-position";
+import { resolveTargetIdentifier } from "../ts-morph/rename-symbol/rename-symbol";
 import { runTool } from "./_tool-runner";
 
 export function registerGetTypeAtPositionTool(registry: ToolRegistry): void {
@@ -19,8 +20,7 @@ export function registerGetTypeAtPositionTool(registry: ToolRegistry): void {
 - Listing every reference of a symbol — use \`find_references\`.
 
 ## Critical constraints
-- \`position\` is 1-based (line/column), matching what editors display.
-- All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
+- Target the node either with \`position\` (1-based line/column, matching what editors display) or with \`symbolName\` (a declaration name, when unambiguous in the file). Pass at least one.
 - For function/method identifiers (where ALL declarations are signature-bearing) the type is rendered as a call-style \`(arg: T) => R\` text taken directly from the declaration source, preserving rest \`...\`, optional \`?\`, default values, and destructuring patterns. Overloads are joined with \`&\` and the implementation signature is hidden.
 - For function/namespace merges or other mixed symbols (function with extra properties), the raw TypeChecker text (e.g. \`typeof fn\`) is returned to avoid silently dropping the property side of the type.
 - For imported symbols the resolved (aliased) symbol's declaration location is reported, including barrel re-export chains (\`export * from\`, \`export { x } from\`) which are recursively unwrapped.
@@ -51,18 +51,48 @@ export function registerGetTypeAtPositionTool(registry: ToolRegistry): void {
 						.positive()
 						.describe("1-based column number."),
 				})
-				.describe("Exact position to inspect."),
+				.optional()
+				.describe(
+					"Exact position to inspect. Optional when symbolName is given.",
+				),
+			symbolName: z
+				.string()
+				.optional()
+				.describe(
+					"Declaration name to inspect instead of a position; must be unambiguous in the file.",
+				),
 		},
 		(args) =>
 			runTool(
 				"get_type_at_position",
-				{ targetFilePath: args.targetFilePath, position: args.position },
+				{
+					targetFilePath: args.targetFilePath,
+					position: args.position,
+					symbolName: args.symbolName,
+				},
 				() => {
 					const project = initializeProject(args.tsconfigPath);
+					let position = args.position;
+					if (!position) {
+						if (args.symbolName === undefined) {
+							throw new Error(
+								"Pass position {line, column}, symbolName, or both.",
+							);
+						}
+						const identifier = resolveTargetIdentifier(
+							project,
+							args.targetFilePath,
+							{ symbolName: args.symbolName },
+						);
+						const located = identifier
+							.getSourceFile()
+							.getLineAndColumnAtPos(identifier.getStart());
+						position = { line: located.line, column: located.column };
+					}
 					const result = getTypeAtPosition(
 						project,
 						args.targetFilePath,
-						args.position,
+						position,
 					);
 
 					const lines: string[] = [
