@@ -7,6 +7,8 @@ export interface ToolRunOutcome {
 	message: string;
 	/** Extra fields to merge into the "finished" info log (e.g. changedFilesCount). */
 	log?: Record<string, unknown>;
+	/** Machine-readable result payload, surfaced by the CLI's --json mode. */
+	data?: unknown;
 }
 
 /**
@@ -43,11 +45,13 @@ export async function runTool(
 	let message = "";
 	let isError = false;
 	let extraLog: Record<string, unknown> = {};
+	let data: unknown;
 
 	try {
 		const outcome = await run();
 		message = outcome.message;
 		extraLog = outcome.log ?? {};
+		data = outcome.data;
 	} catch (error) {
 		safeLog("error", `Error executing ${toolName}`, {
 			err: error,
@@ -75,7 +79,7 @@ export async function runTool(
 		isError ? "Failure" : "Success"
 	}\nProcessing time: ${seconds} seconds`;
 
-	return { content: [{ type: "text", text }], isError };
+	return { content: [{ type: "text", text }], isError, data };
 }
 
 /** Formats a changed-files list for a tool message, or "(No changes)" when empty. */

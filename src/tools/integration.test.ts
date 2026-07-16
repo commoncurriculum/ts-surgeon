@@ -63,7 +63,7 @@ describe("Tool registry integration tests", () => {
 		removeTempDir(tempDir);
 	});
 
-	describe("rename_symbol_by_tsmorph", () => {
+	describe("rename_symbol", () => {
 		it("symbol renaming works correctly", async () => {
 			const utilsPath = path.join(srcDir, "utils.ts");
 			const mainPath = path.join(srcDir, "main.ts");
@@ -88,8 +88,8 @@ console.log(VERSION);
 `,
 			);
 
-			// Call rename_symbol_by_tsmorph tool
-			await registry.call("rename_symbol_by_tsmorph", {
+			// Call rename_symbol tool
+			await registry.call("rename_symbol", {
 				tsconfigPath,
 				targetFilePath: utilsPath,
 				position: { line: 1, column: 17 }, // position of "calculateSum"
@@ -118,7 +118,7 @@ console.log(oldName);
 			);
 
 			// Run in dryRun mode
-			await registry.call("rename_symbol_by_tsmorph", {
+			await registry.call("rename_symbol", {
 				tsconfigPath,
 				targetFilePath: filePath,
 				position: { line: 1, column: 7 }, // position of "oldName"
@@ -134,7 +134,7 @@ console.log(oldName);
 		});
 	});
 
-	describe("find_references_by_tsmorph", () => {
+	describe("find_references", () => {
 		it("can find references to a symbol", async () => {
 			const libPath = path.join(srcDir, "lib.ts");
 			const app1Path = path.join(srcDir, "app1.ts");
@@ -169,8 +169,8 @@ logger.log("Hello from app2");
 `,
 			);
 
-			// Call find_references_by_tsmorph tool
-			const result = await registry.call("find_references_by_tsmorph", {
+			// Call find_references tool
+			const result = await registry.call("find_references", {
 				tsconfigPath,
 				targetFilePath: libPath,
 				position: { line: 1, column: 14 }, // position of "Logger" class
@@ -184,7 +184,7 @@ logger.log("Hello from app2");
 		});
 	});
 
-	describe("remove_path_alias_by_tsmorph", () => {
+	describe("remove_path_alias", () => {
 		it("can convert path aliases to relative paths", async () => {
 			const utilsPath = path.join(srcDir, "utils", "math.ts");
 			const appPath = path.join(srcDir, "app.ts");
@@ -207,8 +207,8 @@ console.log(multiply(3, 4));
 `,
 			);
 
-			// Call remove_path_alias_by_tsmorph tool
-			await registry.call("remove_path_alias_by_tsmorph", {
+			// Call remove_path_alias tool
+			await registry.call("remove_path_alias", {
 				tsconfigPath,
 				targetPath: appPath,
 				dryRun: false,
@@ -221,7 +221,7 @@ console.log(multiply(3, 4));
 		});
 	});
 
-	describe("rename_filesystem_entry_by_tsmorph", () => {
+	describe("rename_filesystem_entry", () => {
 		it("can rename a file and update imports", async () => {
 			const oldPath = path.join(srcDir, "old-name.ts");
 			const newPath = path.join(srcDir, "new-name.ts");
@@ -237,8 +237,8 @@ console.log(data.value);
 `,
 			);
 
-			// Call rename_filesystem_entry_by_tsmorph tool
-			await registry.call("rename_filesystem_entry_by_tsmorph", {
+			// Call rename_filesystem_entry tool
+			await registry.call("rename_filesystem_entry", {
 				tsconfigPath,
 				renames: [{ oldPath, newPath }],
 				dryRun: false,
@@ -254,7 +254,7 @@ console.log(data.value);
 		});
 	});
 
-	describe("move_symbol_to_file_by_tsmorph", () => {
+	describe("move_symbol_to_file", () => {
 		it("can move a symbol to another file", async () => {
 			const sourcePath = path.join(srcDir, "source.ts");
 			const targetPath = path.join(srcDir, "target.ts");
@@ -281,8 +281,8 @@ console.log(funcToStay());
 `,
 			);
 
-			// Call move_symbol_to_file_by_tsmorph tool
-			await registry.call("move_symbol_to_file_by_tsmorph", {
+			// Call move_symbol_to_file tool
+			await registry.call("move_symbol_to_file", {
 				tsconfigPath,
 				originalFilePath: sourcePath, // originalFilePath, not sourceFilePath
 				targetFilePath: targetPath,
@@ -308,7 +308,7 @@ console.log(funcToStay());
 		});
 	});
 
-	describe("change_signature_by_tsmorph", () => {
+	describe("change_signature", () => {
 		it("adds a required parameter at the beginning and updates callers", async () => {
 			const utilsPath = path.join(srcDir, "utils.ts");
 			const consumerPath = path.join(srcDir, "consumer.ts");
@@ -329,7 +329,7 @@ console.log(greet("there"));
 `,
 			);
 
-			const result = await registry.call("change_signature_by_tsmorph", {
+			const result = await registry.call("change_signature", {
 				tsconfigPath,
 				targetFilePath: utilsPath,
 				position: { line: 1, column: 17 }, // position of "greet"
@@ -366,7 +366,7 @@ foo(1);
 `,
 			);
 
-			const result = await registry.call("change_signature_by_tsmorph", {
+			const result = await registry.call("change_signature", {
 				tsconfigPath,
 				targetFilePath: filePath,
 				position: { line: 1, column: 17 },
@@ -382,7 +382,7 @@ foo(1);
 		});
 	});
 
-	describe("get_type_at_position_by_tsmorph", () => {
+	describe("get_type_at_position", () => {
 		it("can retrieve type information for a variable", async () => {
 			const filePath = path.join(srcDir, "types.ts");
 			fs.writeFileSync(
@@ -392,7 +392,7 @@ console.log(user);
 `,
 			);
 
-			const result = await registry.call("get_type_at_position_by_tsmorph", {
+			const result = await registry.call("get_type_at_position", {
 				tsconfigPath,
 				targetFilePath: filePath,
 				position: { line: 2, column: 13 }, // "user" inside console.log
@@ -418,7 +418,7 @@ greet("world");
 `,
 			);
 
-			const result = await registry.call("get_type_at_position_by_tsmorph", {
+			const result = await registry.call("get_type_at_position", {
 				tsconfigPath,
 				targetFilePath: filePath,
 				position: { line: 4, column: 1 },
@@ -444,7 +444,7 @@ helper(1);
 `,
 			);
 
-			const result = await registry.call("get_type_at_position_by_tsmorph", {
+			const result = await registry.call("get_type_at_position", {
 				tsconfigPath,
 				targetFilePath: appPath,
 				position: { line: 2, column: 1 },
@@ -460,7 +460,7 @@ helper(1);
 			const filePath = path.join(srcDir, "small.ts");
 			fs.writeFileSync(filePath, "const x = 1;\n");
 
-			const result = await registry.call("get_type_at_position_by_tsmorph", {
+			const result = await registry.call("get_type_at_position", {
 				tsconfigPath,
 				targetFilePath: filePath,
 				position: { line: 99, column: 1 },
@@ -471,7 +471,7 @@ helper(1);
 		});
 	});
 
-	describe("find_unused_exports_by_tsmorph", () => {
+	describe("find_unused_exports", () => {
 		it("lists exports not imported from anywhere as candidates", async () => {
 			const aPath = path.join(srcDir, "a.ts");
 			const bPath = path.join(srcDir, "b.ts");
@@ -488,7 +488,7 @@ used();
 `,
 			);
 
-			const result = await registry.call("find_unused_exports_by_tsmorph", {
+			const result = await registry.call("find_unused_exports", {
 				tsconfigPath,
 			});
 
@@ -508,7 +508,7 @@ used();
 			fs.writeFileSync(aPath, "export function used(): void {}\n");
 			fs.writeFileSync(bPath, 'import { used } from "./a";\nused();\n');
 
-			const result = await registry.call("find_unused_exports_by_tsmorph", {
+			const result = await registry.call("find_unused_exports", {
 				tsconfigPath,
 			});
 
@@ -530,7 +530,7 @@ console.log(u);
 			);
 			fs.writeFileSync(bPath, "const x = 1;\n");
 
-			const result = await registry.call("find_unused_exports_by_tsmorph", {
+			const result = await registry.call("find_unused_exports", {
 				tsconfigPath,
 				responseFormat: "summary",
 			});
@@ -552,7 +552,7 @@ console.log(u);
 			fs.writeFileSync(publicPath, "export function publicFn(): void {}\n");
 			fs.writeFileSync(internalPath, "export function internalFn(): void {}\n");
 
-			const result = await registry.call("find_unused_exports_by_tsmorph", {
+			const result = await registry.call("find_unused_exports", {
 				tsconfigPath,
 				entryPoints: [publicPath],
 			});
@@ -564,7 +564,7 @@ console.log(u);
 		});
 	});
 
-	describe("convert_default_export_to_named_by_tsmorph", () => {
+	describe("convert_default_export_to_named", () => {
 		it("converts a named default export and updates importers", async () => {
 			const buttonPath = path.join(srcDir, "button.ts");
 			const appPath = path.join(srcDir, "app.ts");
@@ -584,14 +584,11 @@ console.log(Btn());
 `,
 			);
 
-			const result = await registry.call(
-				"convert_default_export_to_named_by_tsmorph",
-				{
-					tsconfigPath,
-					targetFilePath: buttonPath,
-					dryRun: false,
-				},
-			);
+			const result = await registry.call("convert_default_export_to_named", {
+				tsconfigPath,
+				targetFilePath: buttonPath,
+				dryRun: false,
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			const updatedButton = fs.readFileSync(buttonPath, "utf-8");
@@ -606,15 +603,12 @@ console.log(Btn());
 			const fnPath = path.join(srcDir, "fn.ts");
 			fs.writeFileSync(fnPath, "export default () => 1;\n");
 
-			const result = await registry.call(
-				"convert_default_export_to_named_by_tsmorph",
-				{
-					tsconfigPath,
-					targetFilePath: fnPath,
-					newName: "run",
-					dryRun: false,
-				},
-			);
+			const result = await registry.call("convert_default_export_to_named", {
+				tsconfigPath,
+				targetFilePath: fnPath,
+				newName: "run",
+				dryRun: false,
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			expect(fs.readFileSync(fnPath, "utf-8")).toContain(
@@ -626,14 +620,11 @@ console.log(Btn());
 			const widgetPath = path.join(srcDir, "widget.ts");
 			fs.writeFileSync(widgetPath, "export default class Widget {}\n");
 
-			const result = await registry.call(
-				"convert_default_export_to_named_by_tsmorph",
-				{
-					tsconfigPath,
-					targetFilePath: widgetPath,
-					dryRun: true,
-				},
-			);
+			const result = await registry.call("convert_default_export_to_named", {
+				tsconfigPath,
+				targetFilePath: widgetPath,
+				dryRun: true,
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			expect(fs.readFileSync(widgetPath, "utf-8")).toContain(
@@ -645,21 +636,18 @@ console.log(Btn());
 			const fnPath = path.join(srcDir, "anon.ts");
 			fs.writeFileSync(fnPath, "export default () => 1;\n");
 
-			const result = await registry.call(
-				"convert_default_export_to_named_by_tsmorph",
-				{
-					tsconfigPath,
-					targetFilePath: fnPath,
-					dryRun: false,
-				},
-			);
+			const result = await registry.call("convert_default_export_to_named", {
+				tsconfigPath,
+				targetFilePath: fnPath,
+				dryRun: false,
+			});
 
 			expect(result).toHaveProperty("isError", true);
 			expect(result.content[0]?.text || "").toContain("anonymous");
 		});
 	});
 
-	describe("organize_imports_by_tsmorph", () => {
+	describe("organize_imports", () => {
 		it("removes unused imports from a specified file", async () => {
 			const mPath = path.join(srcDir, "m.ts");
 			const appPath = path.join(srcDir, "app.ts");
@@ -672,7 +660,7 @@ console.log(Btn());
 				'import { used, dead } from "./m";\n\nconsole.log(used);\n',
 			);
 
-			const result = await registry.call("organize_imports_by_tsmorph", {
+			const result = await registry.call("organize_imports", {
 				tsconfigPath,
 				filePaths: [appPath],
 				dryRun: false,
@@ -696,7 +684,7 @@ console.log(Btn());
 				'import { used, dead } from "./m2";\nconsole.log(used);\n',
 			);
 
-			const result = await registry.call("organize_imports_by_tsmorph", {
+			const result = await registry.call("organize_imports", {
 				tsconfigPath,
 				filePaths: [appPath],
 				dryRun: true,
@@ -707,12 +695,12 @@ console.log(Btn());
 		});
 	});
 
-	describe("get_diagnostics_by_tsmorph", () => {
+	describe("get_diagnostics", () => {
 		it("reports a type error for the project", async () => {
 			const badPath = path.join(srcDir, "bad.ts");
 			fs.writeFileSync(badPath, "const x: number = 'oops';\n");
 
-			const result = await registry.call("get_diagnostics_by_tsmorph", {
+			const result = await registry.call("get_diagnostics", {
 				tsconfigPath,
 			});
 
@@ -726,7 +714,7 @@ console.log(Btn());
 			const goodPath = path.join(srcDir, "good.ts");
 			fs.writeFileSync(goodPath, "export const y: number = 1;\n");
 
-			const result = await registry.call("get_diagnostics_by_tsmorph", {
+			const result = await registry.call("get_diagnostics", {
 				tsconfigPath,
 				filePaths: [goodPath],
 			});
@@ -736,7 +724,7 @@ console.log(Btn());
 		});
 	});
 
-	describe("convert_named_export_to_default_by_tsmorph", () => {
+	describe("convert_named_export_to_default", () => {
 		it("converts a named export and updates importers", async () => {
 			const buttonPath = path.join(srcDir, "button.ts");
 			const appPath = path.join(srcDir, "app.ts");
@@ -749,15 +737,12 @@ console.log(Btn());
 				'import { Button } from "./button";\n\nconsole.log(Button());\n',
 			);
 
-			const result = await registry.call(
-				"convert_named_export_to_default_by_tsmorph",
-				{
-					tsconfigPath,
-					targetFilePath: buttonPath,
-					exportName: "Button",
-					dryRun: false,
-				},
-			);
+			const result = await registry.call("convert_named_export_to_default", {
+				tsconfigPath,
+				targetFilePath: buttonPath,
+				exportName: "Button",
+				dryRun: false,
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			expect(fs.readFileSync(buttonPath, "utf-8")).toContain(
@@ -775,10 +760,11 @@ console.log(Btn());
 				"export default function A() {}\nexport function B() {}\n",
 			);
 
-			const result = await registry.call(
-				"convert_named_export_to_default_by_tsmorph",
-				{ tsconfigPath, targetFilePath: filePath, exportName: "B" },
-			);
+			const result = await registry.call("convert_named_export_to_default", {
+				tsconfigPath,
+				targetFilePath: filePath,
+				exportName: "B",
+			});
 
 			expect(result).toHaveProperty("isError", true);
 			expect(result.content[0]?.text || "").toContain(
@@ -787,14 +773,14 @@ console.log(Btn());
 		});
 	});
 
-	describe("add_missing_imports_by_tsmorph", () => {
+	describe("add_missing_imports", () => {
 		it("adds an import for an unresolved identifier", async () => {
 			const buttonPath = path.join(srcDir, "button.ts");
 			const appPath = path.join(srcDir, "app.ts");
 			fs.writeFileSync(buttonPath, "export function Button() {}\n");
 			fs.writeFileSync(appPath, "Button();\n");
 
-			const result = await registry.call("add_missing_imports_by_tsmorph", {
+			const result = await registry.call("add_missing_imports", {
 				tsconfigPath,
 				filePaths: [appPath],
 				dryRun: false,
@@ -812,7 +798,7 @@ console.log(Btn());
 			fs.writeFileSync(buttonPath, "export function Widget() {}\n");
 			fs.writeFileSync(appPath, "Widget();\n");
 
-			const result = await registry.call("add_missing_imports_by_tsmorph", {
+			const result = await registry.call("add_missing_imports", {
 				tsconfigPath,
 				filePaths: [appPath],
 				dryRun: true,
@@ -823,7 +809,7 @@ console.log(Btn());
 		});
 	});
 
-	describe("apply_code_fix_by_tsmorph", () => {
+	describe("apply_code_fix", () => {
 		it("removes unused declarations and imports", async () => {
 			const mPath = path.join(srcDir, "m.ts");
 			const appPath = path.join(srcDir, "app.ts");
@@ -836,7 +822,7 @@ console.log(Btn());
 				'import { used, dead } from "./m";\nconsole.log(used);\n',
 			);
 
-			const result = await registry.call("apply_code_fix_by_tsmorph", {
+			const result = await registry.call("apply_code_fix", {
 				tsconfigPath,
 				fix: "remove_unused",
 				filePaths: [appPath],
@@ -856,7 +842,7 @@ console.log(Btn());
 				"interface I {\n  foo(): number;\n}\nclass C implements I {}\n",
 			);
 
-			const result = await registry.call("apply_code_fix_by_tsmorph", {
+			const result = await registry.call("apply_code_fix", {
 				tsconfigPath,
 				fix: "implement_interface",
 				filePaths: [cPath],
@@ -868,7 +854,7 @@ console.log(Btn());
 		});
 	});
 
-	describe("safe_delete_symbol_by_tsmorph", () => {
+	describe("safe_delete_symbol", () => {
 		it("deletes an unreferenced symbol", async () => {
 			const filePath = path.join(srcDir, "util.ts");
 			fs.writeFileSync(
@@ -876,7 +862,7 @@ console.log(Btn());
 				"export function used() {}\nfunction dead() {}\n",
 			);
 
-			const result = await registry.call("safe_delete_symbol_by_tsmorph", {
+			const result = await registry.call("safe_delete_symbol", {
 				tsconfigPath,
 				targetFilePath: filePath,
 				symbolName: "dead",
@@ -896,7 +882,7 @@ console.log(Btn());
 				'import { helper } from "./util2";\nhelper();\n',
 			);
 
-			const result = await registry.call("safe_delete_symbol_by_tsmorph", {
+			const result = await registry.call("safe_delete_symbol", {
 				tsconfigPath,
 				targetFilePath: utilPath,
 				symbolName: "helper",
@@ -912,7 +898,7 @@ console.log(Btn());
 		it("returns an error for a file that does not exist", async () => {
 			const nonExistentPath = path.join(srcDir, "non-existent.ts");
 
-			const result = await registry.call("rename_symbol_by_tsmorph", {
+			const result = await registry.call("rename_symbol", {
 				tsconfigPath,
 				targetFilePath: nonExistentPath,
 				position: { line: 1, column: 1 },
@@ -931,7 +917,7 @@ console.log(Btn());
 
 			fs.writeFileSync(testPath, `const validName = "test";`);
 
-			const result = await registry.call("rename_symbol_by_tsmorph", {
+			const result = await registry.call("rename_symbol", {
 				tsconfigPath,
 				targetFilePath: testPath,
 				position: { line: 1, column: 7 },

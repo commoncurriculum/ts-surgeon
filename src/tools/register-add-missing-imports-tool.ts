@@ -5,7 +5,7 @@ import { formatChangedFiles, runTool } from "./_tool-runner";
 
 export function registerAddMissingImportsTool(registry: ToolRegistry): void {
 	registry.tool(
-		"add_missing_imports_by_tsmorph",
+		"add_missing_imports",
 		`[ts-morph] Add import statements for unresolved identifiers (the editor "Add all missing imports" action) in specific files or the whole project.
 
 ## When to use
@@ -13,7 +13,7 @@ export function registerAddMissingImportsTool(registry: ToolRegistry): void {
 - Cleaning up "Cannot find name 'X'" errors in bulk without hand-writing each import.
 
 ## When NOT to use
-- Removing unused imports / sorting (use \`organize_imports_by_tsmorph\`).
+- Removing unused imports / sorting (use \`organize_imports\`).
 - The identifier is genuinely undefined (no matching export exists anywhere) — nothing will be added for it.
 
 ## Behavior
@@ -47,7 +47,7 @@ Returns the number of files processed and the list of modified (or, in dryRun, t
 		},
 		(args) =>
 			runTool(
-				"add_missing_imports_by_tsmorph",
+				"add_missing_imports",
 				{ fileCount: args.filePaths?.length ?? "all", dryRun: args.dryRun },
 				async () => {
 					const result = await addMissingImports({
@@ -65,6 +65,7 @@ Returns the number of files processed and the list of modified (or, in dryRun, t
 					return {
 						message,
 						log: { changedFilesCount: result.changedFiles.length },
+						data: result,
 					};
 				},
 			),

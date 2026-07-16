@@ -7,15 +7,15 @@ export function registerConvertNamedToDefaultTool(
 	registry: ToolRegistry,
 ): void {
 	registry.tool(
-		"convert_named_export_to_default_by_tsmorph",
-		`[ts-morph] Convert a file's named export into its default export and rewrite every importing/re-exporting site across the project (named imports become default imports; \`export { name } from\` becomes \`export { default as name } from\`). This is the inverse of \`convert_default_export_to_named_by_tsmorph\`.
+		"convert_named_export_to_default",
+		`[ts-morph] Convert a file's named export into its default export and rewrite every importing/re-exporting site across the project (named imports become default imports; \`export { name } from\` becomes \`export { default as name } from\`). This is the inverse of \`convert_default_export_to_named\`.
 
 ## When to use
 - Standardizing a module on a default export (e.g. a component file expected to default-export its component).
 
 ## When NOT to use
-- Renaming an export — use \`rename_symbol_by_tsmorph\`.
-- Converting a default export to a named one — use \`convert_default_export_to_named_by_tsmorph\`.
+- Renaming an export — use \`rename_symbol\`.
+- Converting a default export to a named one — use \`convert_default_export_to_named\`.
 
 ## Supported target forms (in the target file)
 - \`export function Foo() {}\` / \`export class Foo {}\` → \`export default function Foo() {}\`.
@@ -57,7 +57,7 @@ Returns the number of updated import and re-export sites, and the list of modifi
 		},
 		(args) =>
 			runTool(
-				"convert_named_export_to_default_by_tsmorph",
+				"convert_named_export_to_default",
 				{
 					targetFilePath: args.targetFilePath,
 					exportName: args.exportName,
@@ -80,6 +80,7 @@ Returns the number of updated import and re-export sites, and the list of modifi
 					return {
 						message,
 						log: { changedFilesCount: result.changedFiles.length },
+						data: result,
 					};
 				},
 			),

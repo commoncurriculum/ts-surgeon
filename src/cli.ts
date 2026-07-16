@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import * as path from "node:path";
+import { GUIDE } from "./guide";
 import {
 	ToolParamsError,
 	UnknownToolError,
@@ -12,54 +14,72 @@ export class CliUsageError extends Error {}
 const USAGE = `tsmorph-refactor — AST-accurate TypeScript/JavaScript refactoring CLI (ts-morph)
 
 Usage:
-  tsmorph-refactor list                     List available tools
-  tsmorph-refactor describe <tool>          Show a tool's description and JSON input schema
-  tsmorph-refactor call <tool> [options]    Run a tool once and print its result
+  tsmorph-refactor list [--json]                List available tools
+  tsmorph-refactor describe <tool> [--json]     Show a tool's description and JSON input schema
+  tsmorph-refactor call <tool> [params]         Run a tool once and print its result
+  tsmorph-refactor batch [options]              Run several tools in one process
+  tsmorph-refactor guide                        Print the full agent guide
   tsmorph-refactor --help | --version
 
-Options for call:
-  --params <json>        Tool parameters as a JSON object
+Params for call (flags win over JSON; both can be combined):
+  --params <json>        Parameters as a JSON object
   --params-file <path>   Read the JSON parameters from a file
-  (no option)            Read the JSON parameters from stdin
+  (piped stdin)          Read the JSON parameters from stdin
+  --<field> <value>      Set a single field: kebab-case maps to the schema's
+                         camelCase (--target-file-path -> targetFilePath),
+                         dots nest (--position.line 1), a flag with no value
+                         is boolean true (--dry-run)
 
-The parameter JSON must match the tool's input schema (see \`describe <tool>\`).
-All paths must be absolute.
+Conveniences:
+  - Relative paths are resolved against the current working directory.
+  - tsconfigPath may be omitted; the nearest tsconfig.json above the target
+    file (or the cwd) is discovered automatically.
+  - --json prints a machine-readable result: { tool, status, data, message }.
+  - Tool names accept dashes (rename-symbol) and legacy *_by_tsmorph aliases.
+
+Batch: pass a JSON array of { "tool": "...", "params": { ... } } via --params,
+--params-file, or stdin. Output is always JSON. Stops at the first failing
+tool unless --continue-on-error is set.
 
 Examples:
-  tsmorph-refactor describe rename_symbol_by_tsmorph
-  tsmorph-refactor call rename_symbol_by_tsmorph --params '{
-    "tsconfigPath": "/abs/path/tsconfig.json",
-    "targetFilePath": "/abs/path/src/utils.ts",
-    "position": { "line": 1, "column": 17 },
-    "symbolName": "calculateSum",
-    "newName": "addNumbers",
-    "dryRun": true
-  }'
+  tsmorph-refactor describe rename_symbol
+  tsmorph-refactor call rename_symbol --target-file-path src/utils.ts \\
+    --position.line 1 --position.column 17 \\
+    --symbol-name calculateSum --new-name addNumbers --dry-run
 
 Exit codes: 0 = success, 1 = tool reported an error, 2 = usage error.
 `;
 
-/** Lists every registered tool as `name` + the first line of its description. */
-export function listToolsText(): string {
+interface ToolSummary {
+	name: string;
+	summary: string;
+}
+
+function toolSummaries(): ToolSummary[] {
 	return createToolRegistry()
 		.list()
-		.map((tool) => {
-			const summary = tool.description.split("\n")[0];
-			return `${tool.name}\n    ${summary}`;
-		})
+		.map((tool) => ({
+			name: tool.name,
+			summary: tool.description.split("\n")[0],
+		}));
+}
+
+/** Lists every registered tool as `name` + the first line of its description. */
+export function listToolsText(): string {
+	return toolSummaries()
+		.map(({ name, summary }) => `${name}\n    ${summary}`)
 		.join("\n");
 }
 
 /** Returns a tool's full description and JSON input schema. */
 export function describeToolText(toolName: string): string {
 	const registry = createToolRegistry();
-	const tool = registry.list().find((t) => t.name === toolName);
+	const name = registry.resolveName(toolName);
+	const tool = registry.list().find((t) => t.name === name);
 	if (!tool) {
-		throw new CliUsageError(
-			new UnknownToolError(
-				toolName,
-				registry.list().map((t) => t.name),
-			).message,
+		throw new UnknownToolError(
+			toolName,
+			registry.list().map((t) => t.name),
 		);
 	}
 	return [
@@ -69,13 +89,14 @@ export function describeToolText(toolName: string): string {
 		"",
 		"## Input schema (JSON)",
 		"",
-		JSON.stringify(registry.inputSchema(toolName), null, 2),
+		JSON.stringify(registry.inputSchema(name), null, 2),
 	].join("\n");
 }
 
 export interface CallOutcome {
 	text: string;
 	isError: boolean;
+	data?: unknown;
 }
 
 /** Calls a single tool with the given parameters and returns its text result. */
@@ -88,71 +109,294 @@ export async function callToolOnce(
 		.filter((block) => block.type === "text")
 		.map((block) => block.text)
 		.join("\n");
-	return { text, isError: result.isError === true };
+	return { text, isError: result.isError === true, data: result.data };
 }
 
-function parseParamsJson(
-	source: string,
-	origin: string,
+/** Keys whose string values are filesystem paths to resolve against cwd. */
+function isPathKey(key: string): boolean {
+	return /paths?$/i.test(key) || key === "entryPoints";
+}
+
+/**
+ * Resolves every relative path in the params against `cwd`, recursively
+ * (covers nested shapes like renames[].oldPath). Glob-pattern fields
+ * (e.g. excludeFilePatterns) are left untouched.
+ */
+export function resolvePathParams(value: unknown, cwd: string): unknown {
+	if (Array.isArray(value)) {
+		return value.map((item) => resolvePathParams(item, cwd));
+	}
+	if (value === null || typeof value !== "object") {
+		return value;
+	}
+	const out: Record<string, unknown> = {};
+	for (const [key, v] of Object.entries(value)) {
+		if (isPathKey(key) && typeof v === "string") {
+			out[key] = path.resolve(cwd, v);
+		} else if (
+			isPathKey(key) &&
+			Array.isArray(v) &&
+			v.every((item) => typeof item === "string")
+		) {
+			out[key] = v.map((item) => path.resolve(cwd, item));
+		} else {
+			out[key] = resolvePathParams(v, cwd);
+		}
+	}
+	return out;
+}
+
+/** Walks up from `startDir` to find the nearest tsconfig.json. */
+export function findNearestTsconfig(startDir: string): string | undefined {
+	let dir = path.resolve(startDir);
+	for (;;) {
+		const candidate = path.join(dir, "tsconfig.json");
+		if (existsSync(candidate)) {
+			return candidate;
+		}
+		const parent = path.dirname(dir);
+		if (parent === dir) {
+			return undefined;
+		}
+		dir = parent;
+	}
+}
+
+/** Picks the directory tsconfig discovery should start from. */
+function tsconfigSearchStart(
+	params: Record<string, unknown>,
+	cwd: string,
+): string {
+	const fileHint =
+		params.targetFilePath ??
+		params.originalFilePath ??
+		params.targetPath ??
+		(Array.isArray(params.filePaths) ? params.filePaths[0] : undefined) ??
+		(Array.isArray(params.renames)
+			? (params.renames[0] as Record<string, unknown> | undefined)?.oldPath
+			: undefined);
+	return typeof fileHint === "string" ? path.dirname(fileHint) : cwd;
+}
+
+/**
+ * Prepares raw params for a tool call: resolves relative paths against cwd
+ * and fills in tsconfigPath from the nearest tsconfig.json when omitted.
+ */
+export function prepareParams(
+	raw: Record<string, unknown>,
+	cwd: string = process.cwd(),
 ): Record<string, unknown> {
-	let parsed: unknown;
+	const resolved = resolvePathParams(raw, cwd) as Record<string, unknown>;
+	if (resolved.tsconfigPath === undefined) {
+		const found = findNearestTsconfig(tsconfigSearchStart(resolved, cwd));
+		if (found) {
+			resolved.tsconfigPath = found;
+		}
+	}
+	return resolved;
+}
+
+function parseParamsJson(source: string, origin: string): unknown {
 	try {
-		parsed = JSON.parse(source);
+		return JSON.parse(source);
 	} catch (error) {
 		throw new CliUsageError(
 			`Failed to parse ${origin} as JSON: ${error instanceof Error ? error.message : String(error)}`,
 		);
 	}
+}
+
+function asParamsObject(
+	parsed: unknown,
+	origin: string,
+): Record<string, unknown> {
 	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
 		throw new CliUsageError(`${origin} must be a JSON object.`);
 	}
 	return parsed as Record<string, unknown>;
 }
 
-/** Resolves the params for `call` from --params, --params-file, or stdin. */
-function readCallParams(rest: string[]): Record<string, unknown> {
+function kebabToCamel(key: string): string {
+	return key.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase());
+}
+
+/** Coerces a flag value: JSON where it clearly is JSON, raw string otherwise. */
+function coerceFlagValue(raw: string): unknown {
+	if (/^(-?\d+(\.\d+)?|true|false|null|\{.*\}|\[.*\])$/s.test(raw.trim())) {
+		try {
+			return JSON.parse(raw);
+		} catch {
+			return raw;
+		}
+	}
+	return raw;
+}
+
+/** Sets a dot-path key (e.g. "position.line") on a params object. */
+function setDotPath(
+	target: Record<string, unknown>,
+	dotKey: string,
+	value: unknown,
+): void {
+	const segments = dotKey.split(".").map(kebabToCamel);
+	let node = target;
+	for (const segment of segments.slice(0, -1)) {
+		const existing = node[segment];
+		if (existing === null || typeof existing !== "object") {
+			node[segment] = {};
+		}
+		node = node[segment] as Record<string, unknown>;
+	}
+	node[segments.at(-1) as string] = value;
+}
+
+interface ParsedCallArgs {
+	json: boolean;
+	params: Record<string, unknown>;
+}
+
+/**
+ * Parses `call` arguments: --params/--params-file/stdin JSON as the base,
+ * with individual --field flags merged on top.
+ */
+function readCallParams(rest: string[]): ParsedCallArgs {
 	let paramsJson: string | undefined;
 	let paramsFile: string | undefined;
+	let json = false;
+	const flagParams: Record<string, unknown> = {};
+	let sawFieldFlags = false;
 
 	for (let i = 0; i < rest.length; i++) {
 		const arg = rest[i];
-		if (arg === "--params") {
-			paramsJson = rest[++i];
-			if (paramsJson === undefined) {
-				throw new CliUsageError("--params requires a JSON argument.");
+		if (!arg.startsWith("--")) {
+			throw new CliUsageError(`Unexpected argument '${arg}'.`);
+		}
+		const eq = arg.indexOf("=");
+		const flagName = (eq === -1 ? arg : arg.slice(0, eq)).slice(2);
+		const inlineValue = eq === -1 ? undefined : arg.slice(eq + 1);
+
+		const takeValue = (): string => {
+			if (inlineValue !== undefined) {
+				return inlineValue;
 			}
-		} else if (arg.startsWith("--params=")) {
-			paramsJson = arg.slice("--params=".length);
-		} else if (arg === "--params-file") {
-			paramsFile = rest[++i];
-			if (paramsFile === undefined) {
-				throw new CliUsageError("--params-file requires a path argument.");
+			const next = rest[++i];
+			if (next === undefined) {
+				throw new CliUsageError(`--${flagName} requires a value.`);
 			}
-		} else if (arg.startsWith("--params-file=")) {
-			paramsFile = arg.slice("--params-file=".length);
-		} else {
-			throw new CliUsageError(`Unknown option for call: '${arg}'`);
+			return next;
+		};
+
+		switch (flagName) {
+			case "params":
+				paramsJson = takeValue();
+				break;
+			case "params-file":
+				paramsFile = takeValue();
+				break;
+			case "json":
+				json = true;
+				break;
+			default: {
+				sawFieldFlags = true;
+				const hasValue =
+					inlineValue !== undefined ||
+					(rest[i + 1] !== undefined && !rest[i + 1].startsWith("--"));
+				const value = hasValue ? coerceFlagValue(takeValue()) : true;
+				setDotPath(flagParams, flagName, value);
+			}
 		}
 	}
 
 	if (paramsJson !== undefined && paramsFile !== undefined) {
 		throw new CliUsageError("Pass either --params or --params-file, not both.");
 	}
+
+	let base: Record<string, unknown> = {};
 	if (paramsJson !== undefined) {
-		return parseParamsJson(paramsJson, "--params");
-	}
-	if (paramsFile !== undefined) {
-		return parseParamsJson(
-			readFileSync(paramsFile, "utf-8"),
+		base = asParamsObject(parseParamsJson(paramsJson, "--params"), "--params");
+	} else if (paramsFile !== undefined) {
+		base = asParamsObject(
+			parseParamsJson(
+				readFileSync(paramsFile, "utf-8"),
+				`params file '${paramsFile}'`,
+			),
 			`params file '${paramsFile}'`,
 		);
-	}
-	if (process.stdin.isTTY) {
-		throw new CliUsageError(
-			"No parameters given. Pass --params '<json>', --params-file <path>, or pipe JSON via stdin.",
+	} else if (!sawFieldFlags) {
+		if (process.stdin.isTTY) {
+			throw new CliUsageError(
+				"No parameters given. Pass --<field> flags, --params '<json>', --params-file <path>, or pipe JSON via stdin.",
+			);
+		}
+		base = asParamsObject(
+			parseParamsJson(readFileSync(0, "utf-8"), "stdin"),
+			"stdin",
 		);
 	}
-	return parseParamsJson(readFileSync(0, "utf-8"), "stdin");
+
+	return { json, params: { ...base, ...flagParams } };
+}
+
+interface BatchItem {
+	tool: string;
+	params?: Record<string, unknown>;
+}
+
+function readBatchItems(rest: string[]): {
+	items: BatchItem[];
+	continueOnError: boolean;
+} {
+	let source: string | undefined;
+	let origin = "stdin";
+	let continueOnError = false;
+
+	for (let i = 0; i < rest.length; i++) {
+		const arg = rest[i];
+		if (arg === "--continue-on-error") {
+			continueOnError = true;
+		} else if (arg === "--params") {
+			source = rest[++i];
+			origin = "--params";
+		} else if (arg === "--params-file") {
+			const file = rest[++i];
+			if (file === undefined) {
+				throw new CliUsageError("--params-file requires a path argument.");
+			}
+			source = readFileSync(file, "utf-8");
+			origin = `params file '${file}'`;
+		} else if (arg === "--json") {
+			// batch output is always JSON; accept the flag for symmetry
+		} else {
+			throw new CliUsageError(`Unknown option for batch: '${arg}'`);
+		}
+	}
+
+	if (source === undefined) {
+		if (process.stdin.isTTY) {
+			throw new CliUsageError(
+				"batch needs a JSON array of { tool, params } via --params, --params-file, or stdin.",
+			);
+		}
+		source = readFileSync(0, "utf-8");
+	}
+
+	const parsed = parseParamsJson(source, origin);
+	if (!Array.isArray(parsed)) {
+		throw new CliUsageError(`${origin} must be a JSON array for batch.`);
+	}
+	const items = parsed.map((item, index) => {
+		if (
+			item === null ||
+			typeof item !== "object" ||
+			typeof (item as BatchItem).tool !== "string"
+		) {
+			throw new CliUsageError(
+				`batch item ${index} must be an object with a "tool" string.`,
+			);
+		}
+		return item as BatchItem;
+	});
+	return { items, continueOnError };
 }
 
 interface Writer {
@@ -166,6 +410,7 @@ export async function runCli(
 	err: Writer = process.stderr,
 ): Promise<number> {
 	const [command, ...rest] = argv;
+	const wantsJson = rest.includes("--json");
 
 	try {
 		switch (command) {
@@ -179,16 +424,40 @@ export async function runCli(
 			case "-v":
 				out.write(`${VERSION}\n`);
 				return 0;
+			case "guide":
+				out.write(GUIDE);
+				return 0;
 			case "list":
 			case "list-tools":
-				out.write(`${listToolsText()}\n`);
+				out.write(
+					wantsJson
+						? `${JSON.stringify(toolSummaries(), null, 2)}\n`
+						: `${listToolsText()}\n`,
+				);
 				return 0;
 			case "describe": {
-				const toolName = rest[0];
+				const toolName = rest.find((arg) => !arg.startsWith("-"));
 				if (!toolName) {
 					throw new CliUsageError("describe requires a tool name.");
 				}
-				out.write(`${describeToolText(toolName)}\n`);
+				if (wantsJson) {
+					const registry = createToolRegistry();
+					const name = registry.resolveName(toolName);
+					const tool = registry.list().find((t) => t.name === name);
+					out.write(
+						`${JSON.stringify(
+							{
+								name,
+								description: tool?.description,
+								inputSchema: registry.inputSchema(name),
+							},
+							null,
+							2,
+						)}\n`,
+					);
+				} else {
+					out.write(`${describeToolText(toolName)}\n`);
+				}
 				return 0;
 			}
 			case "call": {
@@ -196,10 +465,54 @@ export async function runCli(
 				if (!toolName || toolName.startsWith("-")) {
 					throw new CliUsageError("call requires a tool name.");
 				}
-				const params = readCallParams(rest.slice(1));
-				const outcome = await callToolOnce(toolName, params);
-				out.write(`${outcome.text}\n`);
+				const { json, params } = readCallParams(rest.slice(1));
+				const registry = createToolRegistry();
+				const name = registry.resolveName(toolName);
+				const outcome = await callToolOnce(name, prepareParams(params));
+				if (json) {
+					out.write(
+						`${JSON.stringify(
+							{
+								tool: name,
+								status: outcome.isError ? "error" : "success",
+								data: outcome.data ?? null,
+								message: outcome.text,
+							},
+							null,
+							2,
+						)}\n`,
+					);
+				} else {
+					out.write(`${outcome.text}\n`);
+				}
 				return outcome.isError ? 1 : 0;
+			}
+			case "batch": {
+				const { items, continueOnError } = readBatchItems(rest);
+				const registry = createToolRegistry();
+				const results: Array<Record<string, unknown>> = [];
+				let anyError = false;
+				for (const item of items) {
+					const name = registry.resolveName(item.tool);
+					const outcome = await callToolOnce(
+						name,
+						prepareParams(item.params ?? {}),
+					);
+					results.push({
+						tool: name,
+						status: outcome.isError ? "error" : "success",
+						data: outcome.data ?? null,
+						message: outcome.text,
+					});
+					if (outcome.isError) {
+						anyError = true;
+						if (!continueOnError) {
+							break;
+						}
+					}
+				}
+				out.write(`${JSON.stringify(results, null, 2)}\n`);
+				return anyError ? 1 : 0;
 			}
 			default:
 				throw new CliUsageError(`Unknown command '${command}'.\n\n${USAGE}`);

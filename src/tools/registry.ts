@@ -6,6 +6,8 @@ import { registerTsMorphTools } from "./ts-morph-tools";
 export interface ToolResult {
 	content: Array<{ type: "text"; text: string }>;
 	isError?: boolean;
+	/** Machine-readable result payload, emitted by the CLI's --json mode. */
+	data?: unknown;
 }
 
 /** Thrown by call() when params fail schema validation. Exit code 2 in the CLI. */
@@ -84,8 +86,28 @@ export class ToolRegistry {
 		)(parsed.data);
 	}
 
+	/**
+	 * Resolves a user-supplied tool name to its canonical registration.
+	 * Accepts dashes for underscores (`rename-symbol`) and the legacy
+	 * `*_by_tsmorph` names as aliases.
+	 */
+	resolveName(name: string): string {
+		const normalized = name.replaceAll("-", "_");
+		if (this.tools.has(normalized)) {
+			return normalized;
+		}
+		const legacySuffix = "_by_tsmorph";
+		if (normalized.endsWith(legacySuffix)) {
+			const stripped = normalized.slice(0, -legacySuffix.length);
+			if (this.tools.has(stripped)) {
+				return stripped;
+			}
+		}
+		throw new UnknownToolError(name, [...this.tools.keys()]);
+	}
+
 	private get(name: string): RegisteredTool {
-		const tool = this.tools.get(name);
+		const tool = this.tools.get(this.resolveName(name));
 		if (!tool) {
 			throw new UnknownToolError(name, [...this.tools.keys()]);
 		}

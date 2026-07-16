@@ -6,7 +6,7 @@ import { runTool } from "./_tool-runner";
 
 export function registerGetTypeAtPositionTool(registry: ToolRegistry): void {
 	registry.tool(
-		"get_type_at_position_by_tsmorph",
+		"get_type_at_position",
 		`[ts-morph] Return the TypeChecker-inferred type at a specific position in a TypeScript/JavaScript file, plus the symbol and its declaration location.
 
 ## When to use
@@ -16,7 +16,7 @@ export function registerGetTypeAtPositionTool(registry: ToolRegistry): void {
 
 ## When NOT to use
 - Bulk type analysis across many positions — call \`tsc\` directly instead.
-- Listing every reference of a symbol — use \`find_references_by_tsmorph\`.
+- Listing every reference of a symbol — use \`find_references\`.
 
 ## Critical constraints
 - \`position\` is 1-based (line/column), matching what editors display.
@@ -55,7 +55,7 @@ export function registerGetTypeAtPositionTool(registry: ToolRegistry): void {
 		},
 		(args) =>
 			runTool(
-				"get_type_at_position_by_tsmorph",
+				"get_type_at_position",
 				{ targetFilePath: args.targetFilePath, position: args.position },
 				() => {
 					const project = initializeProject(args.tsconfigPath);
@@ -77,7 +77,7 @@ export function registerGetTypeAtPositionTool(registry: ToolRegistry): void {
 							`Declared at: ${result.declaration.filePath}:${result.declaration.line}:${result.declaration.column}`,
 						);
 					}
-					return { message: lines.join("\n") };
+					return { message: lines.join("\n"), data: result };
 				},
 			),
 	);

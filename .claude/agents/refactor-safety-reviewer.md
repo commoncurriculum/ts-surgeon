@@ -33,4 +33,4 @@ Issues that have caused problems in this project before, or that are explicitly 
 - **INSUFFICIENT TESTS**: Cases that should be covered but are missing
 - **OK**: Checklist items that apply and are handled correctly
 
-For any reference location you cannot confirm with certainty, do not guess — verify with the repo's own CLI first (`pnpm build` once, then `node dist/index.js call find_references_by_tsmorph --params '{...}'` with absolute paths and a 1-based position), then state your finding. Do not write fix code; focus on providing findings and evidence.
+For any reference location you cannot confirm with certainty, do not guess — verify with the repo's own CLI first (`pnpm build` once, then `node dist/index.js call find_references --params '{...}'` with absolute paths and a 1-based position), then state your finding. Do not write fix code; focus on providing findings and evidence.

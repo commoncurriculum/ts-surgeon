@@ -61,14 +61,14 @@ const moveSymbolSchema = z.object({
 type MoveSymbolArgs = z.infer<typeof moveSymbolSchema>;
 
 /**
- * Registers the 'move_symbol_to_file_by_tsmorph' tool on the registry.
+ * Registers the 'move_symbol_to_file' tool on the registry.
  * This tool moves a specified symbol between files and updates all related references.
  *
  * @param registry ToolRegistry instance
  */
 export function registerMoveSymbolToFileTool(registry: ToolRegistry): void {
 	registry.tool(
-		"move_symbol_to_file_by_tsmorph",
+		"move_symbol_to_file",
 		`[ts-morph] Move one top-level symbol (function, variable, class, interface, type, enum) from one file to another, carrying its internal-only dependencies and rewriting all imports/exports across the project.
 
 ## When to use
@@ -77,8 +77,8 @@ export function registerMoveSymbolToFileTool(registry: ToolRegistry): void {
 - Prefer this over manual cut-and-paste + import fixing. Manual moves frequently miss re-exports, leave stale imports, or fail to add the new export -- this tool handles all of that via the type checker.
 
 ## When NOT to use
-- Renaming the file (without moving a single symbol out of it) -> \`rename_filesystem_entry_by_tsmorph\`.
-- Renaming a symbol in place -> \`rename_symbol_by_tsmorph\`.
+- Renaming the file (without moving a single symbol out of it) -> \`rename_filesystem_entry\`.
+- Renaming a symbol in place -> \`rename_symbol\`.
 - The symbol you want to move is a \`export default\` -> NOT SUPPORTED, refactor it to a named export first.
 
 ## Critical constraints
@@ -126,7 +126,7 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 				dryRun,
 			};
 
-			return runTool("move_symbol_to_file_by_tsmorph", logArgs, async () => {
+			return runTool("move_symbol_to_file", logArgs, async () => {
 				const project = initializeProject(tsconfigPath);
 				await moveSymbolToFile(
 					project,
@@ -149,7 +149,11 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					? `Dry run: ${baseMessage}\nFiles that would be modified:\n - ${changedFilesList}`
 					: `${baseMessage}\nThe following files were modified:\n - ${changedFilesList}`;
 
-				return { message, log: { changedFilesCount: changedFiles.length } };
+				return {
+					message,
+					log: { changedFilesCount: changedFiles.length },
+					data: { changedFiles },
+				};
 			});
 		},
 	);

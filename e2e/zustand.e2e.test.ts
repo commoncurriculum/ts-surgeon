@@ -17,7 +17,7 @@ describe("zustand E2E (alias-related, differential-green verification)", () => {
 		const before = fs.readFileSync(targetPath, "utf-8");
 		expect(before).toMatch(/from 'zustand'/);
 
-		const result = await harness.callTool("remove_path_alias_by_tsmorph", {
+		const result = await harness.callTool("remove_path_alias", {
 			tsconfigPath: tsconfigPathOf(ZUSTAND),
 			targetPath,
 			dryRun: false,
@@ -37,14 +37,11 @@ describe("zustand E2E (alias-related, differential-green verification)", () => {
 		const oldPath = absPath(ZUSTAND, "src/middleware/combine.ts");
 		const newPath = absPath(ZUSTAND, "src/middleware/_e2e-combine.ts");
 
-		const result = await harness.callTool(
-			"rename_filesystem_entry_by_tsmorph",
-			{
-				tsconfigPath: tsconfigPathOf(ZUSTAND),
-				renames: [{ oldPath, newPath }],
-				dryRun: false,
-			},
-		);
+		const result = await harness.callTool("rename_filesystem_entry", {
+			tsconfigPath: tsconfigPathOf(ZUSTAND),
+			renames: [{ oldPath, newPath }],
+			dryRun: false,
+		});
 
 		expect(result.isError, textOf(result)).toBeFalsy();
 		expect(fs.existsSync(newPath)).toBe(true);

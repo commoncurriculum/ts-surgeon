@@ -64,7 +64,7 @@ const operationSchema = z.discriminatedUnion("kind", [
 
 export function registerChangeSignatureTool(registry: ToolRegistry): void {
 	registry.tool(
-		"change_signature_by_tsmorph",
+		"change_signature",
 		`[ts-morph] Add, remove, or reorder parameters of a function/method/arrow-function and propagate the matching argument changes to every call site in the project.
 
 ## When to use
@@ -73,9 +73,9 @@ export function registerChangeSignatureTool(registry: ToolRegistry): void {
 - Inserting a context-like first parameter (\`ctx\`, \`logger\`, etc.) into existing helpers.
 
 ## When NOT to use
-- Renaming a parameter — use \`rename_symbol_by_tsmorph\` on the parameter identifier instead.
+- Renaming a parameter — use \`rename_symbol\` on the parameter identifier instead.
 - Changing only the parameter's type annotation without changing arity — edit the source file directly.
-- Moving the function to another file — use \`move_symbol_to_file_by_tsmorph\`.
+- Moving the function to another file — use \`move_symbol_to_file\`.
 
 ## Critical constraints
 - \`position\` must point at the function's name identifier (1-based line/column). For \`const foo = () => {}\`, point at \`foo\`; for \`class C { foo() {} }\`, point at \`foo\`.
@@ -131,7 +131,7 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 		},
 		(args) =>
 			runTool(
-				"change_signature_by_tsmorph",
+				"change_signature",
 				{
 					targetFilePath: args.targetFilePath,
 					functionName: args.functionName,
@@ -156,6 +156,7 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					return {
 						message,
 						log: { changedFilesCount: result.changedFiles.length },
+						data: result,
 					};
 				},
 			),

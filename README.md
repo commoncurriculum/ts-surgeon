@@ -5,6 +5,7 @@ A CLI that uses [ts-morph](https://ts-morph.com/) to provide AST-based refactori
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [Use with any coding agent](#use-with-any-coding-agent)
 - [Available Tools](#available-tools)
 - [Logging Configuration](#logging-configuration)
 - [Development](#development)
@@ -18,12 +19,17 @@ No install needed — run straight from npm with `npx` (or install globally with
 ```bash
 # Discover tools and their parameter schemas
 npx -y @sirosuzume/mcp-tsmorph-refactor list
-npx -y @sirosuzume/mcp-tsmorph-refactor describe rename_symbol_by_tsmorph
+npx -y @sirosuzume/mcp-tsmorph-refactor describe rename_symbol
 
-# Run a tool (params = the tool's input schema, as JSON)
-npx -y @sirosuzume/mcp-tsmorph-refactor call rename_symbol_by_tsmorph --params '{
-  "tsconfigPath": "/abs/path/tsconfig.json",
-  "targetFilePath": "/abs/path/src/utils.ts",
+# Run a tool with flags — kebab-case maps to the schema's camelCase, dots nest
+npx -y @sirosuzume/mcp-tsmorph-refactor call rename_symbol \
+  --target-file-path src/utils.ts \
+  --position.line 1 --position.column 17 \
+  --symbol-name calculateSum --new-name addNumbers --dry-run
+
+# Or pass the whole parameter object as JSON
+npx -y @sirosuzume/mcp-tsmorph-refactor call rename_symbol --params '{
+  "targetFilePath": "src/utils.ts",
   "position": { "line": 1, "column": 17 },
   "symbolName": "calculateSum",
   "newName": "addNumbers",
@@ -31,42 +37,69 @@ npx -y @sirosuzume/mcp-tsmorph-refactor call rename_symbol_by_tsmorph --params '
 }'
 ```
 
-- `call` also accepts `--params-file <path>` or JSON piped via stdin (handy for large payloads).
+- **Relative paths** are resolved against the working directory, and **`tsconfigPath` is auto-discovered** (nearest `tsconfig.json` above the target file) when omitted.
+- `--json` prints a machine-readable result: `{ tool, status, data, message }` (e.g. `data.changedFiles`).
+- `batch` runs several tools in one process: pass a JSON array of `{ "tool": "...", "params": { ... } }` via `--params`, `--params-file`, or stdin. Output is a JSON array; it stops at the first failure unless `--continue-on-error` is set.
+- `call` also accepts `--params-file <path>` or JSON piped via stdin (handy for large payloads); flags win when combined with JSON.
+- Tool names accept dashes (`rename-symbol`) and the legacy `*_by_tsmorph` aliases.
 - Exit codes: `0` success, `1` the tool reported an error, `2` usage error (including params that fail the tool's schema).
 - Tool output goes to stdout; logs go to stderr (`LOG_LEVEL` defaults to `warn`).
 
 To customize logging, see [Logging Configuration](#logging-configuration). To run from a local build, see [Development](#development).
 
+## Use with any coding agent
+
+The CLI is self-describing, so it works with **any** coding agent that can run shell commands — no editor plugin, no protocol, no vendor-specific config:
+
+```bash
+npx -y @sirosuzume/mcp-tsmorph-refactor guide   # the full agent guide: when to use which tool, the survey→change→verify loop, anti-patterns
+```
+
+To make an agent reach for it, add a note to your project's agent instructions file (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`, or equivalent):
+
+```markdown
+## Refactoring
+
+For TypeScript/JavaScript refactors that cross file boundaries (renames, moves,
+signature changes, finding references, dead-code checks), do not hand-edit.
+Use the ts-morph refactoring CLI:
+
+    npx -y @sirosuzume/mcp-tsmorph-refactor guide   # read this first
+    npx -y @sirosuzume/mcp-tsmorph-refactor list    # tool names + summaries
+```
+
+Claude Code users can alternatively copy the richer skill from [`.claude/skills/ts-morph-refactoring/`](.claude/skills/ts-morph-refactoring/).
+
 ## Available Tools
 
-Each tool uses `ts-morph` to parse the AST and applies changes while preserving project-wide references. All tools require the path to the project's `tsconfig.json`.
+Each tool uses `ts-morph` to parse the AST and applies changes while preserving project-wide references. Every tool resolves against a `tsconfig.json` (auto-discovered when not passed explicitly).
 
 | Tool | Description |
 | --- | --- |
-| [`rename_symbol_by_tsmorph`](#rename_symbol_by_tsmorph) | Rename a symbol across the entire project |
-| [`rename_filesystem_entry_by_tsmorph`](#rename_filesystem_entry_by_tsmorph) | Rename files/folders and update all import paths |
-| [`find_references_by_tsmorph`](#find_references_by_tsmorph) | List all definitions and references for a symbol |
-| [`remove_path_alias_by_tsmorph`](#remove_path_alias_by_tsmorph) | Replace path aliases with relative paths |
-| [`move_symbol_to_file_by_tsmorph`](#move_symbol_to_file_by_tsmorph) | Move a symbol to another file and update all references |
-| [`change_signature_by_tsmorph`](#change_signature_by_tsmorph) | Add/remove/reorder function parameters and update all call sites |
-| [`get_type_at_position_by_tsmorph`](#get_type_at_position_by_tsmorph) | Get the inferred type at a given position |
-| [`find_unused_exports_by_tsmorph`](#find_unused_exports_by_tsmorph) | List candidates for unused exports |
-| [`convert_default_export_to_named_by_tsmorph`](#convert_default_export_to_named_by_tsmorph) | Convert a default export to a named export and update all importers |
-| [`organize_imports_by_tsmorph`](#organize_imports_by_tsmorph) | Remove unused imports, sort, and coalesce them across files |
-| [`get_diagnostics_by_tsmorph`](#get_diagnostics_by_tsmorph) | Report TypeScript type errors/warnings for files or the project |
-| [`convert_named_export_to_default_by_tsmorph`](#convert_named_export_to_default_by_tsmorph) | Convert a named export to the default export and update all importers |
-| [`add_missing_imports_by_tsmorph`](#add_missing_imports_by_tsmorph) | Add imports for unresolved identifiers across files |
-| [`apply_code_fix_by_tsmorph`](#apply_code_fix_by_tsmorph) | Apply a TypeScript "fix all" quick-fix (remove unused, implement members, infer types) |
-| [`safe_delete_symbol_by_tsmorph`](#safe_delete_symbol_by_tsmorph) | Delete a symbol only when it has no references, else report blockers |
+| [`rename_symbol`](#rename_symbol) | Rename a symbol across the entire project |
+| [`rename_filesystem_entry`](#rename_filesystem_entry) | Rename files/folders and update all import paths |
+| [`find_references`](#find_references) | List all definitions and references for a symbol |
+| [`remove_path_alias`](#remove_path_alias) | Replace path aliases with relative paths |
+| [`move_symbol_to_file`](#move_symbol_to_file) | Move a symbol to another file and update all references |
+| [`change_signature`](#change_signature) | Add/remove/reorder function parameters and update all call sites |
+| [`get_type_at_position`](#get_type_at_position) | Get the inferred type at a given position |
+| [`find_unused_exports`](#find_unused_exports) | List candidates for unused exports |
+| [`convert_default_export_to_named`](#convert_default_export_to_named) | Convert a default export to a named export and update all importers |
+| [`organize_imports`](#organize_imports) | Remove unused imports, sort, and coalesce them across files |
+| [`get_diagnostics`](#get_diagnostics) | Report TypeScript type errors/warnings for files or the project |
+| [`convert_named_export_to_default`](#convert_named_export_to_default) | Convert a named export to the default export and update all importers |
+| [`add_missing_imports`](#add_missing_imports) | Add imports for unresolved identifiers across files |
+| [`apply_code_fix`](#apply_code_fix) | Apply a TypeScript "fix all" quick-fix (remove unused, implement members, infer types) |
+| [`safe_delete_symbol`](#safe_delete_symbol) | Delete a symbol only when it has no references, else report blockers |
 
-### `rename_symbol_by_tsmorph`
+### `rename_symbol`
 
 Renames a symbol (function, variable, class, interface, etc.) at a specific position in a file across the entire project.
 
 - **Use case**: When there are many references and manual renaming is impractical.
 - **Required information**: Target file path, symbol position (line and column), current symbol name, new symbol name.
 
-### `rename_filesystem_entry_by_tsmorph`
+### `rename_filesystem_entry`
 
 Renames multiple files and/or folders and automatically updates all `import` / `export` statement paths throughout the project.
 
@@ -79,21 +112,21 @@ Renames multiple files and/or folders and automatically updates all `import` / `
   - Path conflicts (existing paths, duplicates within the operation set) are checked before execution.
 - **Note**: Analysis and updating may take time for large numbers of files/folders or very large projects. References to default exports in the form `export default Identifier;` may not be updated correctly (known limitation).
 
-### `find_references_by_tsmorph`
+### `find_references`
 
 Finds and lists the definition and all references of a symbol at a specific position in a file, across the entire project.
 
 - **Use case**: Understanding where a function or variable is used. Assessing the impact scope of a refactoring.
 - **Required information**: Target file path, symbol position (line and column).
 
-### `remove_path_alias_by_tsmorph`
+### `remove_path_alias`
 
 Replaces path aliases (e.g., `@/components`) in `import` / `export` statements within a specified file or directory with relative paths (e.g., `../../components`).
 
 - **Use case**: Improving project portability, or conforming to a specific coding convention.
 - **Required information**: Path of the target file or directory to process.
 
-### `move_symbol_to_file_by_tsmorph`
+### `move_symbol_to_file`
 
 Moves a specified symbol (function, variable, class, interface, type alias, or enum) to another file and automatically updates all references (including import/export paths) throughout the project.
 
@@ -102,7 +135,7 @@ Moves a specified symbol (function, variable, class, interface, type alias, or e
 - **Behavior**: Internal dependencies used only within the moved symbol are moved along with it. Dependencies also referenced by other symbols in the source file remain in place, and `export` is added as needed so the destination can import them.
 - **Note**: Symbols exported as default exports (`export default`) cannot be moved.
 
-### `change_signature_by_tsmorph`
+### `change_signature`
 
 Adds, removes, or reorders parameters of a function, method, or arrow function, and updates the arguments at all call sites throughout the project.
 
@@ -113,9 +146,9 @@ Adds, removes, or reorders parameters of a function, method, or arrow function, 
   - `remove`: Removes the parameter at `index`. Removes the corresponding argument from any call site that passes that many or more arguments.
   - `reorder`: Reconstructs the parameter list and all call sites according to `newOrder`. Fails if any call site has a mismatched number of arguments.
   - Operations are applied in order; each subsequent operation references the parameter list after the preceding operation has been applied.
-- **Note**: Call sites with spread arguments (`fn(...args)`) will fail for operations that modify arguments. Use `dryRun: true` to preview affected files when there are many call sites. Use `rename_symbol_by_tsmorph` to rename parameters and `move_symbol_to_file_by_tsmorph` to move functions.
+- **Note**: Call sites with spread arguments (`fn(...args)`) will fail for operations that modify arguments. Use `dryRun: true` to preview affected files when there are many call sites. Use `rename_symbol` to rename parameters and `move_symbol_to_file` to move functions.
 
-### `get_type_at_position_by_tsmorph`
+### `get_type_at_position`
 
 Returns the TypeChecker-inferred type, symbol, and declaration location at a specified position in a TypeScript / JavaScript file.
 
@@ -123,24 +156,24 @@ Returns the TypeChecker-inferred type, symbol, and declaration location at a spe
 - **Required information**: Target file path, position to inspect (line and column).
 - **Note**: Pointing at whitespace or comment lines returns the file-level inferred type (e.g., `typeof import("...")`), which is usually not the intended result. Check `nodeKind` in the response and re-target to an identifier. For analyzing many positions in bulk, use `tsc` directly.
 
-### `find_unused_exports_by_tsmorph`
+### `find_unused_exports`
 
 Scans the entire project and lists `export` declarations that are not referenced from outside declaration files as candidates for removal.
 
 - **Detection targets**: Inline `export` (`export function/class/const/let/var/enum/interface/type`), `export default` (identifier, function, or class), `export = <Identifier>`.
 - **Detection method**: From the results of `findReferencesAsNodes()`, references within the same file, references under an `ExportDeclaration` (pure re-exports such as `export { x } from "./y"`), and references inside `node_modules` are excluded. If zero references remain, the export is flagged as an unused candidate.
-- **Use case**: Dead code cleanup, auditing the public surface of a module. **Always double-check with `find_references_by_tsmorph` before deleting.**
+- **Use case**: Dead code cleanup, auditing the public surface of a module. **Always double-check with `find_references` before deleting.**
 - **`sameFileRefs` (deciding between deletion vs. unexport)**: Each candidate includes the number of references to it within the same file (excluding the declaration itself and re-export sites). Because reported candidates are by definition "not referenced outside the declaration file," the delete action depends on this value.
   - `sameFileRefs=0`: Also unused within the same file — **truly dead. Safe to delete the declaration entirely** (also verify with `textHits=0` for extra confidence).
   - `sameFileRefs=1+`: Used within the same file — **only the `export` keyword is unnecessary**. Keep the declaration (deleting it would break same-file references). Deleting all reported declarations indiscriminately will break the build.
-- **`textOccurrences` (`textHits`)**: The number of occurrences of `\b<name>\b` in source files other than declaration files. `0` means "the name does not appear in other files," but whether it is used within the same file is separate — check `sameFileRefs` for that (this field alone cannot determine "safe to delete"). `1+` suggests possible string literals / JSX / dynamic references — verify with `find_references_by_tsmorph`.
-- **False positives for default exports**: Candidates tagged with `[default]` (`export default <Identifier>` / `export = <Identifier>`) are prone to false positives because `findReferencesAsNodes` does not link to `import Foo from "./mod"` default imports. Default exports with `textHits` significantly greater than 0 are almost certainly in use. Treat them as low-confidence and always verify with `find_references_by_tsmorph`.
+- **`textOccurrences` (`textHits`)**: The number of occurrences of `\b<name>\b` in source files other than declaration files. `0` means "the name does not appear in other files," but whether it is used within the same file is separate — check `sameFileRefs` for that (this field alone cannot determine "safe to delete"). `1+` suggests possible string literals / JSX / dynamic references — verify with `find_references`.
+- **False positives for default exports**: Candidates tagged with `[default]` (`export default <Identifier>` / `export = <Identifier>`) are prone to false positives because `findReferencesAsNodes` does not link to `import Foo from "./mod"` default imports. Default exports with `textHits` significantly greater than 0 are almost certainly in use. Treat them as low-confidence and always verify with `find_references`.
 - **`responseFormat`**: `"list"` (default, one line per candidate) / `"summary"` (project-wide aggregates: total count, deletion-safety breakdown, by kind, by directory). In large repositories, listing all candidates can exceed the response size limit, so it is safer to first use `"summary"` to identify where dead code is concentrated, then narrow down with `entryPoints` / `excludeFilePatterns` before using `"list"` for precise locations (`summary` scans the entire project regardless of `maxResults`).
 - **Options**: `entryPoints` (array of absolute paths; always treated as in-use public API), `excludeFilePatterns` (exclude scan targets by substring match), `maxResults` (limit for list mode; default 100), `expandNamespaceImports` (default ON).
 - **Known limitations**: Dynamic `require` / `import()`, routing that depends on filesystem conventions (e.g., Next.js `page.tsx`), and references via string reflection cannot be detected. Use `entryPoints` / `excludeFilePatterns` to narrow down candidates.
-- **Monorepo built dist packages produce systematic false positives**: If a workspace package publishes a build artifact (e.g., `./dist/index.js`) via `exports` (or `main` / `module` / `types`) in `package.json`, imports from other packages resolve to the build output (or `node_modules`) rather than to the scanned `src` symbols. As a result, **all exports that are actually consumed from that package appear as unused candidates in bulk**. This pattern is detected structurally, and a per-package warning (package name, entry point outside scan scope, number of affected candidates) is prepended to the results. Treat candidates from packages with this warning as low-confidence, and always verify with `textHits` and `find_references_by_tsmorph` before deleting. Workaround: point that package's `exports` to source (e.g., `./src/index.ts`) during analysis, or verify candidates individually.
+- **Monorepo built dist packages produce systematic false positives**: If a workspace package publishes a build artifact (e.g., `./dist/index.js`) via `exports` (or `main` / `module` / `types`) in `package.json`, imports from other packages resolve to the build output (or `node_modules`) rather than to the scanned `src` symbols. As a result, **all exports that are actually consumed from that package appear as unused candidates in bulk**. This pattern is detected structurally, and a per-package warning (package name, entry point outside scan scope, number of affected candidates) is prepended to the results. Treat candidates from packages with this warning as low-confidence, and always verify with `textHits` and `find_references` before deleting. Workaround: point that package's `exports` to source (e.g., `./src/index.ts`) during analysis, or verify candidates individually.
 
-### `convert_default_export_to_named_by_tsmorph`
+### `convert_default_export_to_named`
 
 Converts a file's `export default` into a named export and rewrites every importing/re-exporting site across the project.
 
@@ -151,7 +184,7 @@ Converts a file's `export default` into a named export and rewrites every import
 - **Safety**: `newName` is validated as a non-reserved identifier; the conversion aborts if the resulting name would collide with an existing export in the target file, and anonymous abstract classes are rejected (they have no valid expression form) — so the tool never emits invalid TypeScript for these cases.
 - **Note**: Run with `dryRun: true` first to preview the impacted files. Dynamic/runtime access to the default (`import("target").then(m => m.default)`, `require("target").default`) is not detected. A re-export that forwards the default as a default (`export { default } from "target"`) becomes a named re-export, changing that barrel's public surface; **transitive** chains are not followed (only sites whose module specifier resolves directly to the target are updated), so verify downstream consumers of such barrels.
 
-### `organize_imports_by_tsmorph`
+### `organize_imports`
 
 Runs the editor "Organize Imports" action on specific files (or the whole project): removes unused imports, sorts them, and coalesces multiple imports from the same module.
 
@@ -160,7 +193,7 @@ Runs the editor "Organize Imports" action on specific files (or the whole projec
 - **Behavior**: Removes unused named imports (and import declarations that become empty), sorts/coalesces same-module imports, and keeps side-effect-only imports (`import "./x"`). Usage in JSX, type positions, and decorators is accounted for via the TypeScript language service.
 - **Note**: Omitting `filePaths` can produce a large diff (it reorders imports project-wide), so prefer passing the files you touched and/or run with `dryRun: true` first. Expect ordering-only diffs even when nothing was unused.
 
-### `get_diagnostics_by_tsmorph`
+### `get_diagnostics`
 
 Returns the TypeScript pre-emit diagnostics (the type errors, warnings, and suggestions `tsc --noEmit` would report) for specific files or the whole project.
 
@@ -169,9 +202,9 @@ Returns the TypeScript pre-emit diagnostics (the type errors, warnings, and sugg
 - **Behavior**: Uses `getPreEmitDiagnostics`; results are sorted error → warning → suggestion → message, then by file and 1-based position. Capped at `maxResults` (default 100), with a `truncated` flag.
 - **Output**: A summary (total/error/warning counts) plus one line per diagnostic: `<category> TS<code> <file>:<line>:<col> — <message>`. A file-level diagnostic with no specific position renders as just `<file>`; a project-global diagnostic (no associated file) renders as `(global)`.
 
-### `convert_named_export_to_default_by_tsmorph`
+### `convert_named_export_to_default`
 
-Converts a file's named export into its default export and rewrites every importing/re-exporting site across the project. The inverse of `convert_default_export_to_named_by_tsmorph`.
+Converts a file's named export into its default export and rewrites every importing/re-exporting site across the project. The inverse of `convert_default_export_to_named`.
 
 - **Use case**: Standardizing a module on a default export (e.g. a component file expected to default-export its component).
 - **Required information**: Target file path and the `exportName` to convert (must be a value export, not a `type`/`interface`).
@@ -179,7 +212,7 @@ Converts a file's named export into its default export and rewrites every import
 - **Reference updates**: `import { Foo } from "target"` → `import Foo from "target"` (alias preserved as the default's local name), splitting the default out of any combined named import; `export { Foo [as X] } from "target"` → `export { default as Foo|X } from "target"`.
 - **Note**: Aborts if the file already has a default export, if `exportName` is re-exported from another file (convert it in its source file), or if it is part of a multi-variable `export const a, b` statement. Namespace-member access (`ns.Foo` from `import * as ns`) is not rewritten — review such sites manually.
 
-### `add_missing_imports_by_tsmorph`
+### `add_missing_imports`
 
 Adds import statements for unresolved identifiers (the editor "Add all missing imports" action) in specific files or the whole project.
 
@@ -188,18 +221,18 @@ Adds import statements for unresolved identifiers (the editor "Add all missing i
 - **Behavior**: For each unresolved identifier, inserts an import from the best matching export in the project or its dependencies (merging into an existing same-module import where possible), respecting `paths` aliases via the language service.
 - **Note**: When an identifier could come from multiple modules the language service picks one — review ambiguous cases. Nothing is added for names with no resolvable export. Omitting `filePaths` processes the whole project, so prefer the files you touched and/or run with `dryRun: true` first.
 
-### `apply_code_fix_by_tsmorph`
+### `apply_code_fix`
 
-Applies a TypeScript "fix all in file" quick-fix across specific files or the whole project — the automated counterpart to `get_diagnostics_by_tsmorph`.
+Applies a TypeScript "fix all in file" quick-fix across specific files or the whole project — the automated counterpart to `get_diagnostics`.
 
 - **Supported fixes (`fix`)**: `remove_unused` (delete unused declarations + unused imports), `implement_interface` (stub members missing from an `implements` clause), `implement_abstract_members` (stub inherited `abstract` members), `infer_types_from_usage` (annotate implicit-`any` parameters/variables; only under `noImplicitAny`).
-- **Use case**: Bulk-clearing a class of diagnostics surfaced by `get_diagnostics_by_tsmorph`.
+- **Use case**: Bulk-clearing a class of diagnostics surfaced by `get_diagnostics`.
 - **Required information**: `tsconfigPath` and the `fix` to apply. `filePaths` is optional — omit it to process every non-declaration source file.
 - **Note**: A fix with no matching diagnostic in a file is a no-op. Stubbed member bodies throw `new Error("Method not implemented.")` — review and fill them in. Omitting `filePaths` processes the whole project, so prefer the files you touched and/or run with `dryRun: true` first.
 
-### `safe_delete_symbol_by_tsmorph`
+### `safe_delete_symbol`
 
-Deletes a top-level symbol's declaration **only when** it has no references outside its own declaration; otherwise it reports the blocking references and changes nothing. The mutating partner to `find_unused_exports_by_tsmorph`.
+Deletes a top-level symbol's declaration **only when** it has no references outside its own declaration; otherwise it reports the blocking references and changes nothing. The mutating partner to `find_unused_exports`.
 
 - **Use case**: Removing code you believe is dead, with a type-checker guarantee you won't break a reference you missed.
 - **Required information**: Target file path and the `symbolName` (a top-level declaration).
@@ -222,7 +255,7 @@ Example:
 
 ```bash
 LOG_LEVEL=debug LOG_OUTPUT=file LOG_FILE_PATH=/tmp/tsmorph.log \
-  npx -y @sirosuzume/mcp-tsmorph-refactor call get_diagnostics_by_tsmorph \
+  npx -y @sirosuzume/mcp-tsmorph-refactor call get_diagnostics \
   --params '{"tsconfigPath": "/abs/path/tsconfig.json"}'
 ```
 
@@ -259,7 +292,7 @@ After building, launch `dist/index.js` directly with `node`:
 
 ```bash
 node dist/index.js list
-node dist/index.js call get_diagnostics_by_tsmorph --params '{"tsconfigPath": "/abs/path/tsconfig.json"}'
+node dist/index.js call get_diagnostics --params '{"tsconfigPath": "/abs/path/tsconfig.json"}'
 ```
 
 ## Release

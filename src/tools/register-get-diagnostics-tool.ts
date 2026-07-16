@@ -16,7 +16,7 @@ function formatDiagnostic(d: DiagnosticInfo): string {
 
 export function registerGetDiagnosticsTool(registry: ToolRegistry): void {
 	registry.tool(
-		"get_diagnostics_by_tsmorph",
+		"get_diagnostics",
 		`[ts-morph] Return the TypeScript pre-emit diagnostics (syntactic + semantic type errors, warnings, and suggestions) for specific files or the whole project, computed from the project's tsconfig.
 
 ## When to use
@@ -24,8 +24,8 @@ export function registerGetDiagnosticsTool(registry: ToolRegistry): void {
 - Getting the exact location + code + message of type errors to fix them.
 
 ## When NOT to use
-- Inspecting the type at a single position — use \`get_type_at_position_by_tsmorph\`.
-- Listing unused exports/imports — use \`find_unused_exports_by_tsmorph\` / \`organize_imports_by_tsmorph\`.
+- Inspecting the type at a single position — use \`get_type_at_position\`.
+- Listing unused exports/imports — use \`find_unused_exports\` / \`organize_imports\`.
 
 ## Behavior
 - Uses \`getPreEmitDiagnostics\` (the same set \`tsc --noEmit\` would report, minus emit-only errors).
@@ -59,7 +59,7 @@ A summary (total/error/warning counts) plus one line per diagnostic: \`<category
 		},
 		(args) =>
 			runTool(
-				"get_diagnostics_by_tsmorph",
+				"get_diagnostics",
 				{
 					fileCount: args.filePaths?.length ?? "all",
 					maxResults: args.maxResults,
@@ -80,7 +80,7 @@ A summary (total/error/warning counts) plus one line per diagnostic: \`<category
 						result.diagnostics.length > 0
 							? result.diagnostics.map(formatDiagnostic).join("\n")
 							: "(No diagnostics)";
-					return { message: `${header}\n${body}` };
+					return { message: `${header}\n${body}`, data: result };
 				},
 			),
 	);

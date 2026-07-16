@@ -5,7 +5,7 @@ import { runTool } from "./_tool-runner";
 
 export function registerFindReferencesTool(registry: ToolRegistry): void {
 	registry.tool(
-		"find_references_by_tsmorph",
+		"find_references",
 		`[ts-morph] Locate the definition AND every reference of a symbol at a given position, project-wide. Read-only.
 
 ## When to use
@@ -15,7 +15,7 @@ export function registerFindReferencesTool(registry: ToolRegistry): void {
 
 ## When NOT to use
 - You just want a free-text search (comments, strings, doc files) -> use \`grep\`.
-- You already plan to rename -> skip straight to \`rename_symbol_by_tsmorph\` (it computes the same set internally and supports \`dryRun\`).
+- You already plan to rename -> skip straight to \`rename_symbol\` (it computes the same set internally and supports \`dryRun\`).
 
 ## Critical constraints
 - \`position\` must land on the symbol identifier itself (1-based line/column, as shown by editors). A position on whitespace or another token will fail to resolve.
@@ -39,7 +39,7 @@ Returns the definition (file path, line, column, source line) when found, follow
 		},
 		(args) =>
 			runTool(
-				"find_references_by_tsmorph",
+				"find_references",
 				{ targetFilePath: args.targetFilePath, position: args.position },
 				async () => {
 					const { references, definition } = await findSymbolReferences({
@@ -68,7 +68,10 @@ Returns the definition (file path, line, column, source line) when found, follow
 					} else {
 						resultText += "References not found.";
 					}
-					return { message: resultText.trim() };
+					return {
+						message: resultText.trim(),
+						data: { definition, references },
+					};
 				},
 			),
 	);

@@ -41,13 +41,13 @@ Three commands prove the CLI is fully drivable:
 node dist/index.js list
 
 # 2. Schema introspection works?
-node dist/index.js describe rename_symbol_by_tsmorph
+node dist/index.js describe rename_symbol
 
 # 3. A real tool call works? (create a throwaway fixture first)
 FIX=$(mktemp -d)
 printf '{"compilerOptions":{"strict":true},"include":["*.ts"]}' > "$FIX/tsconfig.json"
 printf 'const n: number = "oops";\n' > "$FIX/bad.ts"
-node dist/index.js call get_diagnostics_by_tsmorph \
+node dist/index.js call get_diagnostics \
   --params "{\"tsconfigPath\": \"$FIX/tsconfig.json\"}"
 # Expect: "TS2322" in the output, exit 0
 rm -rf "$FIX"

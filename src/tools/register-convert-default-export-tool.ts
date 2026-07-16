@@ -5,7 +5,7 @@ import { formatChangedFiles, runTool } from "./_tool-runner";
 
 export function registerConvertDefaultExportTool(registry: ToolRegistry): void {
 	registry.tool(
-		"convert_default_export_to_named_by_tsmorph",
+		"convert_default_export_to_named",
 		`[ts-morph] Convert a file's \`export default\` into a named export and rewrite every importing/re-exporting site across the project (default imports become named imports; \`export { default } from\` becomes a named re-export).
 
 ## When to use
@@ -13,8 +13,8 @@ export function registerConvertDefaultExportTool(registry: ToolRegistry): void {
 - A default export is imported under inconsistent local names across the codebase — this normalizes them onto one named export while preserving each importer's local alias.
 
 ## When NOT to use
-- Renaming an existing named export — use \`rename_symbol_by_tsmorph\`.
-- Moving the symbol to another file — use \`move_symbol_to_file_by_tsmorph\`.
+- Renaming an existing named export — use \`rename_symbol\`.
+- Moving the symbol to another file — use \`move_symbol_to_file\`.
 - Going the other direction (named → default) — not supported by this tool.
 
 ## Supported default-export forms (in the target file)
@@ -63,7 +63,7 @@ Returns the resulting export name, the number of updated import and re-export si
 		},
 		(args) =>
 			runTool(
-				"convert_default_export_to_named_by_tsmorph",
+				"convert_default_export_to_named",
 				{
 					targetFilePath: args.targetFilePath,
 					newName: args.newName,
@@ -86,6 +86,7 @@ Returns the resulting export name, the number of updated import and re-export si
 					return {
 						message,
 						log: { changedFilesCount: result.changedFiles.length },
+						data: result,
 					};
 				},
 			),

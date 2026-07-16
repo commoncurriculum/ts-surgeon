@@ -55,7 +55,7 @@ pnpm format       # Code format with Biome
 ```bash
 pnpm build
 node dist/index.js list
-node dist/index.js describe rename_symbol_by_tsmorph
+node dist/index.js describe rename_symbol
 node dist/index.js call <tool> --params '<json>'
 ```
 
@@ -75,12 +75,17 @@ node dist/index.js call <tool> --params '<json>'
 
 1. **Entry point**: `src/index.ts`
    - Dispatches to the CLI (`src/cli.ts`): `list` / `describe <tool>` /
-     `call <tool> --params '<json>'` (also `--params-file` or stdin JSON)
+     `call <tool>` / `batch` / `guide` (the embedded agent guide, `src/guide.ts`)
+   - `call` params: `--params '<json>'`, `--params-file`, stdin JSON, or
+     individual `--field` flags (kebab-case → camelCase, dots nest); relative
+     paths resolve against cwd and `tsconfigPath` is auto-discovered
+   - `--json` emits `{ tool, status, data, message }`
    - Exit codes: 0 success, 1 tool error, 2 usage/params error
 
 2. **Tool layer** (`src/tools/`)
    - `registry.ts`: `ToolRegistry` — holds each tool's name, description, Zod
-     schema, and handler; validates params and exposes `list`/`inputSchema`/`call`
+     schema, and handler; validates params and exposes `list`/`inputSchema`/`call`;
+     `resolveName` accepts dashed names and legacy `*_by_tsmorph` aliases
    - Each tool is registered by a `register-*.ts` file
    - All tools are consolidated in `ts-morph-tools.ts`
 
@@ -136,8 +141,11 @@ Each `register-*.ts` follows this pattern:
    `src/tools/_tool-runner.ts`, which owns the shared shell (timing,
    error mapping, start/finish logging + flush, the `Status` / `Processing
    time` footer, and the response envelope). `run` does only the
-   tool-specific work and returns `{ message, log? }`; use
+   tool-specific work and returns `{ message, log?, data? }` (`data` is the
+   machine-readable payload surfaced by `--json`); use
    `formatChangedFiles(files)` for the changed-files list.
+4. Tool names are `snake_case` with no suffix (e.g. `rename_symbol`); the
+   registry also accepts dashed and legacy `*_by_tsmorph` spellings.
 
 ### Cross-file reference rewriting
 Tools that rewrite importers/re-exporters of a target file (e.g.

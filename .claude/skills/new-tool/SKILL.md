@@ -12,7 +12,7 @@ Follow t-wada-style TDD (test-first → red → green → refactor). Place logic
 
 ## Files to Create or Update
 
-Assuming the new tool name is `do_something_by_tsmorph` and its logic lives in `src/ts-morph/do-something/`:
+Assuming the new tool name is `do_something` and its logic lives in `src/ts-morph/do-something/`:
 
 1. **ts-morph logic**: `src/ts-morph/do-something/do-something.ts`
    - Implement as a pure function. Accept the `Project` received from `initializeProject(tsconfigPath)` as an argument and return a result object (or consider a Result type).
@@ -26,7 +26,7 @@ Assuming the new tool name is `do_something_by_tsmorph` and its logic lives in `
 4. **Register with the aggregator**: `src/tools/ts-morph-tools.ts`
    - Add one import line and call `registerDoSomethingTool(registry);` inside `registerTsMorphTools`.
 5. **README.md**:
-   - Add one row to the "Available Tools" table (`[\`do_something_by_tsmorph\`](#do_something_by_tsmorph)`).
+   - Add one row to the "Available Tools" table (`[\`do_something\`](#do_something)`).
    - Add the corresponding detail section (features, use cases, required info, caveats).
 6. **CLAUDE.md**:
    - Add `do-something/` to the module list under the ts-morph layer section.
@@ -44,7 +44,7 @@ import { formatChangedFiles, runTool } from "./_tool-runner";
 
 export function registerDoSomethingTool(registry: ToolRegistry): void {
 	registry.tool(
-		"do_something_by_tsmorph",
+		"do_something",
 		`[ts-morph] <one-line summary>
 
 ## When to use
@@ -54,7 +54,6 @@ export function registerDoSomethingTool(registry: ToolRegistry): void {
 - ...
 
 ## Critical constraints
-- All paths (\`tsconfigPath\`, ...) MUST be absolute.
 - Positions are 1-based (line/column).`,
 		{
 			tsconfigPath: z
@@ -69,13 +68,14 @@ export function registerDoSomethingTool(registry: ToolRegistry): void {
 		},
 		(args) =>
 			runTool(
-				"do_something_by_tsmorph",
+				"do_something",
 				{ /* key args for the log line */ },
 				async () => {
 					const result = await doSomething({ ...args });
 					return {
 						message: `Done: ...\n - ${formatChangedFiles(result.changedFiles)}`,
 						log: { changedFilesCount: result.changedFiles.length },
+						data: result, // machine-readable payload for --json
 					};
 				},
 			),
@@ -87,7 +87,8 @@ The CLI picks the tool up automatically: `list` shows it, `describe` prints the 
 
 ## Naming Conventions
 
-- Tool name: `snake_case` + `_by_tsmorph` suffix.
+- Tool name: `snake_case`, no suffix (e.g. `rename_symbol`). The registry
+  automatically accepts dashed spellings and the legacy `*_by_tsmorph` aliases.
 - Registration function: `register<PascalCase>Tool`.
 - Directory: `kebab-case`.
 

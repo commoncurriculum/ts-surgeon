@@ -5,7 +5,7 @@ import { formatChangedFiles, runTool } from "./_tool-runner";
 
 export function registerRenameSymbolTool(registry: ToolRegistry): void {
 	registry.tool(
-		"rename_symbol_by_tsmorph",
+		"rename_symbol",
 		`[ts-morph] Type-aware rename of a TypeScript/JavaScript symbol (function, variable, class, type, interface, enum, etc.) across the entire project.
 
 ## When to use
@@ -14,9 +14,9 @@ export function registerRenameSymbolTool(registry: ToolRegistry): void {
 - Even for a "local-only" symbol, this tool is the correct default: it costs nothing extra and guarantees no missed reference.
 
 ## When NOT to use
-- Renaming a file or folder (and updating imports to it) -> use \`rename_filesystem_entry_by_tsmorph\`.
-- Moving a symbol to a different file -> use \`move_symbol_to_file_by_tsmorph\`.
-- Just looking up where a symbol is used (no rename) -> use \`find_references_by_tsmorph\`.
+- Renaming a file or folder (and updating imports to it) -> use \`rename_filesystem_entry\`.
+- Moving a symbol to a different file -> use \`move_symbol_to_file\`.
+- Just looking up where a symbol is used (no rename) -> use \`find_references\`.
 
 ## Critical constraints
 - \`position\` must point at the symbol's identifier (1-based line/column, as shown by editors). If the position lands on whitespace or a different token, the rename fails.
@@ -53,7 +53,7 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 		},
 		(args) =>
 			runTool(
-				"rename_symbol_by_tsmorph",
+				"rename_symbol",
 				{
 					targetFilePath: args.targetFilePath,
 					position: args.position,
@@ -80,6 +80,7 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					return {
 						message,
 						log: { changedFilesCount: result.changedFiles.length },
+						data: result,
 					};
 				},
 			),
