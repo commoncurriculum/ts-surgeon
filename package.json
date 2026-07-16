@@ -1,5 +1,5 @@
 {
-	"name": "@sirosuzume/mcp-tsmorph-refactor",
+	"name": "@commoncurriculum/tsmorph-refactor",
 	"version": "0.0.0-development",
 	"_version_note": "Pinned on purpose. Git tag (vX.Y.Z) is the single source of truth — release.yml bakes the tag value into this field and into src/version.ts before `pnpm publish`. Do NOT bump by hand. See .claude/skills/release/SKILL.md.",
 	"description": "AST-accurate TypeScript/JavaScript refactoring CLI powered by ts-morph",
@@ -31,7 +31,8 @@
 		"format": "biome check --write ./"
 	},
 	"keywords": ["cli", "ts-morph", "refactoring", "typescript"],
-	"author": "SiroSuzume",
+	"author": "Common Curriculum",
+	"contributors": ["SiroSuzume (original author of mcp-ts-morph)"],
 	"license": "MIT",
 	"engines": {
 		"node": ">=22"

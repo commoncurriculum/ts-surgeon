@@ -24,7 +24,7 @@ Parameters can be passed three ways (flags win over JSON):
 
     # 1. Flags — kebab-case maps to the schema's camelCase; dots nest
     tsmorph-refactor call rename_symbol --target-file-path src/utils.ts \\
-      --position.line 10 --position.column 5 --symbol-name oldName --new-name newName
+      --symbol-name oldName --new-name newName
 
     # 2. A JSON object
     tsmorph-refactor call rename_symbol --params '{"targetFilePath": "src/utils.ts", ...}'
@@ -71,9 +71,13 @@ Conveniences:
 
 ## Rules
 
-- Positions are **1-based** (line and column) and must land on the identifier,
-  not whitespace. Don't count columns by hand — copy them from a tool that
-  emitted a location (get_diagnostics and find_references print file:line:col).
+- rename_symbol, find_references, and change_signature can target a symbol
+  **by declaration name alone** (omit position) when the name is unambiguous
+  in the file — the error lists candidate positions otherwise. Positions,
+  when you do pass them, are **1-based** (line and column) and must land on
+  the identifier, not whitespace. Don't count columns by hand — copy them
+  from a tool that emitted a location (get_diagnostics and find_references
+  print file:line:col).
 - Omitting \`filePaths\` makes organize_imports / add_missing_imports /
   apply_code_fix / get_diagnostics process the **whole project**. Scope to the
   files you touched, or --dry-run first.

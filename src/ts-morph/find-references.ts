@@ -1,6 +1,9 @@
 import type { Node, SourceFile } from "ts-morph";
 import { initializeProject } from "./_utils/ts-morph-project";
-import { findIdentifierNode } from "./rename-symbol/rename-symbol";
+import {
+	findIdentifierNode,
+	resolveTargetIdentifier,
+} from "./rename-symbol/rename-symbol";
 
 // --- Data Structure for Result ---
 
@@ -14,16 +17,19 @@ export interface ReferenceLocation {
 // --- Main Function ---
 
 /**
- * Searches the entire project for all references to the symbol at the specified position.
+ * Searches the entire project for all references to a symbol, targeted either
+ * by position or by (unambiguous) declaration name.
  */
 export async function findSymbolReferences({
 	tsconfigPath,
 	targetFilePath,
 	position,
+	symbolName,
 }: {
 	tsconfigPath: string;
 	targetFilePath: string;
-	position: { line: number; column: number };
+	position?: { line: number; column: number };
+	symbolName?: string;
 }): Promise<{
 	references: ReferenceLocation[];
 	definition: ReferenceLocation | null;
@@ -31,7 +37,17 @@ export async function findSymbolReferences({
 	const project = initializeProject(tsconfigPath);
 
 	// targetFilePath is expected to be an absolute path
-	const identifierNode = findIdentifierNode(project, targetFilePath, position);
+	let identifierNode: ReturnType<typeof findIdentifierNode>;
+	if (position && symbolName === undefined) {
+		identifierNode = findIdentifierNode(project, targetFilePath, position);
+	} else if (symbolName !== undefined) {
+		identifierNode = resolveTargetIdentifier(project, targetFilePath, {
+			position,
+			symbolName,
+		});
+	} else {
+		throw new Error("Pass position {line, column}, symbolName, or both.");
+	}
 
 	// findReferencesAsNodes() may not include the definition site itself
 	const referenceNodes: Node[] = identifierNode.findReferencesAsNodes();

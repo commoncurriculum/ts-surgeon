@@ -18,7 +18,7 @@ export function registerFindReferencesTool(registry: ToolRegistry): void {
 - You already plan to rename -> skip straight to \`rename_symbol\` (it computes the same set internally and supports \`dryRun\`).
 
 ## Critical constraints
-- \`position\` must land on the symbol identifier itself (1-based line/column, as shown by editors). A position on whitespace or another token will fail to resolve.
+- Target the symbol either with \`position\` (1-based line/column landing on the identifier itself) or with \`symbolName\` (the declaration name, when it is unambiguous in the file). Pass at least one.
 - All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
 
 ## Result
@@ -35,17 +35,31 @@ Returns the definition (file path, line, column, source line) when found, follow
 					line: z.number().describe("1-based line number."),
 					column: z.number().describe("1-based column number."),
 				})
-				.describe("The exact position of the symbol."),
+				.optional()
+				.describe(
+					"The exact position of the symbol. Optional when symbolName is given.",
+				),
+			symbolName: z
+				.string()
+				.optional()
+				.describe(
+					"Declaration name to target instead of a position; must be unambiguous in the file. Pass position as well to disambiguate.",
+				),
 		},
 		(args) =>
 			runTool(
 				"find_references",
-				{ targetFilePath: args.targetFilePath, position: args.position },
+				{
+					targetFilePath: args.targetFilePath,
+					position: args.position,
+					symbolName: args.symbolName,
+				},
 				async () => {
 					const { references, definition } = await findSymbolReferences({
 						tsconfigPath: args.tsconfigPath,
 						targetFilePath: args.targetFilePath,
 						position: args.position,
+						symbolName: args.symbolName,
 					});
 
 					let resultText = "";

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { GUIDE } from "./guide";
 import {
@@ -19,6 +19,7 @@ Usage:
   tsmorph-refactor call <tool> [params]         Run a tool once and print its result
   tsmorph-refactor batch [options]              Run several tools in one process
   tsmorph-refactor guide                        Print the full agent guide
+  tsmorph-refactor init [--file <path>]         Add the agent snippet to AGENTS.md (or <path>)
   tsmorph-refactor --help | --version
 
 Params for call (flags win over JSON; both can be combined):
@@ -43,8 +44,8 @@ tool unless --continue-on-error is set.
 
 Examples:
   tsmorph-refactor describe rename_symbol
+  # position is optional when the declaration name is unambiguous in the file
   tsmorph-refactor call rename_symbol --target-file-path src/utils.ts \\
-    --position.line 1 --position.column 17 \\
     --symbol-name calculateSum --new-name addNumbers --dry-run
 
 Exit codes: 0 = success, 1 = tool reported an error, 2 = usage error.
@@ -399,6 +400,54 @@ function readBatchItems(rest: string[]): {
 	return { items, continueOnError };
 }
 
+const AGENT_SNIPPET = `## Refactoring (tsmorph-refactor)
+
+For TypeScript/JavaScript refactors that cross file boundaries (renames, moves,
+signature changes, finding references, dead-code checks), do not hand-edit.
+Use the ts-morph refactoring CLI:
+
+    npx -y @commoncurriculum/tsmorph-refactor guide   # read this first
+    npx -y @commoncurriculum/tsmorph-refactor list    # tool names + summaries
+`;
+
+/**
+ * Appends the agent snippet to an instructions file (AGENTS.md by default).
+ * Idempotent: skips when the snippet's npx command is already present.
+ */
+function runInit(rest: string[], out: Writer): number {
+	let file = "AGENTS.md";
+	for (let i = 0; i < rest.length; i++) {
+		if (rest[i] === "--file") {
+			const next = rest[++i];
+			if (next === undefined) {
+				throw new CliUsageError("--file requires a path argument.");
+			}
+			file = next;
+		} else if (rest[i].startsWith("--file=")) {
+			file = rest[i].slice("--file=".length);
+		} else {
+			throw new CliUsageError(`Unknown option for init: '${rest[i]}'`);
+		}
+	}
+	const target = path.resolve(process.cwd(), file);
+	const existing = existsSync(target) ? readFileSync(target, "utf-8") : "";
+	if (existing.includes("@commoncurriculum/tsmorph-refactor guide")) {
+		out.write(
+			`${target} already references tsmorph-refactor — nothing to do.\n`,
+		);
+		return 0;
+	}
+	const separator =
+		existing === "" || existing.endsWith("\n\n")
+			? ""
+			: existing.endsWith("\n")
+				? "\n"
+				: "\n\n";
+	writeFileSync(target, `${existing}${separator}${AGENT_SNIPPET}`);
+	out.write(`Added the tsmorph-refactor section to ${target}.\n`);
+	return 0;
+}
+
 interface Writer {
 	write(chunk: string): unknown;
 }
@@ -427,6 +476,8 @@ export async function runCli(
 			case "guide":
 				out.write(GUIDE);
 				return 0;
+			case "init":
+				return runInit(rest, out);
 			case "list":
 			case "list-tools":
 				out.write(

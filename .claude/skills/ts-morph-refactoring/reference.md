@@ -20,15 +20,14 @@ parameter, …) across the whole project.
 - **When**: any symbol that may be imported, re-exported, or referenced
   elsewhere — and as the safe default even for local-only symbols. Also the
   right tool to **rename a parameter** (vs. changing the signature shape).
-- **Params**: `targetFilePath`, `position {line, column}` (on the identifier),
-  `symbolName` (current name; sanity-checked against the position), `newName`,
-  `dryRun?`.
+- **Params**: `targetFilePath`, `symbolName` (current name), `newName`,
+  `position? {line, column}` (only needed when the name is ambiguous in the
+  file — the error lists candidates), `dryRun?`.
 
 ```json
 {
   "tsconfigPath": "/repo/tsconfig.json",
   "targetFilePath": "/repo/src/user.ts",
-  "position": { "line": 8, "column": 14 },
   "symbolName": "getUser",
   "newName": "fetchUser"
 }
@@ -70,7 +69,8 @@ Lists the definition and every reference of a symbol at a position. Read-only.
 
 - **When**: assess blast radius before a change; confirm a symbol is used. The
   pre-check before any delete.
-- **Params**: `targetFilePath`, `position {line, column}`.
+- **Params**: `targetFilePath`, plus `symbolName` (declaration name) and/or
+  `position {line, column}`.
 - **Tip**: its output gives you `file:line:col` for each site — feed those
   straight into position-taking tools instead of counting columns by hand.
 
@@ -116,8 +116,9 @@ dependencies and rewriting all imports/exports.
 Adds, removes, or reorders parameters and updates the arguments at every call
 site. The cross-file change LLM one-shot edits miss most.
 
-- **Params**: `targetFilePath`, `position {line, column}` (on the function-name
-  identifier — for `const foo = () => {}` point at `foo`), `functionName`,
+- **Params**: `targetFilePath`, `functionName`, `position? {line, column}` (only
+  when the name is ambiguous; must land on the function-name identifier — for
+  `const foo = () => {}` point at `foo`),
   `changes: [...]` (applied in order — later ops see the list produced by
   earlier ones), `dryRun?`.
 - **`changes` operations** (discriminated by `kind`):

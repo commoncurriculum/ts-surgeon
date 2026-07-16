@@ -35,19 +35,17 @@ configuration (it builds on first use; npm caches it for later runs):
 
 ```bash
 # Discover tools / a tool's exact parameter schema
-npx -y github:commoncurriculum/mcp-ts-morph list
-npx -y github:commoncurriculum/mcp-ts-morph describe rename_symbol
+npx -y @commoncurriculum/tsmorph-refactor list
+npx -y @commoncurriculum/tsmorph-refactor describe rename_symbol
 
 # Run one tool with flags (kebab-case maps to the schema's camelCase; dots nest)
-npx -y github:commoncurriculum/mcp-ts-morph call rename_symbol \
+npx -y @commoncurriculum/tsmorph-refactor call rename_symbol \
   --target-file-path src/utils.ts \
-  --position.line 1 --position.column 17 \
   --symbol-name calculateSum --new-name addNumbers --dry-run
 
 # Or pass the whole parameter object as JSON
-npx -y github:commoncurriculum/mcp-ts-morph call rename_symbol --params '{
+npx -y @commoncurriculum/tsmorph-refactor call rename_symbol --params '{
   "targetFilePath": "src/utils.ts",
-  "position": { "line": 1, "column": 17 },
   "symbolName": "calculateSum",
   "newName": "addNumbers",
   "dryRun": true
@@ -62,12 +60,14 @@ npx -y github:commoncurriculum/mcp-ts-morph call rename_symbol --params '{
   stdin instead of an inline `--params`.
 - Exit codes: `0` success, `1` the tool reported an error (read stdout for the
   reason), `2` usage/params error.
-- Pin a ref for reproducibility (`github:commoncurriculum/mcp-ts-morph#v1.2.3`);
-  for a private repo the environment needs git access to it.
+- Pin a version for reproducibility (`@commoncurriculum/tsmorph-refactor@1.2.3`).
+  Unreleased builds can be run from source with
+  `npx -y github:commoncurriculum/mcp-ts-morph` (needs git access for a
+  private repo).
 
 The parameter JSON documented in `reference.md` is exactly what `--params`
 takes (and what the flags spell field-by-field). The CLI also embeds this
-guidance — `npx -y github:commoncurriculum/mcp-ts-morph guide` prints it, so
+guidance — `npx -y @commoncurriculum/tsmorph-refactor guide` prints it, so
 any coding agent can self-serve without this file. To hack on the CLI itself,
 build from source — see the repo's `run-ts-morph-cli` skill.
 
@@ -90,12 +90,13 @@ rhythm:
 - **`tsconfigPath` defines the project graph.** When omitted, the nearest
   `tsconfig.json` above the target file is used; pass it explicitly when the
   project has multiple tsconfigs and the wrong one might win.
-- **Positions are 1-based** (line *and* column) and must land on the
-  **identifier**, not surrounding whitespace/punctuation. **Don't count columns
-  by hand** — copy them from a tool that already emitted a location
-  (`get_diagnostics` and `find_references` return `file:line:col`), or from your
-  editor's cursor readout. A position on whitespace silently resolves the wrong
-  node (often the file-level `typeof import(...)`).
+- **Prefer name-based targeting.** `rename_symbol`, `find_references`, and
+  `change_signature` accept just the declaration name (omit `position`) when it
+  is unambiguous in the file; the error lists candidate positions otherwise.
+  When you do pass a **position, it is 1-based** (line *and* column) and must
+  land on the **identifier**, not whitespace. Don't count columns by hand —
+  copy them from a tool that already emitted a location (`get_diagnostics` and
+  `find_references` return `file:line:col`).
 - **`dryRun: true` previews the impacted files without writing** (every mutating
   tool supports it). Use it first whenever a change fans out widely, or whenever
   you omit `filePaths` — which means *the whole project*.

@@ -78,7 +78,7 @@ finishing work that touches refactoring logic (see CLAUDE.md).
 Use it from any shell — published package or local build:
 
 ```bash
-npx -y @sirosuzume/mcp-tsmorph-refactor list          # published
+npx -y @commoncurriculum/tsmorph-refactor list          # published
 node /abs/path/to/mcp-ts-morph/dist/index.js list     # local build
 ```
 

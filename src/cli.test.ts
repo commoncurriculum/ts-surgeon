@@ -412,6 +412,144 @@ describe("CLI", () => {
 		});
 	});
 
+	describe("name-based targeting (no position)", () => {
+		it("renames a symbol located by declaration name only", async () => {
+			const utilsPath = path.join(srcDir, "named.ts");
+			const mainPath = path.join(srcDir, "named-main.ts");
+			fs.writeFileSync(
+				utilsPath,
+				"export function calculateSum(a: number, b: number): number {\n  return a + b;\n}\n",
+			);
+			fs.writeFileSync(
+				mainPath,
+				'import { calculateSum } from "./named";\nconsole.log(calculateSum(1, 2));\n',
+			);
+
+			const outcome = await callToolOnce("rename_symbol", {
+				tsconfigPath,
+				targetFilePath: utilsPath,
+				symbolName: "calculateSum",
+				newName: "addNumbers",
+			});
+
+			expect(outcome.isError).toBe(false);
+			expect(fs.readFileSync(mainPath, "utf-8")).toContain("addNumbers(1, 2)");
+		});
+
+		it("finds references by symbolName only", async () => {
+			const libPath = path.join(srcDir, "lib.ts");
+			const appPath = path.join(srcDir, "app.ts");
+			fs.writeFileSync(libPath, "export function helper() {}\n");
+			fs.writeFileSync(appPath, 'import { helper } from "./lib";\nhelper();\n');
+
+			const outcome = await callToolOnce("find_references", {
+				tsconfigPath,
+				targetFilePath: libPath,
+				symbolName: "helper",
+			});
+
+			expect(outcome.isError).toBe(false);
+			expect(outcome.text).toContain("app.ts");
+		});
+
+		it("changes a signature by functionName only", async () => {
+			const fnPath = path.join(srcDir, "sig.ts");
+			fs.writeFileSync(
+				fnPath,
+				'export function greet(name: string) { return name; }\ngreet("a");\n',
+			);
+
+			const outcome = await callToolOnce("change_signature", {
+				tsconfigPath,
+				targetFilePath: fnPath,
+				functionName: "greet",
+				changes: [
+					{
+						kind: "add",
+						index: 0,
+						name: "lang",
+						typeText: "string",
+						argumentForCallers: '"en"',
+					},
+				],
+			});
+
+			expect(outcome.isError).toBe(false);
+			const updated = fs.readFileSync(fnPath, "utf-8");
+			expect(updated).toContain("greet(lang: string, name: string)");
+			expect(updated).toContain('greet("en", "a")');
+		});
+
+		it("reports candidate positions when the name is ambiguous", async () => {
+			const dupPath = path.join(srcDir, "dup.ts");
+			fs.writeFileSync(
+				dupPath,
+				"function x(a: number) { const x = a; return x; }\nx(1);\n",
+			);
+
+			const outcome = await callToolOnce("rename_symbol", {
+				tsconfigPath,
+				targetFilePath: dupPath,
+				symbolName: "x",
+				newName: "y",
+			});
+
+			expect(outcome.isError).toBe(true);
+			expect(outcome.text).toContain("2 declarations");
+			expect(outcome.text).toMatch(/dup\.ts:\d+:\d+/);
+		});
+
+		it("errors clearly when the name matches nothing", async () => {
+			const filePath = path.join(srcDir, "none.ts");
+			fs.writeFileSync(filePath, "export const a = 1;\n");
+
+			const outcome = await callToolOnce("rename_symbol", {
+				tsconfigPath,
+				targetFilePath: filePath,
+				symbolName: "missing",
+				newName: "y",
+			});
+
+			expect(outcome.isError).toBe(true);
+			expect(outcome.text).toContain("No declaration named 'missing'");
+		});
+	});
+
+	describe("init", () => {
+		it("creates the instructions file with the snippet and is idempotent", async () => {
+			const agentsPath = path.join(tempDir, "AGENTS.md");
+			const out1 = createCapture();
+			expect(
+				await runCli(["init", "--file", agentsPath], out1, createCapture()),
+			).toBe(0);
+			const content = fs.readFileSync(agentsPath, "utf-8");
+			expect(content).toContain("tsmorph-refactor guide");
+			expect(out1.text).toContain("Added the tsmorph-refactor section");
+
+			const out2 = createCapture();
+			expect(
+				await runCli(["init", "--file", agentsPath], out2, createCapture()),
+			).toBe(0);
+			expect(out2.text).toContain("nothing to do");
+			expect(fs.readFileSync(agentsPath, "utf-8")).toBe(content);
+		});
+
+		it("appends to an existing file passed via --file", async () => {
+			const claudePath = path.join(tempDir, "CLAUDE.md");
+			fs.writeFileSync(claudePath, "# My project\n");
+			expect(
+				await runCli(
+					["init", "--file", claudePath],
+					createCapture(),
+					createCapture(),
+				),
+			).toBe(0);
+			const content = fs.readFileSync(claudePath, "utf-8");
+			expect(content).toContain("# My project");
+			expect(content).toContain("## Refactoring (tsmorph-refactor)");
+		});
+	});
+
 	describe("path preparation", () => {
 		it("resolves relative paths against cwd, including nested renames", () => {
 			const resolved = resolvePathParams(

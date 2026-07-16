@@ -14,23 +14,21 @@ A CLI that uses [ts-morph](https://ts-morph.com/) to provide AST-based refactori
 
 ## Quick Start
 
-No install needed — run straight from npm with `npx` (or install globally with `npm i -g @sirosuzume/mcp-tsmorph-refactor` for a bare `tsmorph-refactor` command):
+No install needed — run straight from npm with `npx` (or install globally with `npm i -g @commoncurriculum/tsmorph-refactor` for a bare `tsmorph-refactor` command):
 
 ```bash
 # Discover tools and their parameter schemas
-npx -y @sirosuzume/mcp-tsmorph-refactor list
-npx -y @sirosuzume/mcp-tsmorph-refactor describe rename_symbol
+npx -y @commoncurriculum/tsmorph-refactor list
+npx -y @commoncurriculum/tsmorph-refactor describe rename_symbol
 
 # Run a tool with flags — kebab-case maps to the schema's camelCase, dots nest
-npx -y @sirosuzume/mcp-tsmorph-refactor call rename_symbol \
+npx -y @commoncurriculum/tsmorph-refactor call rename_symbol \
   --target-file-path src/utils.ts \
-  --position.line 1 --position.column 17 \
   --symbol-name calculateSum --new-name addNumbers --dry-run
 
 # Or pass the whole parameter object as JSON
-npx -y @sirosuzume/mcp-tsmorph-refactor call rename_symbol --params '{
+npx -y @commoncurriculum/tsmorph-refactor call rename_symbol --params '{
   "targetFilePath": "src/utils.ts",
-  "position": { "line": 1, "column": 17 },
   "symbolName": "calculateSum",
   "newName": "addNumbers",
   "dryRun": true
@@ -38,6 +36,7 @@ npx -y @sirosuzume/mcp-tsmorph-refactor call rename_symbol --params '{
 ```
 
 - **Relative paths** are resolved against the working directory, and **`tsconfigPath` is auto-discovered** (nearest `tsconfig.json` above the target file) when omitted.
+- **`position` is optional** for `rename_symbol` / `find_references` / `change_signature`: when omitted, the symbol is located by its declaration name (`symbolName` / `functionName`), which must be unambiguous in the file — the error lists candidate positions otherwise (`{ "position": { "line": 1, "column": 17 } }`, 1-based).
 - `--json` prints a machine-readable result: `{ tool, status, data, message }` (e.g. `data.changedFiles`).
 - `batch` runs several tools in one process: pass a JSON array of `{ "tool": "...", "params": { ... } }` via `--params`, `--params-file`, or stdin. Output is a JSON array; it stops at the first failure unless `--continue-on-error` is set.
 - `call` also accepts `--params-file <path>` or JSON piped via stdin (handy for large payloads); flags win when combined with JSON.
@@ -52,10 +51,10 @@ To customize logging, see [Logging Configuration](#logging-configuration). To ru
 The CLI is self-describing, so it works with **any** coding agent that can run shell commands — no editor plugin, no protocol, no vendor-specific config:
 
 ```bash
-npx -y @sirosuzume/mcp-tsmorph-refactor guide   # the full agent guide: when to use which tool, the survey→change→verify loop, anti-patterns
+npx -y @commoncurriculum/tsmorph-refactor guide   # the full agent guide: when to use which tool, the survey→change→verify loop, anti-patterns
 ```
 
-To make an agent reach for it, add a note to your project's agent instructions file (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`, or equivalent):
+To make an agent reach for it, run `npx -y @commoncurriculum/tsmorph-refactor init` (appends the snippet below to `AGENTS.md`; `--file CLAUDE.md` or any other path works too), or add it yourself to your project's agent instructions file (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`, or equivalent):
 
 ```markdown
 ## Refactoring
@@ -64,8 +63,8 @@ For TypeScript/JavaScript refactors that cross file boundaries (renames, moves,
 signature changes, finding references, dead-code checks), do not hand-edit.
 Use the ts-morph refactoring CLI:
 
-    npx -y @sirosuzume/mcp-tsmorph-refactor guide   # read this first
-    npx -y @sirosuzume/mcp-tsmorph-refactor list    # tool names + summaries
+    npx -y @commoncurriculum/tsmorph-refactor guide   # read this first
+    npx -y @commoncurriculum/tsmorph-refactor list    # tool names + summaries
 ```
 
 Claude Code users can alternatively copy the richer skill from [`.claude/skills/ts-morph-refactoring/`](.claude/skills/ts-morph-refactoring/).
@@ -97,7 +96,7 @@ Each tool uses `ts-morph` to parse the AST and applies changes while preserving 
 Renames a symbol (function, variable, class, interface, etc.) at a specific position in a file across the entire project.
 
 - **Use case**: When there are many references and manual renaming is impractical.
-- **Required information**: Target file path, symbol position (line and column), current symbol name, new symbol name.
+- **Required information**: Target file path, current symbol name, new symbol name. Position (line/column) only when the name is ambiguous in the file.
 
 ### `rename_filesystem_entry`
 
@@ -117,7 +116,7 @@ Renames multiple files and/or folders and automatically updates all `import` / `
 Finds and lists the definition and all references of a symbol at a specific position in a file, across the entire project.
 
 - **Use case**: Understanding where a function or variable is used. Assessing the impact scope of a refactoring.
-- **Required information**: Target file path, symbol position (line and column).
+- **Required information**: Target file path, plus either the symbol's declaration name or its position (line and column).
 
 ### `remove_path_alias`
 
@@ -255,7 +254,7 @@ Example:
 
 ```bash
 LOG_LEVEL=debug LOG_OUTPUT=file LOG_FILE_PATH=/tmp/tsmorph.log \
-  npx -y @sirosuzume/mcp-tsmorph-refactor call get_diagnostics \
+  npx -y @commoncurriculum/tsmorph-refactor call get_diagnostics \
   --params '{"tsconfigPath": "/abs/path/tsconfig.json"}'
 ```
 
@@ -319,7 +318,7 @@ Pushing the tag triggers the workflow, which executes the following in order:
 6. Remove `_version_note` from `package.json`
 7. Publish to npm with `pnpm publish --provenance` (Trusted Publishing / OIDC)
 
-After completion, confirm the release with `npm view @sirosuzume/mcp-tsmorph-refactor version`.
+After completion, confirm the release with `npm view @commoncurriculum/tsmorph-refactor version`.
 
 > npm Trusted Publishing is required. `NPM_TOKEN` has been retired; publishing is done via GitHub Actions OIDC (see `id-token: write` in `release.yml`).
 

@@ -19,8 +19,8 @@ export function registerRenameSymbolTool(registry: ToolRegistry): void {
 - Just looking up where a symbol is used (no rename) -> use \`find_references\`.
 
 ## Critical constraints
-- \`position\` must point at the symbol's identifier (1-based line/column, as shown by editors). If the position lands on whitespace or a different token, the rename fails.
-- \`symbolName\` must match the identifier text at that position; it is used as a sanity check.
+- \`position\` is optional: when omitted, the symbol is located by \`symbolName\` among the file's declaration names, which must be unambiguous (the error lists candidate positions otherwise). When given, it must point at the symbol's identifier (1-based line/column, as shown by editors).
+- \`symbolName\` must match the identifier text at the resolved position; it is used as a sanity check.
 - All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
 
 ## Tips
@@ -40,7 +40,10 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					line: z.number().describe("1-based line number."),
 					column: z.number().describe("1-based column number."),
 				})
-				.describe("The exact position of the symbol to rename."),
+				.optional()
+				.describe(
+					"The exact position of the symbol to rename. Optional when symbolName is an unambiguous declaration name in the file.",
+				),
 			symbolName: z.string().describe("The current name of the symbol."),
 			newName: z.string().describe("The new name for the symbol."),
 			dryRun: z
