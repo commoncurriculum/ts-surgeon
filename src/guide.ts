@@ -2,27 +2,27 @@
  * Marker line the `init` command uses for idempotency: a file already
  * containing it is left untouched.
  */
-export const INIT_MARKER = "@commoncurriculum/tsmorph-refactor guide";
+export const INIT_MARKER = "@commoncurriculum/ts-surgeon guide";
 
 /** The section `init` appends to a project's agent-instructions file. */
-export const AGENT_SNIPPET = `## Refactoring (tsmorph-refactor)
+export const AGENT_SNIPPET = `## Refactoring (ts-surgeon)
 
 For TypeScript/JavaScript refactors that cross file boundaries (renames, moves,
 signature changes, finding references, dead-code checks), do not hand-edit.
 Use the ts-morph refactoring CLI:
 
     npx -y ${INIT_MARKER}   # read this first
-    npx -y @commoncurriculum/tsmorph-refactor list    # tool names + summaries
+    npx -y @commoncurriculum/ts-surgeon list    # tool names + summaries
 `;
 
 /**
- * The embedded agent guide, printed by `tsmorph-refactor guide`.
+ * The embedded agent guide, printed by `ts-surgeon guide`.
  *
  * This is the tool-agnostic equivalent of an agent "skill": any coding agent
  * (or human) can run `guide` to learn when and how to use the tools without
  * needing editor- or vendor-specific configuration.
  */
-export const GUIDE = `# tsmorph-refactor — agent guide
+export const GUIDE = `# ts-surgeon — agent guide
 
 This CLI drives ts-morph (the real TypeScript AST + type checker) to perform
 project-wide refactors. Every change resolves imports, re-exports, and call
@@ -32,21 +32,21 @@ touches more than a couple of call sites.
 
 ## Invocation
 
-    tsmorph-refactor list                          # all tools, one-line summaries
-    tsmorph-refactor describe <tool>               # full docs + JSON input schema
-    tsmorph-refactor call <tool> [params]          # run one tool
-    tsmorph-refactor batch [--continue-on-error]   # run several tools in one process
-                                                    # (ops share one parsed project per tsconfig — much
-                                                    #  faster; --fresh-project re-parses per op)
+    ts-surgeon list                          # all tools, one-line summaries
+    ts-surgeon describe <tool>               # full docs + JSON input schema
+    ts-surgeon call <tool> [params]          # run one tool
+    ts-surgeon batch [--continue-on-error]   # run several tools in one process
+                                              # (ops share one parsed project per
+                                              #  tsconfig; --fresh-project re-parses)
 
 Parameters can be passed three ways (flags win over JSON):
 
     # 1. Flags — kebab-case maps to the schema's camelCase; dots nest
-    tsmorph-refactor call rename_symbol --target-file-path src/utils.ts \\
+    ts-surgeon call rename_symbol --target-file-path src/utils.ts \\
       --symbol-name oldName --new-name newName
 
     # 2. A JSON object
-    tsmorph-refactor call rename_symbol --params '{"targetFilePath": "src/utils.ts", ...}'
+    ts-surgeon call rename_symbol --params '{"targetFilePath": "src/utils.ts", ...}'
 
     # 3. JSON via stdin or --params-file <path>
 
@@ -59,7 +59,7 @@ Conveniences:
 - Tool names accept dashes (\`rename-symbol\`) and the legacy
   \`*_by_tsmorph\` aliases.
 - \`--stdin-files\` turns a piped file list into \`filePaths\`:
-  \`git diff --name-only | tsmorph-refactor call organize_imports --stdin-files\`
+  \`git diff --name-only | ts-surgeon call organize_imports --stdin-files\`
   (non-source and missing paths are skipped).
 - Exit codes: 0 success, 1 the tool reported an error, 2 usage/params error.
 

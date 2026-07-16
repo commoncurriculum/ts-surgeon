@@ -14,20 +14,20 @@ A CLI that uses [ts-morph](https://ts-morph.com/) to provide AST-based refactori
 
 ## Quick Start
 
-No install needed — run straight from npm with `npx` (or install globally with `npm i -g @commoncurriculum/tsmorph-refactor` for a bare `tsmorph-refactor` command):
+No install needed — run straight from npm with `npx` (or install globally with `npm i -g @commoncurriculum/ts-surgeon` for a bare `ts-surgeon` command):
 
 ```bash
 # Discover tools and their parameter schemas
-npx -y @commoncurriculum/tsmorph-refactor list
-npx -y @commoncurriculum/tsmorph-refactor describe rename_symbol
+npx -y @commoncurriculum/ts-surgeon list
+npx -y @commoncurriculum/ts-surgeon describe rename_symbol
 
 # Run a tool with flags — kebab-case maps to the schema's camelCase, dots nest
-npx -y @commoncurriculum/tsmorph-refactor call rename_symbol \
+npx -y @commoncurriculum/ts-surgeon call rename_symbol \
   --target-file-path src/utils.ts \
   --symbol-name calculateSum --new-name addNumbers --dry-run
 
 # Or pass the whole parameter object as JSON
-npx -y @commoncurriculum/tsmorph-refactor call rename_symbol --params '{
+npx -y @commoncurriculum/ts-surgeon call rename_symbol --params '{
   "targetFilePath": "src/utils.ts",
   "symbolName": "calculateSum",
   "newName": "addNumbers",
@@ -40,7 +40,7 @@ npx -y @commoncurriculum/tsmorph-refactor call rename_symbol --params '{
 - `--json` prints a machine-readable result: `{ tool, status, data, message }` (e.g. `data.changedFiles`).
 - `batch` runs several tools in one process: pass a JSON array of `{ "tool": "...", "params": { ... } }` via `--params`, `--params-file`, or stdin. Output is a JSON array; it stops at the first failure unless `--continue-on-error` is set. Operations **share one parsed project per tsconfig** (one AST parse for N operations; later ops see earlier results) — pass `--fresh-project` to re-parse from disk per operation.
 - `call` also accepts `--params-file <path>` or JSON piped via stdin (handy for large payloads); flags win when combined with JSON.
-- `--stdin-files` turns a piped file list into `filePaths` — `git diff --name-only | npx -y @commoncurriculum/tsmorph-refactor call organize_imports --stdin-files` (non-source and missing paths are skipped; refuses to run if nothing usable arrives).
+- `--stdin-files` turns a piped file list into `filePaths` — `git diff --name-only | npx -y @commoncurriculum/ts-surgeon call organize_imports --stdin-files` (non-source and missing paths are skipped; refuses to run if nothing usable arrives).
 - Tool names accept dashes (`rename-symbol`) and the legacy `*_by_tsmorph` aliases.
 - Exit codes: `0` success, `1` the tool reported an error, `2` usage error (including params that fail the tool's schema).
 - Tool output goes to stdout; logs go to stderr (`LOG_LEVEL` defaults to `warn`).
@@ -52,10 +52,10 @@ To customize logging, see [Logging Configuration](#logging-configuration). To ru
 The CLI is self-describing, so it works with **any** coding agent that can run shell commands — no editor plugin, no protocol, no vendor-specific config:
 
 ```bash
-npx -y @commoncurriculum/tsmorph-refactor guide   # the full agent guide: when to use which tool, the survey→change→verify loop, anti-patterns
+npx -y @commoncurriculum/ts-surgeon guide   # the full agent guide: when to use which tool, the survey→change→verify loop, anti-patterns
 ```
 
-To make an agent reach for it, run `npx -y @commoncurriculum/tsmorph-refactor init` (appends the snippet below to `AGENTS.md`; `--file CLAUDE.md` or any other path works too), or add it yourself to your project's agent instructions file (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`, or equivalent):
+To make an agent reach for it, run `npx -y @commoncurriculum/ts-surgeon init` (appends the snippet below to `AGENTS.md`; `--file CLAUDE.md` or any other path works too), or add it yourself to your project's agent instructions file (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`, or equivalent):
 
 ```markdown
 ## Refactoring
@@ -64,8 +64,8 @@ For TypeScript/JavaScript refactors that cross file boundaries (renames, moves,
 signature changes, finding references, dead-code checks), do not hand-edit.
 Use the ts-morph refactoring CLI:
 
-    npx -y @commoncurriculum/tsmorph-refactor guide   # read this first
-    npx -y @commoncurriculum/tsmorph-refactor list    # tool names + summaries
+    npx -y @commoncurriculum/ts-surgeon guide   # read this first
+    npx -y @commoncurriculum/ts-surgeon list    # tool names + summaries
 ```
 
 Claude Code users can alternatively copy the richer skill from [`.claude/skills/ts-morph-refactoring/`](.claude/skills/ts-morph-refactoring/).
@@ -255,7 +255,7 @@ Example:
 
 ```bash
 LOG_LEVEL=debug LOG_OUTPUT=file LOG_FILE_PATH=/tmp/tsmorph.log \
-  npx -y @commoncurriculum/tsmorph-refactor call get_diagnostics \
+  npx -y @commoncurriculum/ts-surgeon call get_diagnostics \
   --params '{"tsconfigPath": "/abs/path/tsconfig.json"}'
 ```
 
@@ -319,7 +319,7 @@ Pushing the tag triggers the workflow, which executes the following in order:
 6. Remove `_version_note` from `package.json`
 7. Publish to npm with `pnpm publish --provenance` (Trusted Publishing / OIDC)
 
-After completion, confirm the release with `npm view @commoncurriculum/tsmorph-refactor version`.
+After completion, confirm the release with `npm view @commoncurriculum/ts-surgeon version`.
 
 > npm Trusted Publishing is required. `NPM_TOKEN` has been retired; publishing is done via GitHub Actions OIDC (see `id-token: write` in `release.yml`).
 

@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Adding a New Tool
 
-The standard procedure for adding a new tool to `@commoncurriculum/tsmorph-refactor`. Because the README tool table and the CLAUDE.md module list have drifted from reality in the past, **documentation updates are treated as part of the same task**.
+The standard procedure for adding a new tool to `@commoncurriculum/ts-surgeon`. Because the README tool table and the CLAUDE.md module list have drifted from reality in the past, **documentation updates are treated as part of the same task**.
 
 Follow t-wada-style TDD (test-first → red → green → refactor). Place logic in the ts-morph layer; keep the tool layer as a thin registration only.
 

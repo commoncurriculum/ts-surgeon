@@ -1,6 +1,6 @@
 ---
 name: release
-description: Tag a new version and trigger the npm publish workflow for @commoncurriculum/tsmorph-refactor. Use when the user says "release", "tag it", "bump to v1.x.y", "publish to npm", or similar.
+description: Tag a new version and trigger the npm publish workflow for @commoncurriculum/ts-surgeon. Use when the user says "release", "tag it", "bump to v1.x.y", "publish to npm", or similar.
 ---
 
 # Release a new version
@@ -62,7 +62,7 @@ This package publishes to npm via tag-triggered GitHub Actions.
 
 4. Confirm the package is live:
    ```bash
-   npm view @commoncurriculum/tsmorph-refactor version
+   npm view @commoncurriculum/ts-surgeon version
    ```
 
 ## Failure recovery

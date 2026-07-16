@@ -681,8 +681,8 @@ describe("CLI", () => {
 				await runCli(["init", "--file", agentsPath], out1, createCapture()),
 			).toBe(0);
 			const content = fs.readFileSync(agentsPath, "utf-8");
-			expect(content).toContain("tsmorph-refactor guide");
-			expect(out1.text).toContain("Added the tsmorph-refactor section");
+			expect(content).toContain("ts-surgeon guide");
+			expect(out1.text).toContain("Added the ts-surgeon section");
 
 			const out2 = createCapture();
 			expect(
@@ -704,7 +704,7 @@ describe("CLI", () => {
 			).toBe(0);
 			const content = fs.readFileSync(claudePath, "utf-8");
 			expect(content).toContain("# My project");
-			expect(content).toContain("## Refactoring (tsmorph-refactor)");
+			expect(content).toContain("## Refactoring (ts-surgeon)");
 		});
 	});
 

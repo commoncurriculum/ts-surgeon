@@ -35,16 +35,16 @@ configuration (it builds on first use; npm caches it for later runs):
 
 ```bash
 # Discover tools / a tool's exact parameter schema
-npx -y @commoncurriculum/tsmorph-refactor list
-npx -y @commoncurriculum/tsmorph-refactor describe rename_symbol
+npx -y @commoncurriculum/ts-surgeon list
+npx -y @commoncurriculum/ts-surgeon describe rename_symbol
 
 # Run one tool with flags (kebab-case maps to the schema's camelCase; dots nest)
-npx -y @commoncurriculum/tsmorph-refactor call rename_symbol \
+npx -y @commoncurriculum/ts-surgeon call rename_symbol \
   --target-file-path src/utils.ts \
   --symbol-name calculateSum --new-name addNumbers --dry-run
 
 # Or pass the whole parameter object as JSON
-npx -y @commoncurriculum/tsmorph-refactor call rename_symbol --params '{
+npx -y @commoncurriculum/ts-surgeon call rename_symbol --params '{
   "targetFilePath": "src/utils.ts",
   "symbolName": "calculateSum",
   "newName": "addNumbers",
@@ -63,14 +63,14 @@ npx -y @commoncurriculum/tsmorph-refactor call rename_symbol --params '{
   stdin instead of an inline `--params`.
 - Exit codes: `0` success, `1` the tool reported an error (read stdout for the
   reason), `2` usage/params error.
-- Pin a version for reproducibility (`@commoncurriculum/tsmorph-refactor@1.2.3`).
+- Pin a version for reproducibility (`@commoncurriculum/ts-surgeon@1.2.3`).
   Unreleased builds can be run from source with
   `npx -y github:commoncurriculum/mcp-ts-morph` (needs git access for a
   private repo).
 
 The parameter JSON documented in `reference.md` is exactly what `--params`
 takes (and what the flags spell field-by-field). The CLI also embeds this
-guidance — `npx -y @commoncurriculum/tsmorph-refactor guide` prints it, so
+guidance — `npx -y @commoncurriculum/ts-surgeon guide` prints it, so
 any coding agent can self-serve without this file. To hack on the CLI itself,
 build from source — see the repo's `run-ts-morph-cli` skill.
 

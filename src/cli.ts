@@ -28,16 +28,16 @@ export {
 	resolvePathParams,
 } from "./cli/paths";
 
-const USAGE = `tsmorph-refactor — AST-accurate TypeScript/JavaScript refactoring CLI (ts-morph)
+const USAGE = `ts-surgeon — AST-accurate TypeScript/JavaScript refactoring CLI (ts-morph)
 
 Usage:
-  tsmorph-refactor list [--json]                List available tools
-  tsmorph-refactor describe <tool> [--json]     Show a tool's description and JSON input schema
-  tsmorph-refactor call <tool> [params]         Run a tool once and print its result
-  tsmorph-refactor batch [options]              Run several tools in one process
-  tsmorph-refactor guide                        Print the full agent guide
-  tsmorph-refactor init [--file <path>]         Add the agent snippet to AGENTS.md (or <path>)
-  tsmorph-refactor --help | --version
+  ts-surgeon list [--json]                List available tools
+  ts-surgeon describe <tool> [--json]     Show a tool's description and JSON input schema
+  ts-surgeon call <tool> [params]         Run a tool once and print its result
+  ts-surgeon batch [options]              Run several tools in one process
+  ts-surgeon guide                        Print the full agent guide
+  ts-surgeon init [--file <path>]         Add the agent snippet to AGENTS.md (or <path>)
+  ts-surgeon --help | --version
 
 Params for call (flags win over JSON; both can be combined):
   --params <json>        Parameters as a JSON object
@@ -49,7 +49,7 @@ Params for call (flags win over JSON; both can be combined):
                          is boolean true (--dry-run)
   --stdin-files          Read a newline-separated file list from stdin into
                          filePaths (non-source and missing paths are skipped),
-                         e.g.: git diff --name-only | tsmorph-refactor call
+                         e.g.: git diff --name-only | ts-surgeon call
                          organize_imports --stdin-files
 
 Conveniences:
@@ -66,9 +66,9 @@ per tsconfig (fast; later ops see earlier results) — pass --fresh-project to
 re-parse from disk for every operation instead.
 
 Examples:
-  tsmorph-refactor describe rename_symbol
+  ts-surgeon describe rename_symbol
   # position is optional when the declaration name is unambiguous in the file
-  tsmorph-refactor call rename_symbol --target-file-path src/utils.ts \\
+  ts-surgeon call rename_symbol --target-file-path src/utils.ts \\
     --symbol-name calculateSum --new-name addNumbers --dry-run
 
 Exit codes: 0 = success, 1 = tool reported an error, 2 = usage error.
@@ -171,9 +171,7 @@ function runInit(rest: string[], out: Writer): number {
 	const target = path.resolve(process.cwd(), file);
 	const existing = existsSync(target) ? readFileSync(target, "utf-8") : "";
 	if (existing.includes(INIT_MARKER)) {
-		out.write(
-			`${target} already references tsmorph-refactor — nothing to do.\n`,
-		);
+		out.write(`${target} already references ts-surgeon — nothing to do.\n`);
 		return 0;
 	}
 	const separator =
@@ -183,7 +181,7 @@ function runInit(rest: string[], out: Writer): number {
 				? "\n"
 				: "\n\n";
 	writeFileSync(target, `${existing}${separator}${AGENT_SNIPPET}`);
-	out.write(`Added the tsmorph-refactor section to ${target}.\n`);
+	out.write(`Added the ts-surgeon section to ${target}.\n`);
 	return 0;
 }
 
