@@ -1,9 +1,6 @@
 import type { Node, SourceFile } from "ts-morph";
 import { initializeProject } from "./_utils/ts-morph-project";
-import {
-	findIdentifierNode,
-	resolveTargetIdentifier,
-} from "./rename-symbol/rename-symbol";
+import { resolveTargetIdentifier } from "./_utils/resolve-identifier";
 
 // --- Data Structure for Result ---
 
@@ -37,17 +34,10 @@ export async function findSymbolReferences({
 	const project = initializeProject(tsconfigPath);
 
 	// targetFilePath is expected to be an absolute path
-	let identifierNode: ReturnType<typeof findIdentifierNode>;
-	if (position && symbolName === undefined) {
-		identifierNode = findIdentifierNode(project, targetFilePath, position);
-	} else if (symbolName !== undefined) {
-		identifierNode = resolveTargetIdentifier(project, targetFilePath, {
-			position,
-			symbolName,
-		});
-	} else {
-		throw new Error("Pass position {line, column}, symbolName, or both.");
-	}
+	const identifierNode = resolveTargetIdentifier(project, targetFilePath, {
+		position,
+		symbolName,
+	});
 
 	// findReferencesAsNodes() may not include the definition site itself
 	const referenceNodes: Node[] = identifierNode.findReferencesAsNodes();

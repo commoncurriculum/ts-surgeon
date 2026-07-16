@@ -1,4 +1,21 @@
 /**
+ * Marker line the `init` command uses for idempotency: a file already
+ * containing it is left untouched.
+ */
+export const INIT_MARKER = "@commoncurriculum/tsmorph-refactor guide";
+
+/** The section `init` appends to a project's agent-instructions file. */
+export const AGENT_SNIPPET = `## Refactoring (tsmorph-refactor)
+
+For TypeScript/JavaScript refactors that cross file boundaries (renames, moves,
+signature changes, finding references, dead-code checks), do not hand-edit.
+Use the ts-morph refactoring CLI:
+
+    npx -y ${INIT_MARKER}   # read this first
+    npx -y @commoncurriculum/tsmorph-refactor list    # tool names + summaries
+`;
+
+/**
  * The embedded agent guide, printed by `tsmorph-refactor guide`.
  *
  * This is the tool-agnostic equivalent of an agent "skill": any coding agent

@@ -304,6 +304,33 @@ describe("CLI", () => {
 			expect(fs.readFileSync(filePath, "utf-8")).toContain("oldName");
 		});
 
+		it("keeps digit-looking flag values as strings when the schema expects a string", async () => {
+			const filePath = path.join(srcDir, "digits.ts");
+			fs.writeFileSync(filePath, "export const a = 1;\n");
+			const err = createCapture();
+			const out = createCapture();
+
+			const code = await runCli(
+				[
+					"call",
+					"find_references",
+					"--tsconfig-path",
+					tsconfigPath,
+					"--target-file-path",
+					filePath,
+					"--symbol-name",
+					"42",
+				],
+				out,
+				err,
+			);
+
+			// schema-aware conversion: '42' reaches the tool as a string, so we
+			// get the tool's not-found error rather than a zod type error
+			expect(code).toBe(1);
+			expect(out.text).toContain("No declaration named '42'");
+		});
+
 		it("emits structured output with --json", async () => {
 			const filePath = path.join(srcDir, "jsonout.ts");
 			fs.writeFileSync(filePath, 'const a = "x";\nconsole.log(a);\n');

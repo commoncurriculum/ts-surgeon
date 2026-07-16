@@ -21,21 +21,17 @@ export function disableProjectCache(): void {
 	projectCache = null;
 }
 
-/**
- * Drops cached projects so the next call re-parses from disk. Batch mode
- * calls this after any operation that may leave the in-memory AST out of
- * sync with the filesystem: a dry run (mutations are never saved) or a
- * failed operation (mutations may be partially applied).
- */
-export function invalidateProjectCache(): void {
-	projectCache?.clear();
-}
-
 export function initializeProject(tsconfigPath: string): Project {
 	const absoluteTsconfigPath = path.resolve(tsconfigPath);
 	const cached = projectCache?.get(absoluteTsconfigPath);
 	if (cached) {
-		return cached;
+		// Reuse only when the in-memory AST matches disk (everything saved).
+		// A dry run or a failed operation leaves unsaved mutations behind;
+		// such a project must be re-parsed, never reused.
+		if (cached.getSourceFiles().every((sf) => sf.isSaved())) {
+			return cached;
+		}
+		projectCache?.delete(absoluteTsconfigPath);
 	}
 	const project = new Project({
 		tsConfigFilePath: absoluteTsconfigPath,

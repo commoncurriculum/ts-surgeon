@@ -10,7 +10,7 @@ import {
 	initializeProject,
 	saveProjectChanges,
 } from "../_utils/ts-morph-project";
-import { resolveTargetIdentifier } from "../rename-symbol/rename-symbol";
+import { resolveTargetIdentifier } from "../_utils/resolve-identifier";
 import {
 	callHasSpreadArgument,
 	computeNewArgumentTexts,

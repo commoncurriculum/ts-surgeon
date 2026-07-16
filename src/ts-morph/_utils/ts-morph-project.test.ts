@@ -10,7 +10,6 @@ import {
 	getTsConfigBaseUrl,
 	getTsConfigPaths,
 	initializeProject,
-	invalidateProjectCache,
 } from "./ts-morph-project";
 
 // Real tsconfig on disk for the cache tests (initializeProject reads the filesystem)
@@ -110,17 +109,23 @@ describe("project cache (batch mode)", () => {
 		expect(a).not.toBe(b);
 	});
 
-	it("reuses one instance per tsconfig while enabled, until invalidated", () => {
+	it("reuses one instance per tsconfig while everything is saved", () => {
 		enableProjectCache();
 		const a = initializeProject(cacheTsconfigPath);
 		const b = initializeProject(cacheTsconfigPath);
 		expect(a).toBe(b);
+	});
 
-		invalidateProjectCache();
-		const c = initializeProject(cacheTsconfigPath);
-		expect(c).not.toBe(a);
-		// still enabled: the fresh instance is cached again
-		expect(initializeProject(cacheTsconfigPath)).toBe(c);
+	it("refuses to reuse a project with unsaved mutations", () => {
+		enableProjectCache();
+		const a = initializeProject(cacheTsconfigPath);
+		// Simulate a dry run / failed op: mutate without saving.
+		a.getSourceFiles()[0].insertText(0, "// dirty\n");
+
+		const b = initializeProject(cacheTsconfigPath);
+		expect(b).not.toBe(a);
+		// the fresh, fully-saved instance is cached and reused again
+		expect(initializeProject(cacheTsconfigPath)).toBe(b);
 	});
 
 	it("disable drops everything", () => {

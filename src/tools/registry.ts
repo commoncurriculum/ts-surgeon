@@ -106,7 +106,8 @@ export class ToolRegistry {
 		throw new UnknownToolError(name, [...this.tools.keys()]);
 	}
 
-	private get(name: string): RegisteredTool {
+	/** Looks up a tool by any accepted spelling; throws UnknownToolError. */
+	get(name: string): RegisteredTool {
 		const tool = this.tools.get(this.resolveName(name));
 		if (!tool) {
 			throw new UnknownToolError(name, [...this.tools.keys()]);

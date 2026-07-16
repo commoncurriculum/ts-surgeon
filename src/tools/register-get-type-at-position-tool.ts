@@ -2,7 +2,10 @@ import type { ToolRegistry } from "./registry";
 import { z } from "zod";
 import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
 import { getTypeAtPosition } from "../ts-morph/get-type-at-position/get-type-at-position";
-import { resolveTargetIdentifier } from "../ts-morph/rename-symbol/rename-symbol";
+import {
+	getIdentifierPosition,
+	resolveTargetIdentifier,
+} from "../ts-morph/_utils/resolve-identifier";
 import { runTool } from "./_tool-runner";
 
 export function registerGetTypeAtPositionTool(registry: ToolRegistry): void {
@@ -72,23 +75,15 @@ export function registerGetTypeAtPositionTool(registry: ToolRegistry): void {
 				},
 				() => {
 					const project = initializeProject(args.tsconfigPath);
-					let position = args.position;
-					if (!position) {
-						if (args.symbolName === undefined) {
-							throw new Error(
-								"Pass position {line, column}, symbolName, or both.",
-							);
-						}
-						const identifier = resolveTargetIdentifier(
-							project,
-							args.targetFilePath,
-							{ symbolName: args.symbolName },
+					// getTypeAtPosition works on any node kind, so a given position is
+					// used verbatim; only name-based targeting goes through the resolver.
+					const position =
+						args.position ??
+						getIdentifierPosition(
+							resolveTargetIdentifier(project, args.targetFilePath, {
+								symbolName: args.symbolName,
+							}),
 						);
-						const located = identifier
-							.getSourceFile()
-							.getLineAndColumnAtPos(identifier.getStart());
-						position = { line: located.line, column: located.column };
-					}
 					const result = getTypeAtPosition(
 						project,
 						args.targetFilePath,
