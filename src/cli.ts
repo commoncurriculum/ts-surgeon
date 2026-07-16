@@ -9,13 +9,13 @@ import { VERSION } from "./version";
 /** Error in how the CLI was invoked (bad command, malformed params). Exit code 2. */
 export class CliUsageError extends Error {}
 
-const USAGE = `mcp-tsmorph-refactor — AST-accurate TypeScript/JavaScript refactoring CLI (ts-morph)
+const USAGE = `tsmorph-refactor — AST-accurate TypeScript/JavaScript refactoring CLI (ts-morph)
 
 Usage:
-  mcp-tsmorph-refactor list                     List available tools
-  mcp-tsmorph-refactor describe <tool>          Show a tool's description and JSON input schema
-  mcp-tsmorph-refactor call <tool> [options]    Run a tool once and print its result
-  mcp-tsmorph-refactor --help | --version
+  tsmorph-refactor list                     List available tools
+  tsmorph-refactor describe <tool>          Show a tool's description and JSON input schema
+  tsmorph-refactor call <tool> [options]    Run a tool once and print its result
+  tsmorph-refactor --help | --version
 
 Options for call:
   --params <json>        Tool parameters as a JSON object
@@ -26,8 +26,8 @@ The parameter JSON must match the tool's input schema (see \`describe <tool>\`).
 All paths must be absolute.
 
 Examples:
-  mcp-tsmorph-refactor describe rename_symbol_by_tsmorph
-  mcp-tsmorph-refactor call rename_symbol_by_tsmorph --params '{
+  tsmorph-refactor describe rename_symbol_by_tsmorph
+  tsmorph-refactor call rename_symbol_by_tsmorph --params '{
     "tsconfigPath": "/abs/path/tsconfig.json",
     "targetFilePath": "/abs/path/src/utils.ts",
     "position": { "line": 1, "column": 17 },

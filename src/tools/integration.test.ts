@@ -8,7 +8,7 @@ import { createToolRegistry, type ToolRegistry } from "./registry";
  * Creates a temporary directory for tests
  */
 function createTempDir(): string {
-	return fs.mkdtempSync(path.join(os.tmpdir(), "mcp-integration-test-"));
+	return fs.mkdtempSync(path.join(os.tmpdir(), "tsmorph-integration-test-"));
 }
 
 /**

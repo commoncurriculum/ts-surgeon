@@ -5,7 +5,7 @@
 	"description": "AST-accurate TypeScript/JavaScript refactoring CLI powered by ts-morph",
 	"main": "dist/index.js",
 	"bin": {
-		"mcp-tsmorph-refactor": "dist/index.js"
+		"tsmorph-refactor": "dist/index.js"
 	},
 	"files": ["dist", "package.json", "README.md"],
 	"publishConfig": {
@@ -13,7 +13,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/SiroSuzume/mcp-ts-morph.git"
+		"url": "git+https://github.com/commoncurriculum/mcp-ts-morph.git"
 	},
 	"packageManager": "pnpm@11.1.2",
 	"scripts": {

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { callToolOnce, describeToolText, listToolsText, runCli } from "./cli";
 
 function createTempDir(): string {
-	return fs.mkdtempSync(path.join(os.tmpdir(), "mcp-cli-test-"));
+	return fs.mkdtempSync(path.join(os.tmpdir(), "tsmorph-cli-test-"));
 }
 
 function createCapture() {

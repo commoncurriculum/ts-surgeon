@@ -13,7 +13,7 @@ A CLI that uses [ts-morph](https://ts-morph.com/) to provide AST-based refactori
 
 ## Quick Start
 
-No install needed — run straight from npm with `npx` (or install globally with `npm i -g @sirosuzume/mcp-tsmorph-refactor` for a bare `mcp-tsmorph-refactor` command):
+No install needed — run straight from npm with `npx` (or install globally with `npm i -g @sirosuzume/mcp-tsmorph-refactor` for a bare `tsmorph-refactor` command):
 
 ```bash
 # Discover tools and their parameter schemas
@@ -236,8 +236,8 @@ LOG_LEVEL=debug LOG_OUTPUT=file LOG_FILE_PATH=/tmp/tsmorph.log \
 ### Setup and Build
 
 ```bash
-git clone https://github.com/sirosuzume/mcp-tsmorph-refactor.git
-cd mcp-tsmorph-refactor
+git clone https://github.com/commoncurriculum/mcp-ts-morph.git
+cd mcp-ts-morph
 pnpm install
 pnpm build      # outputs to dist/
 ```

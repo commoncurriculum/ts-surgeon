@@ -17,7 +17,7 @@ export interface TargetRepo {
 	/** Pinned commit SHA. After cloning, this SHA is checked out. */
 	readonly commit: string;
 	/**
-	 * Repository-relative path to the tsconfig passed to MCP tools.
+	 * Repository-relative path to the tsconfig passed to the refactoring tools.
 	 * A root tsconfig with project references (files:[]) does not load source files,
 	 * so choose a config that includes the entire src tree.
 	 */

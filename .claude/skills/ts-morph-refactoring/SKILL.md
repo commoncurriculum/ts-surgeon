@@ -30,8 +30,8 @@ parameters, worked examples, and gotchas, see **[`reference.md`](reference.md)**
 
 ## How to invoke the tools
 
-Run the CLI directly with Bash via `npx` — no clone, no global install, no MCP
-client configuration (it builds on first use; npm caches it for later runs):
+Run the CLI directly with Bash via `npx` — no clone, no global install, no
+configuration (it builds on first use; npm caches it for later runs):
 
 ```bash
 # Discover tools / a tool's exact parameter schema
