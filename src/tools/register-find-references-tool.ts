@@ -1,10 +1,10 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { findSymbolReferences } from "../../ts-morph/find-references";
+import { findSymbolReferences } from "../ts-morph/find-references";
 import { runTool } from "./_tool-runner";
 
-export function registerFindReferencesTool(server: McpServer): void {
-	server.tool(
+export function registerFindReferencesTool(registry: ToolRegistry): void {
+	registry.tool(
 		"find_references_by_tsmorph",
 		`[ts-morph] Locate the definition AND every reference of a symbol at a given position, project-wide. Read-only.
 

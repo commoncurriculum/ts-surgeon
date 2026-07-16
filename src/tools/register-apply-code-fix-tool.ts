@@ -1,10 +1,10 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { applyCodeFix } from "../../ts-morph/apply-code-fix/apply-code-fix";
+import { applyCodeFix } from "../ts-morph/apply-code-fix/apply-code-fix";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
-export function registerApplyCodeFixTool(server: McpServer): void {
-	server.tool(
+export function registerApplyCodeFixTool(registry: ToolRegistry): void {
+	registry.tool(
 		"apply_code_fix_by_tsmorph",
 		`[ts-morph] Apply a TypeScript "fix all in file" quick-fix across specific files or the whole project. Pairs with \`get_diagnostics_by_tsmorph\` to turn a diagnosis into an automated fix.
 

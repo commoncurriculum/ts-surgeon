@@ -1,11 +1,11 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
-import { getTypeAtPosition } from "../../ts-morph/get-type-at-position/get-type-at-position";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
+import { getTypeAtPosition } from "../ts-morph/get-type-at-position/get-type-at-position";
 import { runTool } from "./_tool-runner";
 
-export function registerGetTypeAtPositionTool(server: McpServer): void {
-	server.tool(
+export function registerGetTypeAtPositionTool(registry: ToolRegistry): void {
+	registry.tool(
 		"get_type_at_position_by_tsmorph",
 		`[ts-morph] Return the TypeChecker-inferred type at a specific position in a TypeScript/JavaScript file, plus the symbol and its declaration location.
 

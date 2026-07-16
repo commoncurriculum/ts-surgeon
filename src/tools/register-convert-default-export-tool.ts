@@ -1,10 +1,10 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { convertDefaultExportToNamed } from "../../ts-morph/convert-default-export/convert-default-export";
+import { convertDefaultExportToNamed } from "../ts-morph/convert-default-export/convert-default-export";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
-export function registerConvertDefaultExportTool(server: McpServer): void {
-	server.tool(
+export function registerConvertDefaultExportTool(registry: ToolRegistry): void {
+	registry.tool(
 		"convert_default_export_to_named_by_tsmorph",
 		`[ts-morph] Convert a file's \`export default\` into a named export and rewrite every importing/re-exporting site across the project (default imports become named imports; \`export { default } from\` becomes a named re-export).
 

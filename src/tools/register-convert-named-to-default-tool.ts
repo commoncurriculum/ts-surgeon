@@ -1,10 +1,12 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { convertNamedExportToDefault } from "../../ts-morph/convert-named-to-default/convert-named-to-default";
+import { convertNamedExportToDefault } from "../ts-morph/convert-named-to-default/convert-named-to-default";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
-export function registerConvertNamedToDefaultTool(server: McpServer): void {
-	server.tool(
+export function registerConvertNamedToDefaultTool(
+	registry: ToolRegistry,
+): void {
+	registry.tool(
 		"convert_named_export_to_default_by_tsmorph",
 		`[ts-morph] Convert a file's named export into its default export and rewrite every importing/re-exporting site across the project (named imports become default imports; \`export { name } from\` becomes \`export { default as name } from\`). This is the inverse of \`convert_default_export_to_named_by_tsmorph\`.
 

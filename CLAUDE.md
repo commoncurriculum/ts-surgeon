@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-MCP ts-morph Refactoring Tools — an MCP server that provides TypeScript/JavaScript refactoring tools using ts-morph.
+ts-morph Refactoring Tools — a CLI that provides TypeScript/JavaScript refactoring tools using ts-morph, designed to be driven directly by coding agents via shell (ast-grep agent-skill style).
 
 ## Development Commands
 
@@ -24,7 +24,7 @@ pnpm test:e2e     # Real-repo E2E (clone hono/zustand and apply all tools)
 
 ### E2E Tests (`pnpm test:e2e`)
 
-`e2e/` clones pinned versions of real OSS projects (hono / zustand), applies each MCP
+`e2e/` clones pinned versions of real OSS projects (hono / zustand), applies each
 tool to the real project, and verifies a "green diff" (no new type errors or new test
 failures compared to baseline). This catches real-world AST inconsistencies that unit
 tests miss (e.g., the reverse-direction import bug in `move_symbol_to_file`).
@@ -51,9 +51,12 @@ pnpm lint:fix     # Lint fix with Biome
 pnpm format       # Code format with Biome
 ```
 
-### Debug
+### Running the CLI locally
 ```bash
-pnpm inspector    # Debug run with MCP Inspector
+pnpm build
+node dist/index.js list
+node dist/index.js describe rename_symbol_by_tsmorph
+node dist/index.js call <tool> --params '<json>'
 ```
 
 ### Release (version bump)
@@ -71,17 +74,15 @@ pnpm inspector    # Debug run with MCP Inspector
 ### Core Architecture
 
 1. **Entry point**: `src/index.ts`
-   - With no args (or `serve`): starts the MCP STDIO server
-   - With a subcommand (`list` / `describe <tool>` / `call <tool> --params '<json>'`):
-     one-shot CLI mode via `src/cli.ts`, which drives the same registered tools
-     through an in-memory MCP client/server pair (no logic duplication)
+   - Dispatches to the CLI (`src/cli.ts`): `list` / `describe <tool>` /
+     `call <tool> --params '<json>'` (also `--params-file` or stdin JSON)
+   - Exit codes: 0 success, 1 tool error, 2 usage/params error
 
-2. **MCP layer** (`src/mcp/`)
-   - `stdio.ts`: STDIO server implementation
-   - `config.ts`: Server configuration
-   - `tools/`: MCP tool registration and implementation
-     - Each tool is implemented as `register-*.ts`
-     - All tools are consolidated in `ts-morph-tools.ts`
+2. **Tool layer** (`src/tools/`)
+   - `registry.ts`: `ToolRegistry` — holds each tool's name, description, Zod
+     schema, and handler; validates params and exposes `list`/`inputSchema`/`call`
+   - Each tool is registered by a `register-*.ts` file
+   - All tools are consolidated in `ts-morph-tools.ts`
 
 3. **ts-morph layer** (`src/ts-morph/`)
    - Implements the actual refactoring logic
@@ -127,12 +128,12 @@ import { createTsMorphProject } from "../_utils/ts-morph-project";
 const project = createTsMorphProject(tsconfigPath);
 ```
 
-### Registering MCP Tools
+### Registering Tools
 Each `register-*.ts` follows this pattern:
 1. Define parameters with a Zod schema and a `[ts-morph] ...` description.
-2. Register with `server.tool(name, description, schema, handler)`.
+2. Register with `registry.tool(name, description, schema, handler)`.
 3. The handler delegates to `runTool(toolName, logArgs, run)` from
-   `src/mcp/tools/_tool-runner.ts`, which owns the shared shell (timing,
+   `src/tools/_tool-runner.ts`, which owns the shared shell (timing,
    error mapping, start/finish logging + flush, the `Status` / `Processing
    time` footer, and the response envelope). `run` does only the
    tool-specific work and returns `{ message, log? }`; use
@@ -148,7 +149,7 @@ direction-specific specifier mutation and return the per-site update count.
 ### Error Handling
 - Use custom error classes
 - Log error details with the logger
-- Return as an MCP error response
+- `runTool` converts thrown errors into an `isError` tool result (CLI exit code 1)
 
 ## Development Notes
 

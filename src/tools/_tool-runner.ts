@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import logger from "../../utils/logger";
+import type { ToolResult } from "./registry";
+import logger from "../utils/logger";
 
 export interface ToolRunOutcome {
 	/** Human-readable message describing the result (success wording is tool-specific). */
@@ -11,7 +11,7 @@ export interface ToolRunOutcome {
 
 /**
  * Wraps a logger call so a logger failure (e.g. disk full when LOG_OUTPUT=file)
- * never interrupts MCP response generation.
+ * never interrupts tool result generation.
  */
 function safeLog(
 	level: "error" | "info",
@@ -26,7 +26,7 @@ function safeLog(
 }
 
 /**
- * Runs an MCP tool handler with the shared shell every tool needs: timing,
+ * Runs a tool handler with the shared shell every tool needs: timing,
  * error mapping, structured start/finish logging (flush included), the
  * `Status` / `Processing time` footer, and the `{ content, isError }` envelope.
  *
@@ -38,7 +38,7 @@ export async function runTool(
 	toolName: string,
 	logArgs: Record<string, unknown>,
 	run: () => Promise<ToolRunOutcome> | ToolRunOutcome,
-): Promise<CallToolResult> {
+): Promise<ToolResult> {
 	const startTime = performance.now();
 	let message = "";
 	let isError = false;

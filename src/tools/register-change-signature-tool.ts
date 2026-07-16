@@ -1,6 +1,6 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { changeSignature } from "../../ts-morph/change-signature/change-signature";
+import { changeSignature } from "../ts-morph/change-signature/change-signature";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
 const addOpSchema = z.object({
@@ -62,8 +62,8 @@ const operationSchema = z.discriminatedUnion("kind", [
 	reorderOpSchema,
 ]);
 
-export function registerChangeSignatureTool(server: McpServer): void {
-	server.tool(
+export function registerChangeSignatureTool(registry: ToolRegistry): void {
+	registry.tool(
 		"change_signature_by_tsmorph",
 		`[ts-morph] Add, remove, or reorder parameters of a function/method/arrow-function and propagate the matching argument changes to every call site in the project.
 

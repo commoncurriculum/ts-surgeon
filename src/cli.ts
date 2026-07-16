@@ -1,17 +1,17 @@
 import { readFileSync } from "node:fs";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createMcpServer } from "./mcp/config";
+import {
+	ToolParamsError,
+	UnknownToolError,
+	createToolRegistry,
+} from "./tools/registry";
 import { VERSION } from "./version";
 
 /** Error in how the CLI was invoked (bad command, malformed params). Exit code 2. */
 export class CliUsageError extends Error {}
 
-const USAGE = `mcp-tsmorph-refactor — ts-morph refactoring tools (MCP server + CLI)
+const USAGE = `mcp-tsmorph-refactor — AST-accurate TypeScript/JavaScript refactoring CLI (ts-morph)
 
 Usage:
-  mcp-tsmorph-refactor                          Start the MCP server on stdio (default)
-  mcp-tsmorph-refactor serve                    Same as above, explicit
   mcp-tsmorph-refactor list                     List available tools
   mcp-tsmorph-refactor describe <tool>          Show a tool's description and JSON input schema
   mcp-tsmorph-refactor call <tool> [options]    Run a tool once and print its result
@@ -22,8 +22,8 @@ Options for call:
   --params-file <path>   Read the JSON parameters from a file
   (no option)            Read the JSON parameters from stdin
 
-The parameter JSON has the same shape as the MCP tool's input schema
-(see \`describe <tool>\`). All paths must be absolute.
+The parameter JSON must match the tool's input schema (see \`describe <tool>\`).
+All paths must be absolute.
 
 Examples:
   mcp-tsmorph-refactor describe rename_symbol_by_tsmorph
@@ -39,65 +39,38 @@ Examples:
 Exit codes: 0 = success, 1 = tool reported an error, 2 = usage error.
 `;
 
-/**
- * Runs `fn` against a client wired to a freshly created in-process MCP server
- * over a linked in-memory transport pair. The CLI therefore exercises exactly
- * the same tool registrations, schemas, and handlers as the stdio server.
- */
-async function withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
-	const server = createMcpServer();
-	const [clientTransport, serverTransport] =
-		InMemoryTransport.createLinkedPair();
-	const client = new Client({
-		name: "mcp-tsmorph-refactor-cli",
-		version: VERSION,
-	});
-	await Promise.all([
-		server.connect(serverTransport),
-		client.connect(clientTransport),
-	]);
-	try {
-		return await fn(client);
-	} finally {
-		await client.close();
-		await server.close();
-	}
-}
-
 /** Lists every registered tool as `name` + the first line of its description. */
-export async function listToolsText(): Promise<string> {
-	return withClient(async (client) => {
-		const { tools } = await client.listTools();
-		return tools
-			.map((tool) => {
-				const summary = (tool.description ?? "").split("\n")[0];
-				return `${tool.name}\n    ${summary}`;
-			})
-			.join("\n");
-	});
+export function listToolsText(): string {
+	return createToolRegistry()
+		.list()
+		.map((tool) => {
+			const summary = tool.description.split("\n")[0];
+			return `${tool.name}\n    ${summary}`;
+		})
+		.join("\n");
 }
 
 /** Returns a tool's full description and JSON input schema. */
-export async function describeToolText(toolName: string): Promise<string> {
-	return withClient(async (client) => {
-		const { tools } = await client.listTools();
-		const tool = tools.find((t) => t.name === toolName);
-		if (!tool) {
-			const names = tools.map((t) => t.name).join("\n  ");
-			throw new CliUsageError(
-				`Unknown tool '${toolName}'. Available tools:\n  ${names}`,
-			);
-		}
-		return [
-			`# ${tool.name}`,
-			"",
-			tool.description ?? "(no description)",
-			"",
-			"## Input schema (JSON)",
-			"",
-			JSON.stringify(tool.inputSchema, null, 2),
-		].join("\n");
-	});
+export function describeToolText(toolName: string): string {
+	const registry = createToolRegistry();
+	const tool = registry.list().find((t) => t.name === toolName);
+	if (!tool) {
+		throw new CliUsageError(
+			new UnknownToolError(
+				toolName,
+				registry.list().map((t) => t.name),
+			).message,
+		);
+	}
+	return [
+		`# ${tool.name}`,
+		"",
+		tool.description,
+		"",
+		"## Input schema (JSON)",
+		"",
+		JSON.stringify(registry.inputSchema(toolName), null, 2),
+	].join("\n");
 }
 
 export interface CallOutcome {
@@ -110,21 +83,12 @@ export async function callToolOnce(
 	toolName: string,
 	params: Record<string, unknown>,
 ): Promise<CallOutcome> {
-	return withClient(async (client) => {
-		const result = await client.callTool({
-			name: toolName,
-			arguments: params,
-		});
-		const content = (result.content ?? []) as Array<{
-			type: string;
-			text?: string;
-		}>;
-		const text = content
-			.filter((block) => block.type === "text" && block.text !== undefined)
-			.map((block) => block.text)
-			.join("\n");
-		return { text, isError: result.isError === true };
-	});
+	const result = await createToolRegistry().call(toolName, params);
+	const text = result.content
+		.filter((block) => block.type === "text")
+		.map((block) => block.text)
+		.join("\n");
+	return { text, isError: result.isError === true };
 }
 
 function parseParamsJson(
@@ -195,10 +159,7 @@ interface Writer {
 	write(chunk: string): unknown;
 }
 
-/**
- * Runs one CLI command and returns the process exit code.
- * `serve` (and the empty argv) are handled by the caller, not here.
- */
+/** Runs one CLI command and returns the process exit code. */
 export async function runCli(
 	argv: string[],
 	out: Writer = process.stdout,
@@ -208,25 +169,26 @@ export async function runCli(
 
 	try {
 		switch (command) {
+			case undefined:
 			case "help":
 			case "--help":
 			case "-h":
 				out.write(USAGE);
-				return 0;
+				return command === undefined ? 2 : 0;
 			case "--version":
 			case "-v":
 				out.write(`${VERSION}\n`);
 				return 0;
 			case "list":
 			case "list-tools":
-				out.write(`${await listToolsText()}\n`);
+				out.write(`${listToolsText()}\n`);
 				return 0;
 			case "describe": {
 				const toolName = rest[0];
 				if (!toolName) {
 					throw new CliUsageError("describe requires a tool name.");
 				}
-				out.write(`${await describeToolText(toolName)}\n`);
+				out.write(`${describeToolText(toolName)}\n`);
 				return 0;
 			}
 			case "call": {
@@ -240,12 +202,14 @@ export async function runCli(
 				return outcome.isError ? 1 : 0;
 			}
 			default:
-				throw new CliUsageError(
-					`Unknown command '${command ?? ""}'.\n\n${USAGE}`,
-				);
+				throw new CliUsageError(`Unknown command '${command}'.\n\n${USAGE}`);
 		}
 	} catch (error) {
-		if (error instanceof CliUsageError) {
+		if (
+			error instanceof CliUsageError ||
+			error instanceof ToolParamsError ||
+			error instanceof UnknownToolError
+		) {
 			err.write(`${error.message}\n`);
 			return 2;
 		}

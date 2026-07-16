@@ -43,7 +43,7 @@ function rank(counts: Map<string, number>): { key: string; count: number }[] {
  * Pure function that aggregates the candidate array from `findUnusedExports` into a summary
  * suitable for a high-level overview even on large repositories.
  *
- * Listing every candidate line-by-line can easily exceed MCP token limits, so this function
+ * Listing every candidate line-by-line can easily exceed an agent's token budget, so this function
  * returns only aggregate counts by "deletable / unexportOnly", "by kind", and "by directory"
  * so the agent can quickly assess scope.
  */

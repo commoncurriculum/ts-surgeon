@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { registerTsMorphTools } from "./ts-morph-tools";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { createToolRegistry, type ToolRegistry } from "./registry";
 
 /**
  * Creates a temporary directory for tests
@@ -21,65 +20,11 @@ function removeTempDir(dir: string): void {
 	}
 }
 
-/**
- * Type of tool result
- */
-interface ToolResult {
-	content: Array<{
-		type: string;
-		text: string;
-	}>;
-	isError?: boolean;
-}
-
-/**
- * Type of tool handler
- */
-type ToolHandler<T = unknown> = (args: T) => Promise<ToolResult>;
-
-/**
- * Mock MCP server
- */
-interface MockServer {
-	tool: <T>(
-		name: string,
-		description: string,
-		schema: unknown,
-		handler: (args: T) => Promise<unknown>,
-	) => void;
-	callTool: <T>(name: string, args: T) => Promise<ToolResult>;
-}
-
-/**
- * Creates a mock MCP server
- */
-function createMockServer(): MockServer {
-	const tools = new Map<string, { handler: ToolHandler<unknown> }>();
-
-	return {
-		tool: <T>(
-			name: string,
-			_description: string,
-			_schema: unknown, // z.ZodSchema<T>
-			handler: (args: T) => Promise<unknown>,
-		) => {
-			tools.set(name, { handler: handler as ToolHandler<unknown> });
-		},
-		callTool: async <T>(name: string, args: T) => {
-			const tool = tools.get(name);
-			if (!tool) {
-				throw new Error(`Tool ${name} not found`);
-			}
-			return await tool.handler(args);
-		},
-	};
-}
-
-describe("MCP Tools integration tests", () => {
+describe("Tool registry integration tests", () => {
 	let tempDir: string;
 	let tsconfigPath: string;
 	let srcDir: string;
-	let mockServer: MockServer;
+	let registry: ToolRegistry;
 
 	beforeEach(() => {
 		tempDir = createTempDir();
@@ -110,11 +55,8 @@ describe("MCP Tools integration tests", () => {
 			),
 		);
 
-		// Create mock server and register tools
-		mockServer = createMockServer();
-		// Cast the test mock as McpServer
-		// Handle on the test side without changing the implementation
-		registerTsMorphTools(mockServer as unknown as McpServer);
+		// The real registry, exactly as the CLI drives it (schema validation included)
+		registry = createToolRegistry();
 	});
 
 	afterEach(() => {
@@ -147,7 +89,7 @@ console.log(VERSION);
 			);
 
 			// Call rename_symbol_by_tsmorph tool
-			await mockServer.callTool("rename_symbol_by_tsmorph", {
+			await registry.call("rename_symbol_by_tsmorph", {
 				tsconfigPath,
 				targetFilePath: utilsPath,
 				position: { line: 1, column: 17 }, // position of "calculateSum"
@@ -176,7 +118,7 @@ console.log(oldName);
 			);
 
 			// Run in dryRun mode
-			await mockServer.callTool("rename_symbol_by_tsmorph", {
+			await registry.call("rename_symbol_by_tsmorph", {
 				tsconfigPath,
 				targetFilePath: filePath,
 				position: { line: 1, column: 7 }, // position of "oldName"
@@ -228,7 +170,7 @@ logger.log("Hello from app2");
 			);
 
 			// Call find_references_by_tsmorph tool
-			const result = await mockServer.callTool("find_references_by_tsmorph", {
+			const result = await registry.call("find_references_by_tsmorph", {
 				tsconfigPath,
 				targetFilePath: libPath,
 				position: { line: 1, column: 14 }, // position of "Logger" class
@@ -266,7 +208,7 @@ console.log(multiply(3, 4));
 			);
 
 			// Call remove_path_alias_by_tsmorph tool
-			await mockServer.callTool("remove_path_alias_by_tsmorph", {
+			await registry.call("remove_path_alias_by_tsmorph", {
 				tsconfigPath,
 				targetPath: appPath,
 				dryRun: false,
@@ -296,7 +238,7 @@ console.log(data.value);
 			);
 
 			// Call rename_filesystem_entry_by_tsmorph tool
-			await mockServer.callTool("rename_filesystem_entry_by_tsmorph", {
+			await registry.call("rename_filesystem_entry_by_tsmorph", {
 				tsconfigPath,
 				renames: [{ oldPath, newPath }],
 				dryRun: false,
@@ -340,7 +282,7 @@ console.log(funcToStay());
 			);
 
 			// Call move_symbol_to_file_by_tsmorph tool
-			await mockServer.callTool("move_symbol_to_file_by_tsmorph", {
+			await registry.call("move_symbol_to_file_by_tsmorph", {
 				tsconfigPath,
 				originalFilePath: sourcePath, // originalFilePath, not sourceFilePath
 				targetFilePath: targetPath,
@@ -387,7 +329,7 @@ console.log(greet("there"));
 `,
 			);
 
-			const result = await mockServer.callTool("change_signature_by_tsmorph", {
+			const result = await registry.call("change_signature_by_tsmorph", {
 				tsconfigPath,
 				targetFilePath: utilsPath,
 				position: { line: 1, column: 17 }, // position of "greet"
@@ -424,7 +366,7 @@ foo(1);
 `,
 			);
 
-			const result = await mockServer.callTool("change_signature_by_tsmorph", {
+			const result = await registry.call("change_signature_by_tsmorph", {
 				tsconfigPath,
 				targetFilePath: filePath,
 				position: { line: 1, column: 17 },
@@ -450,14 +392,11 @@ console.log(user);
 `,
 			);
 
-			const result = await mockServer.callTool(
-				"get_type_at_position_by_tsmorph",
-				{
-					tsconfigPath,
-					targetFilePath: filePath,
-					position: { line: 2, column: 13 }, // "user" inside console.log
-				},
-			);
+			const result = await registry.call("get_type_at_position_by_tsmorph", {
+				tsconfigPath,
+				targetFilePath: filePath,
+				position: { line: 2, column: 13 }, // "user" inside console.log
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			const text = result.content[0]?.text || "";
@@ -479,14 +418,11 @@ greet("world");
 `,
 			);
 
-			const result = await mockServer.callTool(
-				"get_type_at_position_by_tsmorph",
-				{
-					tsconfigPath,
-					targetFilePath: filePath,
-					position: { line: 4, column: 1 },
-				},
-			);
+			const result = await registry.call("get_type_at_position_by_tsmorph", {
+				tsconfigPath,
+				targetFilePath: filePath,
+				position: { line: 4, column: 1 },
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			const text = result.content[0]?.text || "";
@@ -508,14 +444,11 @@ helper(1);
 `,
 			);
 
-			const result = await mockServer.callTool(
-				"get_type_at_position_by_tsmorph",
-				{
-					tsconfigPath,
-					targetFilePath: appPath,
-					position: { line: 2, column: 1 },
-				},
-			);
+			const result = await registry.call("get_type_at_position_by_tsmorph", {
+				tsconfigPath,
+				targetFilePath: appPath,
+				position: { line: 2, column: 1 },
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			const text = result.content[0]?.text || "";
@@ -527,14 +460,11 @@ helper(1);
 			const filePath = path.join(srcDir, "small.ts");
 			fs.writeFileSync(filePath, "const x = 1;\n");
 
-			const result = await mockServer.callTool(
-				"get_type_at_position_by_tsmorph",
-				{
-					tsconfigPath,
-					targetFilePath: filePath,
-					position: { line: 99, column: 1 },
-				},
-			);
+			const result = await registry.call("get_type_at_position_by_tsmorph", {
+				tsconfigPath,
+				targetFilePath: filePath,
+				position: { line: 99, column: 1 },
+			});
 
 			expect(result).toHaveProperty("isError", true);
 			expect(result.content[0]?.text).toContain("Error");
@@ -558,10 +488,9 @@ used();
 `,
 			);
 
-			const result = await mockServer.callTool(
-				"find_unused_exports_by_tsmorph",
-				{ tsconfigPath },
-			);
+			const result = await registry.call("find_unused_exports_by_tsmorph", {
+				tsconfigPath,
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			const text = result.content[0]?.text || "";
@@ -579,10 +508,9 @@ used();
 			fs.writeFileSync(aPath, "export function used(): void {}\n");
 			fs.writeFileSync(bPath, 'import { used } from "./a";\nused();\n');
 
-			const result = await mockServer.callTool(
-				"find_unused_exports_by_tsmorph",
-				{ tsconfigPath },
-			);
+			const result = await registry.call("find_unused_exports_by_tsmorph", {
+				tsconfigPath,
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			const text = result.content[0]?.text || "";
@@ -602,10 +530,10 @@ console.log(u);
 			);
 			fs.writeFileSync(bPath, "const x = 1;\n");
 
-			const result = await mockServer.callTool(
-				"find_unused_exports_by_tsmorph",
-				{ tsconfigPath, responseFormat: "summary" },
-			);
+			const result = await registry.call("find_unused_exports_by_tsmorph", {
+				tsconfigPath,
+				responseFormat: "summary",
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			const text = result.content[0]?.text || "";
@@ -624,10 +552,10 @@ console.log(u);
 			fs.writeFileSync(publicPath, "export function publicFn(): void {}\n");
 			fs.writeFileSync(internalPath, "export function internalFn(): void {}\n");
 
-			const result = await mockServer.callTool(
-				"find_unused_exports_by_tsmorph",
-				{ tsconfigPath, entryPoints: [publicPath] },
-			);
+			const result = await registry.call("find_unused_exports_by_tsmorph", {
+				tsconfigPath,
+				entryPoints: [publicPath],
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			const text = result.content[0]?.text || "";
@@ -656,7 +584,7 @@ console.log(Btn());
 `,
 			);
 
-			const result = await mockServer.callTool(
+			const result = await registry.call(
 				"convert_default_export_to_named_by_tsmorph",
 				{
 					tsconfigPath,
@@ -678,7 +606,7 @@ console.log(Btn());
 			const fnPath = path.join(srcDir, "fn.ts");
 			fs.writeFileSync(fnPath, "export default () => 1;\n");
 
-			const result = await mockServer.callTool(
+			const result = await registry.call(
 				"convert_default_export_to_named_by_tsmorph",
 				{
 					tsconfigPath,
@@ -698,7 +626,7 @@ console.log(Btn());
 			const widgetPath = path.join(srcDir, "widget.ts");
 			fs.writeFileSync(widgetPath, "export default class Widget {}\n");
 
-			const result = await mockServer.callTool(
+			const result = await registry.call(
 				"convert_default_export_to_named_by_tsmorph",
 				{
 					tsconfigPath,
@@ -717,7 +645,7 @@ console.log(Btn());
 			const fnPath = path.join(srcDir, "anon.ts");
 			fs.writeFileSync(fnPath, "export default () => 1;\n");
 
-			const result = await mockServer.callTool(
+			const result = await registry.call(
 				"convert_default_export_to_named_by_tsmorph",
 				{
 					tsconfigPath,
@@ -744,7 +672,7 @@ console.log(Btn());
 				'import { used, dead } from "./m";\n\nconsole.log(used);\n',
 			);
 
-			const result = await mockServer.callTool("organize_imports_by_tsmorph", {
+			const result = await registry.call("organize_imports_by_tsmorph", {
 				tsconfigPath,
 				filePaths: [appPath],
 				dryRun: false,
@@ -768,7 +696,7 @@ console.log(Btn());
 				'import { used, dead } from "./m2";\nconsole.log(used);\n',
 			);
 
-			const result = await mockServer.callTool("organize_imports_by_tsmorph", {
+			const result = await registry.call("organize_imports_by_tsmorph", {
 				tsconfigPath,
 				filePaths: [appPath],
 				dryRun: true,
@@ -784,7 +712,7 @@ console.log(Btn());
 			const badPath = path.join(srcDir, "bad.ts");
 			fs.writeFileSync(badPath, "const x: number = 'oops';\n");
 
-			const result = await mockServer.callTool("get_diagnostics_by_tsmorph", {
+			const result = await registry.call("get_diagnostics_by_tsmorph", {
 				tsconfigPath,
 			});
 
@@ -798,7 +726,7 @@ console.log(Btn());
 			const goodPath = path.join(srcDir, "good.ts");
 			fs.writeFileSync(goodPath, "export const y: number = 1;\n");
 
-			const result = await mockServer.callTool("get_diagnostics_by_tsmorph", {
+			const result = await registry.call("get_diagnostics_by_tsmorph", {
 				tsconfigPath,
 				filePaths: [goodPath],
 			});
@@ -821,7 +749,7 @@ console.log(Btn());
 				'import { Button } from "./button";\n\nconsole.log(Button());\n',
 			);
 
-			const result = await mockServer.callTool(
+			const result = await registry.call(
 				"convert_named_export_to_default_by_tsmorph",
 				{
 					tsconfigPath,
@@ -847,7 +775,7 @@ console.log(Btn());
 				"export default function A() {}\nexport function B() {}\n",
 			);
 
-			const result = await mockServer.callTool(
+			const result = await registry.call(
 				"convert_named_export_to_default_by_tsmorph",
 				{ tsconfigPath, targetFilePath: filePath, exportName: "B" },
 			);
@@ -866,10 +794,11 @@ console.log(Btn());
 			fs.writeFileSync(buttonPath, "export function Button() {}\n");
 			fs.writeFileSync(appPath, "Button();\n");
 
-			const result = await mockServer.callTool(
-				"add_missing_imports_by_tsmorph",
-				{ tsconfigPath, filePaths: [appPath], dryRun: false },
-			);
+			const result = await registry.call("add_missing_imports_by_tsmorph", {
+				tsconfigPath,
+				filePaths: [appPath],
+				dryRun: false,
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			expect(fs.readFileSync(appPath, "utf-8")).toContain(
@@ -883,10 +812,11 @@ console.log(Btn());
 			fs.writeFileSync(buttonPath, "export function Widget() {}\n");
 			fs.writeFileSync(appPath, "Widget();\n");
 
-			const result = await mockServer.callTool(
-				"add_missing_imports_by_tsmorph",
-				{ tsconfigPath, filePaths: [appPath], dryRun: true },
-			);
+			const result = await registry.call("add_missing_imports_by_tsmorph", {
+				tsconfigPath,
+				filePaths: [appPath],
+				dryRun: true,
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			expect(fs.readFileSync(appPath, "utf-8")).not.toContain("import");
@@ -906,7 +836,7 @@ console.log(Btn());
 				'import { used, dead } from "./m";\nconsole.log(used);\n',
 			);
 
-			const result = await mockServer.callTool("apply_code_fix_by_tsmorph", {
+			const result = await registry.call("apply_code_fix_by_tsmorph", {
 				tsconfigPath,
 				fix: "remove_unused",
 				filePaths: [appPath],
@@ -926,7 +856,7 @@ console.log(Btn());
 				"interface I {\n  foo(): number;\n}\nclass C implements I {}\n",
 			);
 
-			const result = await mockServer.callTool("apply_code_fix_by_tsmorph", {
+			const result = await registry.call("apply_code_fix_by_tsmorph", {
 				tsconfigPath,
 				fix: "implement_interface",
 				filePaths: [cPath],
@@ -946,10 +876,11 @@ console.log(Btn());
 				"export function used() {}\nfunction dead() {}\n",
 			);
 
-			const result = await mockServer.callTool(
-				"safe_delete_symbol_by_tsmorph",
-				{ tsconfigPath, targetFilePath: filePath, symbolName: "dead" },
-			);
+			const result = await registry.call("safe_delete_symbol_by_tsmorph", {
+				tsconfigPath,
+				targetFilePath: filePath,
+				symbolName: "dead",
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			expect(result.content[0]?.text || "").toContain("Deleted 'dead'");
@@ -965,10 +896,11 @@ console.log(Btn());
 				'import { helper } from "./util2";\nhelper();\n',
 			);
 
-			const result = await mockServer.callTool(
-				"safe_delete_symbol_by_tsmorph",
-				{ tsconfigPath, targetFilePath: utilPath, symbolName: "helper" },
-			);
+			const result = await registry.call("safe_delete_symbol_by_tsmorph", {
+				tsconfigPath,
+				targetFilePath: utilPath,
+				symbolName: "helper",
+			});
 
 			expect(result).toHaveProperty("isError", false);
 			expect(result.content[0]?.text || "").toContain("Not deleted");
@@ -980,7 +912,7 @@ console.log(Btn());
 		it("returns an error for a file that does not exist", async () => {
 			const nonExistentPath = path.join(srcDir, "non-existent.ts");
 
-			const result = await mockServer.callTool("rename_symbol_by_tsmorph", {
+			const result = await registry.call("rename_symbol_by_tsmorph", {
 				tsconfigPath,
 				targetFilePath: nonExistentPath,
 				position: { line: 1, column: 1 },
@@ -989,7 +921,7 @@ console.log(Btn());
 				dryRun: false,
 			});
 
-			// The MCP tool returns an error but does not throw
+			// The tool returns an error result but does not throw
 			expect(result).toHaveProperty("isError", true);
 			expect(result.content[0]?.text).toContain("Error");
 		});
@@ -999,7 +931,7 @@ console.log(Btn());
 
 			fs.writeFileSync(testPath, `const validName = "test";`);
 
-			const result = await mockServer.callTool("rename_symbol_by_tsmorph", {
+			const result = await registry.call("rename_symbol_by_tsmorph", {
 				tsconfigPath,
 				targetFilePath: testPath,
 				position: { line: 1, column: 7 },
@@ -1008,7 +940,7 @@ console.log(Btn());
 				dryRun: false,
 			});
 
-			// The MCP tool returns an error but does not throw
+			// The tool returns an error result but does not throw
 			expect(result).toHaveProperty("isError", true);
 			expect(result.content[0]?.text).toContain("Error");
 		});

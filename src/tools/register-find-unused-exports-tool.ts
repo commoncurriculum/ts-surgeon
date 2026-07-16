@@ -1,15 +1,15 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
 import {
 	findUnusedExports,
 	type UnusedExport,
-} from "../../ts-morph/find-unused-exports/find-unused-exports";
-import type { PackageExportWarning } from "../../ts-morph/find-unused-exports/package-export-warnings";
+} from "../ts-morph/find-unused-exports/find-unused-exports";
+import type { PackageExportWarning } from "../ts-morph/find-unused-exports/package-export-warnings";
 import {
 	summarizeUnusedExports,
 	type UnusedExportsSummary,
-} from "../../ts-morph/find-unused-exports/summarize-unused-exports";
+} from "../ts-morph/find-unused-exports/summarize-unused-exports";
 import { runTool } from "./_tool-runner";
 
 /** Scan cap for summary mode to get a full picture (distinct from the default 100 used in list mode). */
@@ -96,8 +96,8 @@ function formatSummary(
 	return lines.join("\n");
 }
 
-export function registerFindUnusedExportsTool(server: McpServer): void {
-	server.tool(
+export function registerFindUnusedExportsTool(registry: ToolRegistry): void {
+	registry.tool(
 		"find_unused_exports_by_tsmorph",
 		`[ts-morph] List exports that have no references outside their declaring file across the project. Read-only.
 

@@ -50,8 +50,8 @@ describe("CLI", () => {
 	});
 
 	describe("listToolsText", () => {
-		it("lists every registered tool with a one-line summary", async () => {
-			const text = await listToolsText();
+		it("lists every registered tool with a one-line summary", () => {
+			const text = listToolsText();
 			expect(text).toContain("rename_symbol_by_tsmorph");
 			expect(text).toContain("get_diagnostics_by_tsmorph");
 			expect(text).toContain("safe_delete_symbol_by_tsmorph");
@@ -61,16 +61,16 @@ describe("CLI", () => {
 	});
 
 	describe("describeToolText", () => {
-		it("returns the full description and input schema", async () => {
-			const text = await describeToolText("rename_symbol_by_tsmorph");
+		it("returns the full description and input schema", () => {
+			const text = describeToolText("rename_symbol_by_tsmorph");
 			expect(text).toContain("# rename_symbol_by_tsmorph");
 			expect(text).toContain("## Input schema (JSON)");
 			expect(text).toContain('"tsconfigPath"');
 			expect(text).toContain('"newName"');
 		});
 
-		it("rejects an unknown tool and lists the valid names", async () => {
-			await expect(describeToolText("no_such_tool")).rejects.toThrow(
+		it("rejects an unknown tool and lists the valid names", () => {
+			expect(() => describeToolText("no_such_tool")).toThrow(
 				/Unknown tool 'no_such_tool'[\s\S]*rename_symbol_by_tsmorph/,
 			);
 		});
@@ -188,6 +188,25 @@ describe("CLI", () => {
 			const code = await runCli(["frobnicate"], createCapture(), err);
 			expect(code).toBe(2);
 			expect(err.text).toContain("Unknown command");
+		});
+
+		it("exits 2 when params fail the tool's schema validation", async () => {
+			const err = createCapture();
+			const code = await runCli(
+				[
+					"call",
+					"rename_symbol_by_tsmorph",
+					"--params",
+					JSON.stringify({ tsconfigPath: 42 }),
+				],
+				createCapture(),
+				err,
+			);
+			expect(code).toBe(2);
+			expect(err.text).toContain(
+				"Invalid parameters for 'rename_symbol_by_tsmorph'",
+			);
+			expect(err.text).toContain("tsconfigPath");
 		});
 
 		it("exits 2 on malformed --params JSON", async () => {

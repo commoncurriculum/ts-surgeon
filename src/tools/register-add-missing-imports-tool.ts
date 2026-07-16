@@ -1,10 +1,10 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { addMissingImports } from "../../ts-morph/add-missing-imports/add-missing-imports";
+import { addMissingImports } from "../ts-morph/add-missing-imports/add-missing-imports";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
-export function registerAddMissingImportsTool(server: McpServer): void {
-	server.tool(
+export function registerAddMissingImportsTool(registry: ToolRegistry): void {
+	registry.tool(
 		"add_missing_imports_by_tsmorph",
 		`[ts-morph] Add import statements for unresolved identifiers (the editor "Add all missing imports" action) in specific files or the whole project.
 

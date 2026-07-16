@@ -1,11 +1,11 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { Project } from "ts-morph";
 import { z } from "zod";
-import { removePathAlias } from "../../ts-morph/remove-path-alias/remove-path-alias";
+import { removePathAlias } from "../ts-morph/remove-path-alias/remove-path-alias";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
-export function registerRemovePathAliasTool(server: McpServer): void {
-	server.tool(
+export function registerRemovePathAliasTool(registry: ToolRegistry): void {
+	registry.tool(
 		"remove_path_alias_by_tsmorph",
 		`[ts-morph] Convert path-alias imports/exports (e.g., \`@/components/Button\`) to relative paths (\`../../components/Button\`) within a target file or directory.
 

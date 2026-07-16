@@ -1,10 +1,10 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { organizeImports } from "../../ts-morph/organize-imports/organize-imports";
+import { organizeImports } from "../ts-morph/organize-imports/organize-imports";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
-export function registerOrganizeImportsTool(server: McpServer): void {
-	server.tool(
+export function registerOrganizeImportsTool(registry: ToolRegistry): void {
+	registry.tool(
 		"organize_imports_by_tsmorph",
 		`[ts-morph] Run the "Organize Imports" action — remove unused imports, sort them, and coalesce multiple imports from the same module — on specific files or the whole project.
 

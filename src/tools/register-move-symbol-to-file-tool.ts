@@ -1,12 +1,12 @@
 import * as path from "node:path";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { SyntaxKind } from "ts-morph";
 import { z } from "zod";
 import {
 	getChangedFiles,
 	initializeProject,
-} from "../../ts-morph/_utils/ts-morph-project";
-import { moveSymbolToFile } from "../../ts-morph/move-symbol-to-file/move-symbol-to-file";
+} from "../ts-morph/_utils/ts-morph-project";
+import { moveSymbolToFile } from "../ts-morph/move-symbol-to-file/move-symbol-to-file";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
 const declarationKindNames = [
@@ -61,13 +61,13 @@ const moveSymbolSchema = z.object({
 type MoveSymbolArgs = z.infer<typeof moveSymbolSchema>;
 
 /**
- * Registers the 'move_symbol_to_file_by_tsmorph' tool on the MCP server.
+ * Registers the 'move_symbol_to_file_by_tsmorph' tool on the registry.
  * This tool moves a specified symbol between files and updates all related references.
  *
- * @param server McpServer instance
+ * @param registry ToolRegistry instance
  */
-export function registerMoveSymbolToFileTool(server: McpServer): void {
-	server.tool(
+export function registerMoveSymbolToFileTool(registry: ToolRegistry): void {
+	registry.tool(
 		"move_symbol_to_file_by_tsmorph",
 		`[ts-morph] Move one top-level symbol (function, variable, class, interface, type, enum) from one file to another, carrying its internal-only dependencies and rewriting all imports/exports across the project.
 

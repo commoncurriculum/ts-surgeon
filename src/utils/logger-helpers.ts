@@ -3,7 +3,7 @@ import * as path from "node:path";
 import type pino from "pino";
 import { z } from "zod";
 
-// This server speaks MCP over stdio, where stdout must carry JSON-RPC only.
+// The CLI reserves stdout for tool results only.
 // Any diagnostic output therefore goes to stderr (console.error), never stdout
 // (console.log), so it cannot corrupt the protocol stream.
 
@@ -124,7 +124,7 @@ function setupConsoleTransport(
 		}
 		return {
 			target: "pino-pretty",
-			// destination: 2 -> stderr, keeping stdout free for MCP JSON-RPC.
+			// destination: 2 -> stderr, keeping stdout free for tool results.
 			options: { colorize: true, ignore: "pid,hostname", destination: 2 },
 		};
 	} catch (e) {
@@ -141,7 +141,7 @@ function setupConsoleTransport(
 /**
  * Configures the appropriate Pino transport based on NODE_ENV and the log output target.
  * When this returns undefined, the caller (logger.ts) falls back to Pino's default JSON
- * output on standard error (stderr); standard output is reserved for MCP JSON-RPC.
+ * output on standard error (stderr); standard output is reserved for tool results.
  *
  * @param {string} nodeEnv - The current NODE_ENV.
  * @param {"console" | "file"} logOutput - The log output destination.

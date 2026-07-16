@@ -1,9 +1,9 @@
 import * as path from "node:path";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { TimeoutError } from "../../errors/timeout-error";
-import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
-import { renameFileSystemEntry } from "../../ts-morph/rename-file-system/rename-file-system-entry";
+import { TimeoutError } from "../errors/timeout-error";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
+import { renameFileSystemEntry } from "../ts-morph/rename-file-system/rename-file-system-entry";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
 const renameSchema = z.object({
@@ -43,8 +43,10 @@ const renameSchema = z.object({
 
 type RenameArgs = z.infer<typeof renameSchema>;
 
-export function registerRenameFileSystemEntryTool(server: McpServer): void {
-	server.tool(
+export function registerRenameFileSystemEntryTool(
+	registry: ToolRegistry,
+): void {
+	registry.tool(
 		"rename_filesystem_entry_by_tsmorph",
 		`[ts-morph] Rename or move one or more TypeScript/JavaScript files and/or folders, and automatically rewrite every import/export path that references them.
 

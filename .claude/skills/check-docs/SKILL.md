@@ -1,6 +1,6 @@
 ---
 name: check-docs
-description: Checks consistency between registered MCP tools (src/mcp/tools/register-*.ts) and the tool table in README.md and the module list in CLAUDE.md. Detects missing entries and drift after adding tools or reorganizing documentation. Use for "check doc consistency", "verify README matches code", "check tool list", or similar.
+description: Checks consistency between registered tools (src/tools/register-*.ts) and the tool table in README.md and the module list in CLAUDE.md. Detects missing entries and drift after adding tools or reorganizing documentation. Use for "check doc consistency", "verify README matches code", "check tool list", or similar.
 ---
 
 # Documentation Consistency Check
@@ -14,13 +14,13 @@ This skill is **read-only inspection**. It may suggest fixes but will not modify
 ### 1. Extract Registered Tool Names
 
 ```bash
-grep -rhoE '"[a-z_]+_by_tsmorph"' src/mcp/tools/ | tr -d '"' | sort -u
+grep -rhoE '"[a-z_]+_by_tsmorph"' src/tools/ | tr -d '"' | sort -u
 ```
 
 This is the source of truth. Also cross-reference with the registration functions actually called inside `registerTsMorphTools` in `ts-morph-tools.ts` (to detect: imported but not called / called but missing import):
 
 ```bash
-grep -E 'register[A-Za-z]+Tool' src/mcp/tools/ts-morph-tools.ts
+grep -E 'register[A-Za-z]+Tool' src/tools/ts-morph-tools.ts
 ```
 
 ### 2. Cross-reference the README Tool Table

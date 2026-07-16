@@ -1,6 +1,6 @@
 name: E2E
 
-# Heavy E2E that clones real repositories (hono / zustand) and applies all MCP tools.
+# Heavy E2E that clones real repositories (hono / zustand) and applies all refactoring tools.
 # Not included in per-PR blocking CI; runs on a nightly schedule and manual dispatch.
 # - Long runtime (clone + dependency install + type check / tests for each repo)
 # - Depends on bun / pnpm / network availability

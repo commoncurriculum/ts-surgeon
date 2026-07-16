@@ -1,8 +1,7 @@
 ---
 name: ts-morph-refactoring
 description: >-
-  Drive the commoncurriculum/mcp-ts-morph refactoring tools (CLI via npx, or
-  MCP server) for AST-accurate,
+  Drive the commoncurriculum/mcp-ts-morph refactoring CLI (via npx) for AST-accurate,
   project-wide TypeScript/JavaScript refactors instead of hand-editing. Use when renaming a
   symbol or file, finding references, moving a symbol between files, changing a
   function signature, converting export styles, organizing/adding imports,
@@ -57,29 +56,9 @@ npx -y github:commoncurriculum/mcp-ts-morph call rename_symbol_by_tsmorph --para
 - Pin a ref for reproducibility (`github:commoncurriculum/mcp-ts-morph#v1.2.3`);
   for a private repo the environment needs git access to it.
 
-Everything below applies identically to both invocation styles: the parameter
-JSON in `reference.md` is exactly what `--params` takes.
-
-### Alternative: run as an MCP server
-
-If your client supports MCP and you prefer persistent tools (faster for many
-calls in a row — the process stays warm), add this to `mcp.json` or equivalent;
-tool names and parameters are identical:
-
-```json
-{
-  "mcpServers": {
-    "mcp-ts-morph": {
-      "command": "npx",
-      "args": ["-y", "github:commoncurriculum/mcp-ts-morph"],
-      "env": {}
-    }
-  }
-}
-```
-
-To hack on the server itself, build from source — see the repo's
-`run-mcp-ts-morph` skill.
+The parameter JSON documented in `reference.md` is exactly what `--params`
+takes. To hack on the CLI itself, build from source — see the repo's
+`run-ts-morph-cli` skill.
 
 ## The loop
 

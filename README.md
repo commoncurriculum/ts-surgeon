@@ -1,11 +1,10 @@
-# MCP ts-morph Refactoring Tools
+# ts-morph Refactoring Tools
 
-An MCP server **and CLI** that uses [ts-morph](https://ts-morph.com/) to provide AST-based refactoring operations for TypeScript / JavaScript codebases. Rename symbols, rename files/folders, find references, and more — all while preserving project-wide consistency.
+A CLI that uses [ts-morph](https://ts-morph.com/) to provide AST-based refactoring operations for TypeScript / JavaScript codebases. Rename symbols, rename files/folders, find references, and more — all while preserving project-wide consistency. Built for coding agents (invoke it directly via shell, [ast-grep agent-skill](https://github.com/ast-grep/agent-skill) style) and equally usable from scripts and CI.
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-  - [CLI Usage (no MCP client required)](#cli-usage-no-mcp-client-required)
 - [Available Tools](#available-tools)
 - [Logging Configuration](#logging-configuration)
 - [Development](#development)
@@ -14,35 +13,14 @@ An MCP server **and CLI** that uses [ts-morph](https://ts-morph.com/) to provide
 
 ## Quick Start
 
-Add the following to your MCP client configuration file (`mcp.json` or equivalent). Using `npx` ensures the latest published version is used automatically.
-
-```json
-{
-  "mcpServers": {
-    "mcp-tsmorph-refactor": {
-      "command": "npx",
-      "args": ["-y", "@sirosuzume/mcp-tsmorph-refactor"],
-      "env": {}
-    }
-  }
-}
-```
-
-To customize logging, see [Logging Configuration](#logging-configuration). To run from a local build, see [Development](#development).
-
-### CLI Usage (no MCP client required)
-
-Every tool can also be invoked directly from the command line — the same
-registrations, schemas, and handlers the MCP server exposes, driven one-shot.
-This is the easiest way to use the tools from an agent skill (ast-grep style),
-a shell script, or CI, with no MCP client configuration at all.
+No install needed — run straight from npm with `npx` (or install globally with `npm i -g @sirosuzume/mcp-tsmorph-refactor` for a bare `mcp-tsmorph-refactor` command):
 
 ```bash
 # Discover tools and their parameter schemas
 npx -y @sirosuzume/mcp-tsmorph-refactor list
 npx -y @sirosuzume/mcp-tsmorph-refactor describe rename_symbol_by_tsmorph
 
-# Run a tool once (params = the tool's MCP input schema, as JSON)
+# Run a tool (params = the tool's input schema, as JSON)
 npx -y @sirosuzume/mcp-tsmorph-refactor call rename_symbol_by_tsmorph --params '{
   "tsconfigPath": "/abs/path/tsconfig.json",
   "targetFilePath": "/abs/path/src/utils.ts",
@@ -53,12 +31,11 @@ npx -y @sirosuzume/mcp-tsmorph-refactor call rename_symbol_by_tsmorph --params '
 }'
 ```
 
-- `call` also accepts `--params-file <path>` or JSON piped via stdin.
-- Exit codes: `0` success, `1` the tool reported an error, `2` usage error.
-- Tool output goes to stdout; logs go to stderr (`LOG_LEVEL` defaults to `warn`
-  in CLI mode).
-- Running with no arguments (or `serve`) starts the MCP stdio server, so
-  existing MCP client configurations are unaffected.
+- `call` also accepts `--params-file <path>` or JSON piped via stdin (handy for large payloads).
+- Exit codes: `0` success, `1` the tool reported an error, `2` usage error (including params that fail the tool's schema).
+- Tool output goes to stdout; logs go to stderr (`LOG_LEVEL` defaults to `warn`).
+
+To customize logging, see [Logging Configuration](#logging-configuration). To run from a local build, see [Development](#development).
 
 ## Available Tools
 
@@ -231,32 +208,22 @@ Deletes a top-level symbol's declaration **only when** it has no references outs
 
 ## Logging Configuration
 
-Server operation logs are controlled via environment variables, set in the `env` block of `mcp.json`.
+Operation logs are controlled via environment variables.
 
 | Environment Variable | Description | Default |
 | --- | --- | --- |
-| `LOG_LEVEL` | Log verbosity: `fatal` / `error` / `warn` / `info` / `debug` / `trace` / `silent` | `info` |
+| `LOG_LEVEL` | Log verbosity: `fatal` / `error` / `warn` / `info` / `debug` / `trace` / `silent` | `warn` |
 | `LOG_OUTPUT` | Output destination: `console` or `file` | `console` |
 | `LOG_FILE_PATH` | Absolute path to the log file when `LOG_OUTPUT=file` | `[project root]/app.log` |
 
-When `LOG_OUTPUT=console` and the development environment (`NODE_ENV !== 'production'`) has `pino-pretty` installed, output is formatted for readability. All logs and startup diagnostic messages are written to standard error (stderr), so they do not pollute the standard output (JSON-RPC) used by the MCP client. Set `LOG_LEVEL=silent` to suppress all log output.
+When `LOG_OUTPUT=console` and the development environment (`NODE_ENV !== 'production'`) has `pino-pretty` installed, output is formatted for readability. All logs and startup diagnostic messages are written to standard error (stderr), so they never pollute the tool output on stdout. Set `LOG_LEVEL=silent` to suppress all log output.
 
-Configuration example:
+Example:
 
-```json
-{
-  "mcpServers": {
-    "mcp-tsmorph-refactor": {
-      "command": "npx",
-      "args": ["-y", "@sirosuzume/mcp-tsmorph-refactor"],
-      "env": {
-        "LOG_LEVEL": "debug",
-        "LOG_OUTPUT": "file",
-        "LOG_FILE_PATH": "/Users/yourname/logs/mcp-tsmorph.log"
-      }
-    }
-  }
-}
+```bash
+LOG_LEVEL=debug LOG_OUTPUT=file LOG_FILE_PATH=/tmp/tsmorph.log \
+  npx -y @sirosuzume/mcp-tsmorph-refactor call get_diagnostics_by_tsmorph \
+  --params '{"tsconfigPath": "/abs/path/tsconfig.json"}'
 ```
 
 ## Development
@@ -284,46 +251,15 @@ pnpm check-types # type check (no compilation)
 pnpm lint       # lint check
 pnpm lint:fix   # lint fix
 pnpm format     # format
-pnpm inspector  # debug with MCP Inspector
 ```
 
-### Using a Local Build with an MCP Client
+### Using a Local Build
 
-After building, you can launch `dist/index.js` directly with `node`.
+After building, launch `dist/index.js` directly with `node`:
 
-```json
-{
-  "mcpServers": {
-    "mcp-tsmorph-refactor-dev": {
-      "command": "node",
-      "args": ["/path/to/your/local/repo/dist/index.js"],
-      "env": {
-        "LOG_LEVEL": "debug"
-      }
-    }
-  }
-}
-```
-
-### Debug Launcher
-
-To inspect the server's startup sequence and stdio in detail, use `scripts/mcp_launcher.js`. It launches the actual server process as a child process and records startup information and output to `.logs/mcp_launcher.log`.
-
-Change the `command` in `mcp.json` to `"node"` and `args` to the path of `scripts/mcp_launcher.js`, then restart the client to view `.logs/mcp_launcher.log` (and the server's own logs).
-
-```json
-{
-  "mcpServers": {
-    "mcp-tsmorph-refactor": {
-      "command": "node",
-      "args": ["scripts/mcp_launcher.js"],
-      "env": {
-        "LOG_OUTPUT": "file",
-        "LOG_FILE_PATH": ".logs/mcp-ts-morph.log"
-      }
-    }
-  }
-}
+```bash
+node dist/index.js list
+node dist/index.js call get_diagnostics_by_tsmorph --params '{"tsconfigPath": "/abs/path/tsconfig.json"}'
 ```
 
 ## Release
@@ -356,7 +292,7 @@ After completion, confirm the release with `npm view @sirosuzume/mcp-tsmorph-ref
 
 ### Why the Tag Is the Source of Truth
 
-Under the old workflow, releasing required three steps — "bump `version` in `package.json`", "bump `serverInfo.version` in `src/mcp/config.ts`", and "push a tag" — and forgetting any one of them resulted in an inconsistent release (this actually happened). Under the new workflow, `0.0.0-development` is kept throughout development and CI reads the tag at release time to update all locations, making it **structurally impossible to forget a bump**.
+Under the old workflow, releasing required three steps — "bump `version` in `package.json`", "bump the reported version in `src/version.ts`", and "push a tag" — and forgetting any one of them resulted in an inconsistent release (this actually happened). Under the new workflow, `0.0.0-development` is kept throughout development and CI reads the tag at release time to update all locations, making it **structurally impossible to forget a bump**.
 
 CI (`.github/workflows/ci.yml`) runs `node scripts/release-version.mjs --check` on every PR and push to main to confirm that both files still have the placeholder value. A PR that manually bumps the version will fail here.
 

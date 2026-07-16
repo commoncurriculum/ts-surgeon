@@ -1,7 +1,7 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { getDiagnostics } from "../../ts-morph/get-diagnostics/get-diagnostics";
-import type { DiagnosticInfo } from "../../ts-morph/get-diagnostics/types";
+import { getDiagnostics } from "../ts-morph/get-diagnostics/get-diagnostics";
+import type { DiagnosticInfo } from "../ts-morph/get-diagnostics/types";
 import { runTool } from "./_tool-runner";
 
 function formatLocation(d: DiagnosticInfo): string {
@@ -14,8 +14,8 @@ function formatDiagnostic(d: DiagnosticInfo): string {
 	return `${d.category} TS${d.code} ${formatLocation(d)} — ${d.message}`;
 }
 
-export function registerGetDiagnosticsTool(server: McpServer): void {
-	server.tool(
+export function registerGetDiagnosticsTool(registry: ToolRegistry): void {
+	registry.tool(
 		"get_diagnostics_by_tsmorph",
 		`[ts-morph] Return the TypeScript pre-emit diagnostics (syntactic + semantic type errors, warnings, and suggestions) for specific files or the whole project, computed from the project's tsconfig.
 

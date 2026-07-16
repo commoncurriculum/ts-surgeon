@@ -1,7 +1,7 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { safeDeleteSymbol } from "../../ts-morph/safe-delete-symbol/safe-delete-symbol";
-import type { BlockingReference } from "../../ts-morph/safe-delete-symbol/types";
+import { safeDeleteSymbol } from "../ts-morph/safe-delete-symbol/safe-delete-symbol";
+import type { BlockingReference } from "../ts-morph/safe-delete-symbol/types";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
 function formatBlockers(blockers: BlockingReference[]): string {
@@ -10,8 +10,8 @@ function formatBlockers(blockers: BlockingReference[]): string {
 		.join("\n");
 }
 
-export function registerSafeDeleteSymbolTool(server: McpServer): void {
-	server.tool(
+export function registerSafeDeleteSymbolTool(registry: ToolRegistry): void {
+	registry.tool(
 		"safe_delete_symbol_by_tsmorph",
 		`[ts-morph] Delete a top-level symbol's declaration ONLY when it has no references outside its own declaration; otherwise report the blocking references and change nothing.
 

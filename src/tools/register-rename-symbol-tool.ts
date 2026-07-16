@@ -1,10 +1,10 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { renameSymbol } from "../../ts-morph/rename-symbol/rename-symbol";
+import { renameSymbol } from "../ts-morph/rename-symbol/rename-symbol";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
-export function registerRenameSymbolTool(server: McpServer): void {
-	server.tool(
+export function registerRenameSymbolTool(registry: ToolRegistry): void {
+	registry.tool(
 		"rename_symbol_by_tsmorph",
 		`[ts-morph] Type-aware rename of a TypeScript/JavaScript symbol (function, variable, class, type, interface, enum, etc.) across the entire project.
 
