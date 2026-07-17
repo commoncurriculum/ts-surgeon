@@ -29,7 +29,7 @@ describe("pattern tools (ast-grep)", () => {
 	});
 
 	describe("searchPattern", () => {
-		it("finds structural matches with positions, ignoring formatting", () => {
+		it("finds structural matches with positions, ignoring formatting", async () => {
 			fs.writeFileSync(
 				path.join(srcDir, "a.ts"),
 				'console.log("x");\nconsole.log(\n  1,\n  2,\n);\nconsole.error("not this");\n',
@@ -40,7 +40,7 @@ describe("pattern tools (ast-grep)", () => {
 			);
 
 			const project = initializeProject(tsconfigPath);
-			const result = searchPattern(project, {
+			const result = await searchPattern(project, {
 				pattern: "console.log($$$ARGS)",
 			});
 
@@ -56,13 +56,13 @@ describe("pattern tools (ast-grep)", () => {
 			expect(result.matches[0].column).toBeGreaterThanOrEqual(1);
 		});
 
-		it("respects filePaths and maxResults", () => {
+		it("respects filePaths and maxResults", async () => {
 			const aPath = path.join(srcDir, "a.ts");
 			fs.writeFileSync(aPath, "foo(1);\nfoo(2);\nfoo(3);\n");
 			fs.writeFileSync(path.join(srcDir, "b.ts"), "foo(4);\n");
 
 			const project = initializeProject(tsconfigPath);
-			const result = searchPattern(project, {
+			const result = await searchPattern(project, {
 				pattern: "foo($A)",
 				filePaths: [aPath],
 				maxResults: 2,

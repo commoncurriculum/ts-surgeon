@@ -1,4 +1,4 @@
-import { Lang, parse, type SgNode } from "@ast-grep/napi";
+import type { Lang, SgNode } from "@ast-grep/napi";
 import type { Project, SourceFile } from "ts-morph";
 import {
 	getChangedFiles,
@@ -13,27 +13,85 @@ import {
  * agents would otherwise hand-roll with sed.
  */
 
-const LANG_BY_EXT: Record<string, Lang> = {
-	".ts": Lang.TypeScript,
-	".mts": Lang.TypeScript,
-	".cts": Lang.TypeScript,
-	".tsx": Lang.Tsx,
-	".jsx": Lang.Tsx,
-	".js": Lang.JavaScript,
-	".mjs": Lang.JavaScript,
-	".cjs": Lang.JavaScript,
-};
+type AstGrepModule = typeof import("@ast-grep/napi");
 
-function languageFor(filePath: string): Lang | undefined {
+interface AstGrep {
+	parse: AstGrepModule["parse"];
+	langByExt: Record<string, Lang>;
+}
+
+let astGrep: AstGrep | undefined;
+
+/**
+ * Loads @ast-grep/napi on first use rather than at import time. The module is
+ * a native (napi) binary: on a platform without a prebuilt build, a top-level
+ * import would crash every command (list, guide, hook) through the registry's
+ * import chain. Lazy loading degrades that to "the two pattern tools error;
+ * everything else works".
+ */
+async function loadAstGrep(): Promise<AstGrep> {
+	if (astGrep) {
+		return astGrep;
+	}
+	let mod: AstGrepModule;
+	try {
+		mod = await import("@ast-grep/napi");
+	} catch (error) {
+		throw new Error(
+			`The @ast-grep/napi native binary failed to load on this platform (${process.platform}-${process.arch}): ${
+				error instanceof Error ? error.message : String(error)
+			}. search_pattern and rewrite_pattern are unavailable here; every other ts-surgeon tool still works.`,
+		);
+	}
+	const { Lang } = mod;
+	astGrep = {
+		parse: mod.parse,
+		langByExt: {
+			".ts": Lang.TypeScript,
+			".mts": Lang.TypeScript,
+			".cts": Lang.TypeScript,
+			".tsx": Lang.Tsx,
+			".jsx": Lang.Tsx,
+			".js": Lang.JavaScript,
+			".mjs": Lang.JavaScript,
+			".cjs": Lang.JavaScript,
+		},
+	};
+	return astGrep;
+}
+
+/**
+ * Reports whether the @ast-grep/napi native binary loads on this platform
+ * (used by `ts-surgeon doctor`). Never throws.
+ */
+export async function probeAstGrep(): Promise<
+	{ ok: true } | { ok: false; error: string }
+> {
+	try {
+		await loadAstGrep();
+		return { ok: true };
+	} catch (error) {
+		return {
+			ok: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+function languageFor(ast: AstGrep, filePath: string): Lang | undefined {
 	const ext = filePath.slice(filePath.lastIndexOf("."));
-	return LANG_BY_EXT[ext.toLowerCase()];
+	return ast.langByExt[ext.toLowerCase()];
 }
 
 /** The project files a pattern operation runs over. */
-function targetFiles(project: Project, filePaths?: string[]): SourceFile[] {
+function targetFiles(
+	ast: AstGrep,
+	project: Project,
+	filePaths?: string[],
+): SourceFile[] {
 	const files = project
 		.getSourceFiles()
-		.filter((sf) => languageFor(sf.getFilePath()) !== undefined);
+		.filter((sf) => languageFor(ast, sf.getFilePath()) !== undefined);
 	if (!filePaths || filePaths.length === 0) {
 		return files;
 	}
@@ -41,14 +99,18 @@ function targetFiles(project: Project, filePaths?: string[]): SourceFile[] {
 	return files.filter((sf) => wanted.has(sf.getFilePath()));
 }
 
-function findMatches(sourceFile: SourceFile, pattern: string): SgNode[] {
+function findMatches(
+	ast: AstGrep,
+	sourceFile: SourceFile,
+	pattern: string,
+): SgNode[] {
 	const filePath = sourceFile.getFilePath();
-	const lang = languageFor(filePath);
+	const lang = languageFor(ast, filePath);
 	if (lang === undefined) {
 		return [];
 	}
 	try {
-		return parse(lang, sourceFile.getFullText()).root().findAll(pattern);
+		return ast.parse(lang, sourceFile.getFullText()).root().findAll(pattern);
 	} catch {
 		// A file tree-sitter cannot parse is skipped, not fatal.
 		return [];
@@ -70,19 +132,20 @@ export interface SearchPatternResult {
 }
 
 /** Finds every occurrence of an ast-grep pattern across the project files. */
-export function searchPattern(
+export async function searchPattern(
 	project: Project,
 	{
 		pattern,
 		filePaths,
 		maxResults = 200,
 	}: { pattern: string; filePaths?: string[]; maxResults?: number },
-): SearchPatternResult {
-	const files = targetFiles(project, filePaths);
+): Promise<SearchPatternResult> {
+	const ast = await loadAstGrep();
+	const files = targetFiles(ast, project, filePaths);
 	const matches: PatternMatch[] = [];
 	let totalCount = 0;
 	for (const sourceFile of files) {
-		for (const node of findMatches(sourceFile, pattern)) {
+		for (const node of findMatches(ast, sourceFile, pattern)) {
 			totalCount++;
 			if (matches.length < maxResults) {
 				const { start } = node.range();
@@ -149,18 +212,19 @@ export async function rewritePattern(
 		dryRun?: boolean;
 	},
 ): Promise<RewritePatternResult> {
-	const files = targetFiles(project, filePaths);
+	const ast = await loadAstGrep();
+	const files = targetFiles(ast, project, filePaths);
 	let matchCount = 0;
 	for (const sourceFile of files) {
 		const filePath = sourceFile.getFilePath();
-		const lang = languageFor(filePath);
+		const lang = languageFor(ast, filePath);
 		if (lang === undefined) {
 			continue;
 		}
 		const source = sourceFile.getFullText();
-		let root: ReturnType<typeof parse>;
+		let root: ReturnType<AstGrepModule["parse"]>;
 		try {
-			root = parse(lang, source);
+			root = ast.parse(lang, source);
 		} catch {
 			continue;
 		}

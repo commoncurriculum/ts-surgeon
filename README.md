@@ -40,8 +40,10 @@ npx -y @commoncurriculum/ts-surgeon call rename_symbol --params '{
 - `--json` prints a machine-readable result: `{ tool, status, data, message }` (e.g. `data.changedFiles`).
 - `batch` runs several tools in one process: pass a JSON array of `{ "tool": "...", "params": { ... } }` via `--params`, `--params-file`, or stdin. Output is a JSON array; it stops at the first failure unless `--continue-on-error` is set. Operations **share one parsed project per tsconfig** (one AST parse for N operations; later ops see earlier results) — pass `--fresh-project` to re-parse from disk per operation.
 - `call` also accepts `--params-file <path>` or JSON piped via stdin (handy for large payloads); flags win when combined with JSON.
+- `--git-changed` / `--git-staged` set `filePaths` to the TS/JS files git reports as changed (unstaged / staged) — `npx -y @commoncurriculum/ts-surgeon call organize_imports --git-changed` — no pipe needed; a usage error outside a git repository or when nothing usable changed.
 - `--stdin-files` turns a piped file list into `filePaths` — `git diff --name-only | npx -y @commoncurriculum/ts-surgeon call organize_imports --stdin-files` (non-source and missing paths are skipped; refuses to run if nothing usable arrives).
 - Tool names accept dashes (`rename-symbol`) and the legacy `*_by_tsmorph` aliases.
+- `doctor` prints install diagnostics (version, Node, resolved tsconfig, tool count, ast-grep native binary status) and exits non-zero on a broken install — include its output in bug reports.
 - Exit codes: `0` success, `1` the tool reported an error, `2` usage error (including params that fail the tool's schema).
 - Tool output goes to stdout; logs go to stderr (`LOG_LEVEL` defaults to `warn`).
 
@@ -79,7 +81,7 @@ npx -y @commoncurriculum/ts-surgeon init --claude-hook     # Claude Code: .claud
 npx -y @commoncurriculum/ts-surgeon init --opencode-hook   # opencode: .opencode/plugin/ts-surgeon.js (tool.execute.before)
 ```
 
-Once installed, any Bash command that hand-edits TS/JS sources with `sed -i`/`perl -i` is blocked before it runs, and the agent is told to use the AST-accurate tool instead (with `--dry-run` guidance). A genuine non-refactor use is one prefix away: `TS_SURGEON_ALLOW=1 sed -i …`. Pass `--strict` in the hook command to also redirect recursive identifier searches (`grep -r name` / `rg name`, unless scoped to non-source files) to `find_references`. Both installers wrap the same `ts-surgeon hook` command — a harness without hook support still gets the advisory `init` snippet.
+Once installed, any Bash command that hand-edits TS/JS sources with `sed -i`/`perl -i` is blocked before it runs, and the agent is told to use the AST-accurate tool instead (with `--dry-run` guidance). A genuine non-refactor use is one prefix away: `TS_SURGEON_ALLOW=1 sed -i …`. Pass `--strict` in the hook command to also redirect recursive text searches (`grep -r` / `rg`, unless scoped to non-source files) to the scoped tools: `find_references` for symbols, `search_pattern` for code shapes, `search_text` for plain text. Both installers wrap the same `ts-surgeon hook` command — a harness without hook support still gets the advisory `init` snippet.
 
 ## Available Tools
 
@@ -104,6 +106,7 @@ Each tool uses `ts-morph` to parse the AST and applies changes while preserving 
 | [`safe_delete_symbol`](#safe_delete_symbol) | Delete a symbol only when it has no references, else report blockers |
 | [`search_pattern`](#search_pattern) | Find every occurrence of a structural code pattern (ast-grep) |
 | [`rewrite_pattern`](#rewrite_pattern) | Rewrite a code pattern project-wide — the safe sed replacement (ast-grep) |
+| [`search_text`](#search_text) | Find plain text or a regex across the project's source files — the scoped grep replacement |
 
 ### `rename_symbol`
 
@@ -266,6 +269,14 @@ Rewrites every occurrence of a structural pattern using a template — the safe 
 - **Use case**: Syntactic project-wide codemods: `console.log($$$ARGS)` → `logger.debug($$$ARGS)`, `assert.equal($A, $B)` → `expect($A).toBe($B)`.
 - **Required information**: `pattern` and `rewrite` (sharing `$NAME` / `$$$NAME` captures). Supports `dryRun`.
 - **Note**: The rewrite is textual within each match — imports are not added/removed; follow with `add_missing_imports` / `organize_imports`.
+
+### `search_text`
+
+Finds every occurrence of a literal string (or a regex) across the project's source files — the project-scoped replacement for `grep -r`. Read-only.
+
+- **Use case**: Plain-text lookups the AST doesn't cover — TODO/FIXME comments, string literals, config keys, error messages — without `grep -r`'s node_modules / dist / lockfile noise (the corpus is the tsconfig project's source files, same as `search_pattern`).
+- **Required information**: The `query`. Literal by default (`regex: true` for a JavaScript regular expression); case-sensitive by default (`caseSensitive: false` to ignore case). Supports `filePaths` and `maxResults` (default 200).
+- **Output**: Grep-style `file:line:col  line-text` list (1-based positions); `--json` data carries the structured match list.
 
 ## Logging Configuration
 

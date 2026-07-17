@@ -15,7 +15,7 @@ export function registerSearchPatternTool(registry: ToolRegistry): void {
 
 ## When NOT to use
 - Finding usages of a *symbol* -> use \`find_references\` (type-aware; follows imports and aliases).
-- Plain-text search (TODO comments, strings) -> ordinary grep is fine.
+- Plain-text search (TODO comments, strings, config keys) -> use \`search_text\` (project-scoped, regex-capable).
 
 ## Pattern syntax (ast-grep)
 - Write the code you want to find; \`$NAME\` matches one node, \`$$$NAME\` matches zero or more (e.g. argument lists).
@@ -49,9 +49,9 @@ Grep-style \`file:line:col\` list plus the matched text; data carries the struct
 			runTool(
 				"search_pattern",
 				{ pattern: args.pattern, fileCount: args.filePaths?.length },
-				() => {
+				async () => {
 					const project = initializeProject(args.tsconfigPath);
-					const result = searchPattern(project, {
+					const result = await searchPattern(project, {
 						pattern: args.pattern,
 						filePaths: args.filePaths,
 						maxResults: args.maxResults,

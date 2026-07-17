@@ -29,11 +29,12 @@ Text replacement misses imports, re-exports, and same-name collisions. Use the A
   for sed-style codemods (all support --dry-run)
 If this is genuinely not a refactor, re-run the command prefixed with ${ALLOW_MARKER}.`;
 
-const SEARCH_BLOCK_MESSAGE = `ts-surgeon: this looks like a recursive text search for a code identifier.
-Text search misses aliased imports and matches unrelated same-name tokens. Prefer the AST-aware lookups:
-  npx -y @commoncurriculum/ts-surgeon call find_references --target-file-path <file> --symbol-name <name>
-  npx -y @commoncurriculum/ts-surgeon call search_pattern --pattern '<code shape with $META vars>'
-If you really want a text search, re-run the command prefixed with ${ALLOW_MARKER}.`;
+const SEARCH_BLOCK_MESSAGE = `ts-surgeon: this looks like a recursive text search over TS/JS sources.
+Raw grep misses aliased imports, matches unrelated same-name tokens, and wades into node_modules/dist. Route it by intent instead:
+  symbol usages -> npx -y @commoncurriculum/ts-surgeon call find_references --target-file-path <file> --symbol-name <name>
+  code shapes   -> npx -y @commoncurriculum/ts-surgeon call search_pattern --pattern '<code shape with $META vars>'
+  plain text (TODOs, strings, config keys) -> npx -y @commoncurriculum/ts-surgeon call search_text --query '<text>' (add --regex for regexes)
+If you really want a raw text search, re-run the command prefixed with ${ALLOW_MARKER}.`;
 
 /** Extracts the first non-flag argument after a grep/rg invocation. */
 function searchPattern(command: string): string | undefined {
@@ -66,15 +67,12 @@ export function evaluateBashCommand(
 		return { block: true, reason: EDIT_BLOCK_MESSAGE };
 	}
 	if (strict && RECURSIVE_SEARCH_RE.test(command)) {
-		// A search explicitly scoped to non-source files (e.g. *.md) is not an
-		// identifier lookup — leave it alone.
+		// A search explicitly scoped to non-source files (e.g. *.md) is not a
+		// code lookup — leave it alone. Everything else has a ts-surgeon home:
+		// find_references (symbols), search_pattern (shapes), search_text (text).
 		const scopedToNonSources = ANY_EXT_RE.test(command) && !touchesSources;
 		const pattern = searchPattern(command);
-		if (
-			!scopedToNonSources &&
-			pattern &&
-			/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(pattern)
-		) {
+		if (!scopedToNonSources && pattern) {
 			return { block: true, reason: SEARCH_BLOCK_MESSAGE };
 		}
 	}

@@ -92,8 +92,13 @@ node dist/index.js call <tool> --params '<json>'
 3. **ast-grep layer** (`src/ast-grep/`)
    - `pattern-tools.ts`: structural pattern search/rewrite
      (`search_pattern` / `rewrite_pattern`) via `@ast-grep/napi`
+     (loaded lazily so a missing native binary only breaks these two tools)
 
-4. **ts-morph layer** (`src/ts-morph/`)
+4. **Text layer** (`src/text/`)
+   - `search-text.ts`: project-scoped plain-text/regex search (`search_text`);
+     the corpus is the tsconfig project's source files, never node_modules/dist
+
+5. **ts-morph layer** (`src/ts-morph/`)
    - Implements the actual refactoring logic
    - Each feature is implemented as an independent module:
      - `rename-symbol/`: Symbol renaming
@@ -115,11 +120,11 @@ node dist/index.js call <tool> --params '<json>'
      - `ts-morph-project.ts`: Common project creation logic
    - `_test-utils/`: Test helpers
 
-5. **Utilities** (`src/utils/`)
+6. **Utilities** (`src/utils/`)
    - `logger.ts`: Pino-based logger implementation
    - Other shared utilities
 
-6. **Error handling** (`src/errors/`)
+7. **Error handling** (`src/errors/`)
    - Custom error class definitions
 
 ### Test Structure
@@ -202,5 +207,6 @@ Controllable via environment variables:
 - **Applying code fixes**: `src/ts-morph/apply-code-fix/`
 - **Safe symbol deletion**: `src/ts-morph/safe-delete-symbol/`
 - **Structural pattern search/rewrite**: `src/ast-grep/pattern-tools.ts`
+- **Project-scoped text search**: `src/text/search-text.ts`
 
 For detailed specifications of each feature, see README.md.

@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -240,6 +241,19 @@ describe("CLI", () => {
 			expect(code).toBe(0);
 			expect(out.text).toContain("agent guide");
 			expect(out.text).toContain("rename_symbol");
+		});
+
+		it("doctor reports a healthy install and exits 0", async () => {
+			const out = createCapture();
+			const code = await runCli(["doctor"], out, createCapture(), {
+				cwd: tempDir,
+			});
+			expect(code).toBe(0);
+			expect(out.text).toContain("ts-surgeon version:");
+			expect(out.text).toContain(`Node: ${process.version}`);
+			expect(out.text).toMatch(/Registered tools: \d+/);
+			expect(out.text).toContain(`Resolved tsconfig: ${tsconfigPath}`);
+			expect(out.text).toContain("ast-grep native binary: ok");
 		});
 
 		it("accepts dashed tool names and legacy *_by_tsmorph aliases", async () => {
@@ -490,6 +504,31 @@ describe("CLI", () => {
 			expect(results[1].status).toBe("success");
 		});
 
+		it("call search_text reports grep-style matches from the project corpus", async () => {
+			const filePath = path.join(srcDir, "todo.ts");
+			fs.writeFileSync(filePath, "// TODO: refactor\nconst x = 1;\n");
+			const out = createCapture();
+			const err = createCapture();
+
+			const code = await runCli(
+				[
+					"call",
+					"search_text",
+					"--tsconfig-path",
+					tsconfigPath,
+					"--query",
+					"TODO",
+				],
+				out,
+				err,
+			);
+
+			expect(err.text).toBe("");
+			expect(code).toBe(0);
+			expect(out.text).toContain(`${filePath}:1:4  // TODO: refactor`);
+			expect(out.text).toContain("Text matches: 1 total");
+		});
+
 		it("call --stdin-files reads a file list, skipping non-source and missing paths", async () => {
 			const usedPath = path.join(srcDir, "stdin-used.ts");
 			const appPath = path.join(srcDir, "stdin-app.ts");
@@ -670,6 +709,134 @@ describe("CLI", () => {
 
 			expect(outcome.isError).toBe(true);
 			expect(outcome.text).toContain("No declaration named 'missing'");
+		});
+	});
+
+	describe("call --git-changed / --git-staged", () => {
+		function git(...args: string[]): void {
+			const result = spawnSync("git", args, {
+				cwd: tempDir,
+				encoding: "utf-8",
+			});
+			expect(result.status, `git ${args.join(" ")}: ${result.stderr}`).toBe(0);
+		}
+
+		function setUpRepo(): { mPath: string; appPath: string } {
+			const mPath = path.join(srcDir, "m.ts");
+			const appPath = path.join(srcDir, "app.ts");
+			fs.writeFileSync(
+				mPath,
+				"export const used = 1;\nexport const dead = 2;\n",
+			);
+			fs.writeFileSync(
+				appPath,
+				'import { used } from "./m";\nconsole.log(used);\n',
+			);
+			fs.writeFileSync(path.join(tempDir, "notes.md"), "initial\n");
+			git("init", "-q");
+			git("config", "user.email", "test@example.com");
+			git("config", "user.name", "test");
+			git("add", ".");
+			git("commit", "-qm", "init");
+			return { mPath, appPath };
+		}
+
+		it("--git-changed scopes filePaths to the unstaged TS/JS changes", async () => {
+			const { mPath, appPath } = setUpRepo();
+			// app.ts gains an unused import; a non-source file changes too
+			fs.writeFileSync(
+				appPath,
+				'import { used, dead } from "./m";\nconsole.log(used);\n',
+			);
+			fs.writeFileSync(path.join(tempDir, "notes.md"), "changed\n");
+
+			const out = createCapture();
+			const err = createCapture();
+			const code = await runCli(
+				[
+					"call",
+					"organize_imports",
+					"--git-changed",
+					"--tsconfig-path",
+					tsconfigPath,
+				],
+				out,
+				err,
+				{ cwd: tempDir },
+			);
+			expect(err.text).toBe("");
+			expect(code).toBe(0);
+
+			expect(fs.readFileSync(appPath, "utf-8")).not.toContain("dead");
+			// the unchanged file was not processed
+			expect(fs.readFileSync(mPath, "utf-8")).toContain("dead");
+		});
+
+		it("--git-staged uses the staged diff", async () => {
+			const { appPath } = setUpRepo();
+			fs.writeFileSync(
+				appPath,
+				'import { used, dead } from "./m";\nconsole.log(used);\n',
+			);
+			git("add", "src/app.ts");
+
+			const out = createCapture();
+			const err = createCapture();
+			const code = await runCli(
+				[
+					"call",
+					"organize_imports",
+					"--git-staged",
+					"--tsconfig-path",
+					tsconfigPath,
+				],
+				out,
+				err,
+				{ cwd: tempDir },
+			);
+			expect(err.text).toBe("");
+			expect(code).toBe(0);
+
+			expect(fs.readFileSync(appPath, "utf-8")).not.toContain("dead");
+		});
+
+		it("exits 2 when the diff lists no TS/JS source files", async () => {
+			setUpRepo();
+			fs.writeFileSync(path.join(tempDir, "notes.md"), "changed\n");
+
+			const err = createCapture();
+			const code = await runCli(
+				["call", "organize_imports", "--git-changed"],
+				createCapture(),
+				err,
+				{ cwd: tempDir },
+			);
+			expect(code).toBe(2);
+			expect(err.text).toContain("no existing TS/JS source files");
+		});
+
+		it("exits 2 outside a git repository", async () => {
+			// tempDir has no git repo unless setUpRepo() ran
+			const err = createCapture();
+			const code = await runCli(
+				["call", "organize_imports", "--git-changed"],
+				createCapture(),
+				err,
+				{ cwd: tempDir },
+			);
+			expect(code).toBe(2);
+			expect(err.text).toContain("not inside a git repository");
+		});
+
+		it("exits 2 when combined with another file-list flag", async () => {
+			const err = createCapture();
+			const code = await runCli(
+				["call", "organize_imports", "--git-changed", "--git-staged"],
+				createCapture(),
+				err,
+			);
+			expect(code).toBe(2);
+			expect(err.text).toContain("at most one of");
 		});
 	});
 

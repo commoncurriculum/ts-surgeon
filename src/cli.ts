@@ -8,7 +8,8 @@ import {
 	type StdinReader,
 } from "./cli/params";
 import { installClaudeHook, installOpencodeHook, runHook } from "./cli/hook";
-import { prepareParams } from "./cli/paths";
+import { findNearestTsconfig, prepareParams } from "./cli/paths";
+import { probeAstGrep } from "./ast-grep/pattern-tools";
 import { AGENT_SNIPPET, GUIDE, INIT_MARKER } from "./guide";
 import {
 	disableProjectCache,
@@ -37,6 +38,10 @@ Usage:
   ts-surgeon call <tool> [params]         Run a tool once and print its result
   ts-surgeon batch [options]              Run several tools in one process
   ts-surgeon guide                        Print the full agent guide
+  ts-surgeon doctor                       Check the install: version, Node,
+                                          resolved tsconfig, tool count, and
+                                          ast-grep native binary status
+                                          (exit 1 when something is broken)
   ts-surgeon init [--file <path>]         Add the agent snippet to AGENTS.md (or <path>);
                                           --claude-hook installs the guard into
                                           .claude/settings.json (Claude Code);
@@ -45,8 +50,9 @@ Usage:
   ts-surgeon hook [--strict]              PreToolUse guard for agent harnesses: blocks
                                           sed/perl -i on TS/JS sources (exit 2) and
                                           tells the agent to use ts-surgeon instead;
-                                          --strict also redirects recursive identifier
-                                          searches (grep -r / rg) to find_references
+                                          --strict also redirects recursive searches
+                                          (grep -r / rg) to find_references /
+                                          search_pattern / search_text
   ts-surgeon --help | --version
 
 Params for call (flags win over JSON; both can be combined):
@@ -61,6 +67,10 @@ Params for call (flags win over JSON; both can be combined):
                          filePaths (non-source and missing paths are skipped),
                          e.g.: git diff --name-only | ts-surgeon call
                          organize_imports --stdin-files
+  --git-changed          Set filePaths to the TS/JS files listed by
+                         git diff --name-only (unstaged changes); no pipe
+                         needed: ts-surgeon call organize_imports --git-changed
+  --git-staged           Same, but for staged changes (git diff --staged)
 
 Conveniences:
   - Relative paths are resolved against the current working directory.
@@ -207,18 +217,45 @@ function runInit(rest: string[], out: Writer): number {
 	return 0;
 }
 
+/**
+ * `ts-surgeon doctor` — prints the environment facts a bug report needs and
+ * exits 1 when part of the install is broken (currently: the ast-grep native
+ * binary, without which search_pattern / rewrite_pattern cannot run).
+ */
+async function runDoctor(out: Writer, cwd: string): Promise<number> {
+	const registry = createToolRegistry();
+	const tsconfig = findNearestTsconfig(cwd);
+	const astGrep = await probeAstGrep();
+	const lines = [
+		`ts-surgeon version: ${VERSION}`,
+		`Node: ${process.version} (${process.platform}-${process.arch})`,
+		`Registered tools: ${registry.list().length}`,
+		`Resolved tsconfig: ${tsconfig ?? "(none found above the current directory)"}`,
+		`ast-grep native binary: ${astGrep.ok ? "ok" : `FAILED — ${astGrep.error}`}`,
+	];
+	out.write(`${lines.join("\n")}\n`);
+	if (!astGrep.ok) {
+		out.write(
+			"\nsearch_pattern / rewrite_pattern are unavailable; the other tools work.\n",
+		);
+		return 1;
+	}
+	return 0;
+}
+
 /** Runs one CLI command and returns the process exit code. */
 export async function runCli(
 	argv: string[],
 	out: Writer = process.stdout,
 	err: Writer = process.stderr,
-	opts: { readStdin?: StdinReader } = {},
+	opts: { readStdin?: StdinReader; cwd?: string } = {},
 ): Promise<number> {
 	const [command, ...rawRest] = argv;
 	// --json is a global output-mode flag, valid in any position of any command.
 	const wantsJson = rawRest.includes("--json");
 	const rest = rawRest.filter((arg) => arg !== "--json");
 	const readStdin = opts.readStdin ?? readStdinDefault;
+	const cwd = opts.cwd ?? process.cwd();
 
 	try {
 		switch (command) {
@@ -237,6 +274,8 @@ export async function runCli(
 			case "guide":
 				out.write(GUIDE);
 				return 0;
+			case "doctor":
+				return runDoctor(out, cwd);
 			case "init":
 				return runInit(rest, out);
 			case "hook":
@@ -275,10 +314,11 @@ export async function runCli(
 					rest.slice(1),
 					readStdin,
 					tool.schemaShape,
+					cwd,
 				);
 				const outcome = await callToolOnce(
 					tool.name,
-					prepareParams(params),
+					prepareParams(params, cwd),
 					registry,
 				);
 				out.write(
@@ -308,7 +348,7 @@ export async function runCli(
 						const name = registry.resolveName(item.tool);
 						const outcome = await callToolOnce(
 							name,
-							prepareParams(item.params ?? {}),
+							prepareParams(item.params ?? {}, cwd),
 							registry,
 						);
 						results.push(formatOutcomeJson(name, outcome));
