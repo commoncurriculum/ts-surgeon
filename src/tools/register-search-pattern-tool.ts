@@ -49,9 +49,9 @@ Grep-style \`file:line:col\` list plus the matched text; data carries the struct
 			runTool(
 				"search_pattern",
 				{ pattern: args.pattern, fileCount: args.filePaths?.length },
-				() => {
+				async () => {
 					const project = initializeProject(args.tsconfigPath);
-					const result = searchPattern(project, {
+					const result = await searchPattern(project, {
 						pattern: args.pattern,
 						filePaths: args.filePaths,
 						maxResults: args.maxResults,

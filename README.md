@@ -40,8 +40,11 @@ npx -y @commoncurriculum/ts-surgeon call rename_symbol --params '{
 - `--json` prints a machine-readable result: `{ tool, status, data, message }` (e.g. `data.changedFiles`).
 - `batch` runs several tools in one process: pass a JSON array of `{ "tool": "...", "params": { ... } }` via `--params`, `--params-file`, or stdin. Output is a JSON array; it stops at the first failure unless `--continue-on-error` is set. Operations **share one parsed project per tsconfig** (one AST parse for N operations; later ops see earlier results) — pass `--fresh-project` to re-parse from disk per operation.
 - `call` also accepts `--params-file <path>` or JSON piped via stdin (handy for large payloads); flags win when combined with JSON.
+- `--git-changed` / `--git-staged` set `filePaths` to the TS/JS files git reports as changed (unstaged / staged) — `npx -y @commoncurriculum/ts-surgeon call organize_imports --git-changed` — no pipe needed; a usage error outside a git repository or when nothing usable changed.
 - `--stdin-files` turns a piped file list into `filePaths` — `git diff --name-only | npx -y @commoncurriculum/ts-surgeon call organize_imports --stdin-files` (non-source and missing paths are skipped; refuses to run if nothing usable arrives).
 - Tool names accept dashes (`rename-symbol`) and the legacy `*_by_tsmorph` aliases.
+- `doctor` prints install diagnostics (version, Node, resolved tsconfig, tool count, ast-grep native binary status) and exits non-zero on a broken install — include its output in bug reports.
+- **Solution-style tsconfigs** (a `"references"` array): passing one directly warns on stderr — it usually contains no source files itself, so tools would see a partial project. Pass a leaf tsconfig, or add `--all-projects` to run a **read-only** tool (`search_pattern`, `find_references`, `find_unused_exports`, `get_diagnostics`) once per referenced project with merged output (`--json` data gains `byProject`; exit 1 if any project's run failed). Mutating tools are rejected: a file shared between referenced projects would be edited once per project.
 - Exit codes: `0` success, `1` the tool reported an error, `2` usage error (including params that fail the tool's schema).
 - Tool output goes to stdout; logs go to stderr (`LOG_LEVEL` defaults to `warn`).
 
@@ -144,6 +147,7 @@ Each tool uses `ts-morph` to parse the AST and applies changes while preserving 
 | [`safe_delete_symbol`](#safe_delete_symbol) | Delete a symbol only when it has no references, else report blockers |
 | [`search_pattern`](#search_pattern) | Find every occurrence of a structural code pattern (ast-grep) |
 | [`rewrite_pattern`](#rewrite_pattern) | Rewrite a code pattern project-wide — the safe sed replacement (ast-grep) |
+| [`rewrite_where`](#rewrite_where) | Rewrite a code pattern only where a capture's checker type matches (ast-grep + ts-morph) |
 
 ### `rename_symbol`
 
@@ -305,7 +309,21 @@ Rewrites every occurrence of a structural pattern using a template — the safe 
 
 - **Use case**: Syntactic project-wide codemods: `console.log($$$ARGS)` → `logger.debug($$$ARGS)`, `assert.equal($A, $B)` → `expect($A).toBe($B)`.
 - **Required information**: `pattern` and `rewrite` (sharing `$NAME` / `$$$NAME` captures). Supports `dryRun`.
-- **Note**: The rewrite is textual within each match — imports are not added/removed; follow with `add_missing_imports` / `organize_imports`.
+- **`fixImports`**: When set, missing imports are added on the changed files after the rewrite (within the same project pass). Only imports the language service can resolve are added — the target module must already be in the project graph — and nothing is removed or reordered; follow with `organize_imports` for cleanup.
+- **Note**: Apart from `fixImports`, the rewrite is textual within each match. Need the rewrite to apply only where a capture has a specific *type*? Use `rewrite_where`.
+
+### `rewrite_where`
+
+Rewrites a structural pattern **only where a captured node's checker type satisfies a predicate** — the type-aware codemod plain pattern tools can't do. Example: rewrite `$X.close()` → `shutdown($X)` only where `$X` is a `DbConnection`, leaving `FileHandle.close()` call sites untouched.
+
+- **Use case**: Any `rewrite_pattern` job where the pattern over-matches syntactically and the discriminator is the type of a capture (two APIs sharing a method name; migrating calls on one class but not its look-alikes).
+- **Required information**: `pattern`, `rewrite`, and `where: { capture, type, mode? }`. `capture` names the metavariable to test without the `$` (pattern `$X.close()` → capture `"X"`).
+- **Predicate modes** (`where.mode`):
+  - `"is"` (default): the capture's type is exactly the named type, matched by symbol or alias name (not `type.getText()` string equality, which renders import-qualified names). A union containing the type does **not** match.
+  - `"extends"`: the type is the named type or inherits from it (walks the base-type chain).
+  - `"assignable"`: TypeScript assignability — **structural**, so a same-shape type matches. Requires `where.typeDeclarationPath` (the file declaring the target type), because a bare name is ambiguous across a project.
+- **Result**: Reports `matchCount` (syntactic matches) vs `rewrittenCount` (matches that passed the predicate), so a `dryRun` shows exactly how much the predicate filtered.
+- **Note**: Supports `dryRun` and `fixImports` like `rewrite_pattern`. Offsets between the ast-grep match and the type checker are exact (both parse the same in-memory text; positions are UTF-16 indices, verified against non-ASCII sources).
 
 ## Logging Configuration
 

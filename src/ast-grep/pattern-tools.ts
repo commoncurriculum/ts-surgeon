@@ -1,5 +1,6 @@
-import { Lang, parse, type SgNode } from "@ast-grep/napi";
+import type { Lang, SgNode } from "@ast-grep/napi";
 import type { Project, SourceFile } from "ts-morph";
+import { addMissingImportsOnProject } from "../ts-morph/add-missing-imports/add-missing-imports";
 import {
 	getChangedFiles,
 	saveProjectChanges,
@@ -13,27 +14,85 @@ import {
  * agents would otherwise hand-roll with sed.
  */
 
-const LANG_BY_EXT: Record<string, Lang> = {
-	".ts": Lang.TypeScript,
-	".mts": Lang.TypeScript,
-	".cts": Lang.TypeScript,
-	".tsx": Lang.Tsx,
-	".jsx": Lang.Tsx,
-	".js": Lang.JavaScript,
-	".mjs": Lang.JavaScript,
-	".cjs": Lang.JavaScript,
-};
+type AstGrepModule = typeof import("@ast-grep/napi");
 
-function languageFor(filePath: string): Lang | undefined {
+export interface AstGrep {
+	parse: AstGrepModule["parse"];
+	langByExt: Record<string, Lang>;
+}
+
+let astGrep: AstGrep | undefined;
+
+/**
+ * Loads @ast-grep/napi on first use rather than at import time. The module is
+ * a native (napi) binary: on a platform without a prebuilt build, a top-level
+ * import would crash every command (list, guide, hook) through the registry's
+ * import chain. Lazy loading degrades that to "the pattern tools error;
+ * everything else works".
+ */
+export async function loadAstGrep(): Promise<AstGrep> {
+	if (astGrep) {
+		return astGrep;
+	}
+	let mod: AstGrepModule;
+	try {
+		mod = await import("@ast-grep/napi");
+	} catch (error) {
+		throw new Error(
+			`The @ast-grep/napi native binary failed to load on this platform (${process.platform}-${process.arch}): ${
+				error instanceof Error ? error.message : String(error)
+			}. search_pattern and rewrite_pattern are unavailable here; every other ts-surgeon tool still works.`,
+		);
+	}
+	const { Lang } = mod;
+	astGrep = {
+		parse: mod.parse,
+		langByExt: {
+			".ts": Lang.TypeScript,
+			".mts": Lang.TypeScript,
+			".cts": Lang.TypeScript,
+			".tsx": Lang.Tsx,
+			".jsx": Lang.Tsx,
+			".js": Lang.JavaScript,
+			".mjs": Lang.JavaScript,
+			".cjs": Lang.JavaScript,
+		},
+	};
+	return astGrep;
+}
+
+/**
+ * Reports whether the @ast-grep/napi native binary loads on this platform
+ * (used by `ts-surgeon doctor`). Never throws.
+ */
+export async function probeAstGrep(): Promise<
+	{ ok: true } | { ok: false; error: string }
+> {
+	try {
+		await loadAstGrep();
+		return { ok: true };
+	} catch (error) {
+		return {
+			ok: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+export function languageFor(ast: AstGrep, filePath: string): Lang | undefined {
 	const ext = filePath.slice(filePath.lastIndexOf("."));
-	return LANG_BY_EXT[ext.toLowerCase()];
+	return ast.langByExt[ext.toLowerCase()];
 }
 
 /** The project files a pattern operation runs over. */
-function targetFiles(project: Project, filePaths?: string[]): SourceFile[] {
+export function targetFiles(
+	ast: AstGrep,
+	project: Project,
+	filePaths?: string[],
+): SourceFile[] {
 	const files = project
 		.getSourceFiles()
-		.filter((sf) => languageFor(sf.getFilePath()) !== undefined);
+		.filter((sf) => languageFor(ast, sf.getFilePath()) !== undefined);
 	if (!filePaths || filePaths.length === 0) {
 		return files;
 	}
@@ -41,14 +100,18 @@ function targetFiles(project: Project, filePaths?: string[]): SourceFile[] {
 	return files.filter((sf) => wanted.has(sf.getFilePath()));
 }
 
-function findMatches(sourceFile: SourceFile, pattern: string): SgNode[] {
+function findMatches(
+	ast: AstGrep,
+	sourceFile: SourceFile,
+	pattern: string,
+): SgNode[] {
 	const filePath = sourceFile.getFilePath();
-	const lang = languageFor(filePath);
+	const lang = languageFor(ast, filePath);
 	if (lang === undefined) {
 		return [];
 	}
 	try {
-		return parse(lang, sourceFile.getFullText()).root().findAll(pattern);
+		return ast.parse(lang, sourceFile.getFullText()).root().findAll(pattern);
 	} catch {
 		// A file tree-sitter cannot parse is skipped, not fatal.
 		return [];
@@ -70,19 +133,20 @@ export interface SearchPatternResult {
 }
 
 /** Finds every occurrence of an ast-grep pattern across the project files. */
-export function searchPattern(
+export async function searchPattern(
 	project: Project,
 	{
 		pattern,
 		filePaths,
 		maxResults = 200,
 	}: { pattern: string; filePaths?: string[]; maxResults?: number },
-): SearchPatternResult {
-	const files = targetFiles(project, filePaths);
+): Promise<SearchPatternResult> {
+	const ast = await loadAstGrep();
+	const files = targetFiles(ast, project, filePaths);
 	const matches: PatternMatch[] = [];
 	let totalCount = 0;
 	for (const sourceFile of files) {
-		for (const node of findMatches(sourceFile, pattern)) {
+		for (const node of findMatches(ast, sourceFile, pattern)) {
 			totalCount++;
 			if (matches.length < maxResults) {
 				const { start } = node.range();
@@ -108,7 +172,11 @@ export function searchPattern(
  * template. Multi-matches are reconstructed from the original source span so
  * separators survive verbatim.
  */
-function substitute(template: string, node: SgNode, source: string): string {
+export function substitute(
+	template: string,
+	node: SgNode,
+	source: string,
+): string {
 	return template
 		.replace(/\$\$\$([A-Z_][A-Z0-9_]*)/g, (whole, name: string) => {
 			const nodes = node.getMultipleMatches(name);
@@ -125,61 +193,119 @@ function substitute(template: string, node: SgNode, source: string): string {
 		});
 }
 
-export interface RewritePatternResult {
+export interface PatternRewriteOptions {
+	pattern: string;
+	rewrite: string;
+	filePaths?: string[];
+	dryRun?: boolean;
+	fixImports?: boolean;
+	/**
+	 * Per-match filter (e.g. rewrite_where's type predicate). Omitted =
+	 * rewrite every match. Runs against the original text, before any edit.
+	 */
+	shouldRewrite?: (sourceFile: SourceFile, match: SgNode) => boolean;
+}
+
+export interface PatternRewriteResult {
 	changedFiles: string[];
+	/** Every syntactic pattern match, filtered or not. */
 	matchCount: number;
+	/** Matches that passed shouldRewrite (== matchCount without a filter). */
+	rewrittenCount: number;
+	/** Files the fixImports pass ran over (the rewrite-changed set). */
+	importsFixedIn?: string[];
 }
 
 /**
- * Rewrites every occurrence of an ast-grep pattern using a template with
- * $VAR / $$$VARS metavariables. Writes through the ts-morph project so the
- * in-memory AST stays in sync with disk (batch cache safe).
+ * The rewrite engine shared by rewrite_pattern and rewrite_where: find every
+ * ast-grep match, keep the ones shouldRewrite accepts, substitute the
+ * template, and commit the edits once per file. Writes through the ts-morph
+ * project so the in-memory AST stays in sync with disk (batch cache safe),
+ * optionally adding missing imports on the changed files before the single
+ * save (only imports the language service can resolve — the target module
+ * must already be in the project graph).
  */
-export async function rewritePattern(
+export async function applyPatternRewrite(
 	project: Project,
 	{
 		pattern,
 		rewrite,
 		filePaths,
 		dryRun = false,
-	}: {
-		pattern: string;
-		rewrite: string;
-		filePaths?: string[];
-		dryRun?: boolean;
-	},
-): Promise<RewritePatternResult> {
-	const files = targetFiles(project, filePaths);
+		fixImports = false,
+		shouldRewrite,
+	}: PatternRewriteOptions,
+): Promise<PatternRewriteResult> {
+	const ast = await loadAstGrep();
+	const files = targetFiles(ast, project, filePaths);
 	let matchCount = 0;
+	let rewrittenCount = 0;
 	for (const sourceFile of files) {
 		const filePath = sourceFile.getFilePath();
-		const lang = languageFor(filePath);
+		const lang = languageFor(ast, filePath);
 		if (lang === undefined) {
 			continue;
 		}
 		const source = sourceFile.getFullText();
-		let root: ReturnType<typeof parse>;
+		let root: ReturnType<AstGrepModule["parse"]>;
 		try {
-			root = parse(lang, source);
+			root = ast.parse(lang, source);
 		} catch {
 			continue;
 		}
-		const nodes = root.root().findAll(pattern);
-		if (nodes.length === 0) {
+		const matches = root.root().findAll(pattern);
+		if (matches.length === 0) {
 			continue;
 		}
-		matchCount += nodes.length;
-		const edits = nodes.map((node) =>
-			node.replace(substitute(rewrite, node, source)),
+		matchCount += matches.length;
+		const accepted = shouldRewrite
+			? matches.filter((match) => shouldRewrite(sourceFile, match))
+			: matches;
+		if (accepted.length === 0) {
+			continue;
+		}
+		rewrittenCount += accepted.length;
+		const edits = accepted.map((match) =>
+			match.replace(substitute(rewrite, match, source)),
 		);
 		const rewritten = root.root().commitEdits(edits);
 		if (rewritten !== source) {
 			sourceFile.replaceWithText(rewritten);
 		}
 	}
+
+	const rewriteChanged = getChangedFiles(project).map((sf) => sf.getFilePath());
+	let importsFixedIn: string[] | undefined;
+	if (fixImports && rewriteChanged.length > 0) {
+		// dryRun:true here means "don't save yet" — the import mutations stay in
+		// memory and are saved (or discarded) together with the rewrite below.
+		await addMissingImportsOnProject(project, {
+			filePaths: rewriteChanged,
+			dryRun: true,
+		});
+		importsFixedIn = rewriteChanged;
+	}
 	const changedFiles = getChangedFiles(project).map((sf) => sf.getFilePath());
 	if (!dryRun) {
 		await saveProjectChanges(project);
 	}
-	return { changedFiles, matchCount };
+	return { changedFiles, matchCount, rewrittenCount, importsFixedIn };
+}
+
+export type RewritePatternResult = Omit<PatternRewriteResult, "rewrittenCount">;
+
+/**
+ * Rewrites every occurrence of an ast-grep pattern using a template with
+ * $VAR / $$$VARS metavariables (rewrite_where is the same engine plus a
+ * type predicate on a capture).
+ */
+export async function rewritePattern(
+	project: Project,
+	options: Omit<PatternRewriteOptions, "shouldRewrite">,
+): Promise<RewritePatternResult> {
+	const { rewrittenCount, ...result } = await applyPatternRewrite(
+		project,
+		options,
+	);
+	return result;
 }

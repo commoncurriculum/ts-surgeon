@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
 import { z, type ZodRawShape, type ZodTypeAny } from "zod";
@@ -35,17 +36,22 @@ function kebabToCamel(key: string): string {
 
 type FlagType = "string" | "number" | "boolean" | "json";
 
-/** Strips optional/default/nullable wrappers off a Zod schema. */
+/** Strips optional/default/nullable/effects (refine) wrappers off a Zod schema. */
 function unwrapSchema(schema: ZodTypeAny | undefined): ZodTypeAny | undefined {
 	let current = schema;
-	while (
-		current instanceof z.ZodOptional ||
-		current instanceof z.ZodDefault ||
-		current instanceof z.ZodNullable
-	) {
-		current = (current._def as { innerType: ZodTypeAny }).innerType;
+	for (;;) {
+		if (
+			current instanceof z.ZodOptional ||
+			current instanceof z.ZodDefault ||
+			current instanceof z.ZodNullable
+		) {
+			current = (current._def as { innerType: ZodTypeAny }).innerType;
+		} else if (current instanceof z.ZodEffects) {
+			current = current.innerType();
+		} else {
+			return current;
+		}
 	}
-	return current;
 }
 
 /**
@@ -153,18 +159,52 @@ export function parseStdinFileList(text: string, cwd: string): string[] {
 }
 
 /**
+ * Runs `git diff --name-only [--staged]` and returns the listed paths,
+ * resolved and filtered like a --stdin-files list. Sugar over the
+ * `git diff --name-only | ts-surgeon call <tool> --stdin-files` pipe.
+ */
+function gitDiffFileList(staged: boolean, cwd: string): string[] {
+	const flag = staged ? "--git-staged" : "--git-changed";
+	const run = (args: string[]) =>
+		spawnSync("git", args, { cwd, encoding: "utf-8" });
+	// Also the "are we in a git repo" check; diff paths are repo-root-relative.
+	const top = run(["rev-parse", "--show-toplevel"]);
+	if (top.error || top.status !== 0) {
+		const detail = top.error?.message ?? top.stderr?.trim();
+		throw new CliUsageError(
+			`${flag}: not inside a git repository${detail ? ` (${detail})` : ""}.`,
+		);
+	}
+	const diffArgs = ["diff", "--name-only"];
+	if (staged) {
+		diffArgs.push("--staged");
+	}
+	const diff = run(diffArgs);
+	if (diff.error || diff.status !== 0) {
+		const detail = diff.error?.message ?? diff.stderr?.trim();
+		throw new CliUsageError(
+			`${flag}: git diff failed${detail ? `: ${detail}` : ""}.`,
+		);
+	}
+	return parseStdinFileList(diff.stdout, top.stdout.trim());
+}
+
+/**
  * Parses `call` arguments: --params/--params-file/stdin JSON as the base,
  * with individual --field flags (converted per the tool's schema) merged on
- * top, and --stdin-files turned into filePaths.
+ * top, and --stdin-files / --git-changed / --git-staged turned into filePaths.
  */
 export function readCallParams(
 	rest: string[],
 	readStdin: StdinReader,
 	schemaShape: ZodRawShape,
+	cwd: string = process.cwd(),
 ): Record<string, unknown> {
 	let paramsJson: string | undefined;
 	let paramsFile: string | undefined;
 	let stdinFiles = false;
+	let gitChanged = false;
+	let gitStaged = false;
 	const flagParams: Record<string, unknown> = {};
 	let sawFieldFlags = false;
 
@@ -198,6 +238,12 @@ export function readCallParams(
 			case "stdin-files":
 				stdinFiles = true;
 				break;
+			case "git-changed":
+				gitChanged = true;
+				break;
+			case "git-staged":
+				gitStaged = true;
+				break;
 			default: {
 				sawFieldFlags = true;
 				const segments = flagName.split(".").map(kebabToCamel);
@@ -212,14 +258,31 @@ export function readCallParams(
 		}
 	}
 
-	// When --stdin-files is set, stdin carries the file list, not params JSON.
+	const fileListFlags = [
+		stdinFiles && "--stdin-files",
+		gitChanged && "--git-changed",
+		gitStaged && "--git-staged",
+	].filter((flag): flag is string => typeof flag === "string");
+	if (fileListFlags.length > 1) {
+		throw new CliUsageError(
+			`Pass at most one of --stdin-files, --git-changed, --git-staged (got ${fileListFlags.join(" and ")}).`,
+		);
+	}
+
+	// When --stdin-files is set, stdin carries the file list, not params JSON;
+	// with a git flag the file list needs no stdin at all (use --params/--params-file
+	// for extra parameters).
 	const jsonSource = readJsonSource(
 		paramsJson,
 		paramsFile,
 		readStdin,
-		!stdinFiles && !sawFieldFlags,
+		fileListFlags.length === 0 && !sawFieldFlags,
 	);
-	if (jsonSource === undefined && !sawFieldFlags && !stdinFiles) {
+	if (
+		jsonSource === undefined &&
+		!sawFieldFlags &&
+		fileListFlags.length === 0
+	) {
 		throw new CliUsageError(
 			"No parameters given. Pass --<field> flags, --params '<json>', --params-file <path>, or pipe JSON via stdin.",
 		);
@@ -233,10 +296,20 @@ export function readCallParams(
 
 	const params = { ...base, ...flagParams };
 	if (stdinFiles) {
-		const files = parseStdinFileList(readStdin(), process.cwd());
+		const files = parseStdinFileList(readStdin(), cwd);
 		if (files.length === 0) {
 			throw new CliUsageError(
 				"--stdin-files: no existing TS/JS source files found on stdin. Refusing to run without filePaths (that would process the whole project).",
+			);
+		}
+		params.filePaths = files;
+	} else if (gitChanged || gitStaged) {
+		const files = gitDiffFileList(gitStaged, cwd);
+		if (files.length === 0) {
+			throw new CliUsageError(
+				`${gitStaged ? "--git-staged" : "--git-changed"}: git diff --name-only${
+					gitStaged ? " --staged" : ""
+				} lists no existing TS/JS source files. Refusing to run without filePaths (that would process the whole project).`,
 			);
 		}
 		params.filePaths = files;

@@ -242,6 +242,19 @@ describe("CLI", () => {
 			expect(out.text).toContain("rename_symbol");
 		});
 
+		it("doctor reports a healthy install and exits 0", async () => {
+			const out = createCapture();
+			const code = await runCli(["doctor"], out, createCapture(), {
+				cwd: tempDir,
+			});
+			expect(code).toBe(0);
+			expect(out.text).toContain("ts-surgeon version:");
+			expect(out.text).toContain(`Node: ${process.version}`);
+			expect(out.text).toMatch(/Registered tools: \d+/);
+			expect(out.text).toContain(`Resolved tsconfig: ${tsconfigPath}`);
+			expect(out.text).toContain("ast-grep native binary: ok");
+		});
+
 		it("accepts dashed tool names and legacy *_by_tsmorph aliases", async () => {
 			const goodPath = path.join(srcDir, "good.ts");
 			fs.writeFileSync(goodPath, "export const y: number = 1;\n");
@@ -488,6 +501,77 @@ describe("CLI", () => {
 			expect(fs.readFileSync(filePath, "utf-8")).toContain("keepMe");
 			const results = JSON.parse(out.text);
 			expect(results[1].status).toBe("success");
+		});
+
+		it("call rewrite_where accepts the nested where predicate via dot-path flags", async () => {
+			const filePath = path.join(srcDir, "conns.ts");
+			fs.writeFileSync(
+				filePath,
+				[
+					"class DbConnection { close(): void {} }",
+					"class FileHandle { close(): void {} }",
+					"const db = new DbConnection();",
+					"const fh = new FileHandle();",
+					"db.close();",
+					"fh.close();",
+					"",
+				].join("\n"),
+			);
+			const out = createCapture();
+			const err = createCapture();
+
+			const code = await runCli(
+				[
+					"call",
+					"rewrite_where",
+					"--tsconfig-path",
+					tsconfigPath,
+					"--pattern",
+					"$X.close()",
+					"--rewrite",
+					"shutdown($X)",
+					"--where.capture",
+					"X",
+					"--where.type",
+					"DbConnection",
+				],
+				out,
+				err,
+			);
+
+			expect(err.text).toBe("");
+			expect(code).toBe(0);
+			expect(out.text).toContain("1 of 2 pattern match(es)");
+			const updated = fs.readFileSync(filePath, "utf-8");
+			expect(updated).toContain("shutdown(db)");
+			expect(updated).toContain("fh.close()");
+		});
+
+		it("call rewrite_where rejects mode 'assignable' without typeDeclarationPath at the schema (exit 2)", async () => {
+			const err = createCapture();
+			const code = await runCli(
+				[
+					"call",
+					"rewrite_where",
+					"--tsconfig-path",
+					tsconfigPath,
+					"--pattern",
+					"$X.close()",
+					"--rewrite",
+					"shutdown($X)",
+					"--where.capture",
+					"X",
+					"--where.type",
+					"DbConnection",
+					"--where.mode",
+					"assignable",
+				],
+				createCapture(),
+				err,
+			);
+			expect(code).toBe(2);
+			expect(err.text).toContain("Invalid parameters for 'rewrite_where'");
+			expect(err.text).toContain("typeDeclarationPath");
 		});
 
 		it("call --stdin-files reads a file list, skipping non-source and missing paths", async () => {

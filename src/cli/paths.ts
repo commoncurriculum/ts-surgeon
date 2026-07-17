@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import * as path from "node:path";
+import * as ts from "typescript";
 
 /**
  * Keys whose string values are filesystem paths to resolve against cwd.
@@ -38,6 +39,35 @@ export function resolvePathParams(value: unknown, cwd: string): unknown {
 		}
 	}
 	return out;
+}
+
+/**
+ * Referenced tsconfig paths of a solution-style tsconfig (one with a
+ * "references" array), resolved to concrete tsconfig.json files. Empty for
+ * ordinary configs, unreadable files, and configs without references.
+ * Uses the TypeScript reader because tsconfig JSON allows comments.
+ */
+export function solutionReferences(tsconfigPath: string): string[] {
+	try {
+		const { config } = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
+		const references: unknown = config?.references;
+		if (!Array.isArray(references)) {
+			return [];
+		}
+		return references
+			.map((ref) =>
+				typeof (ref as { path?: unknown })?.path === "string"
+					? path.resolve(
+							path.dirname(tsconfigPath),
+							(ref as { path: string }).path,
+						)
+					: undefined,
+			)
+			.filter((p): p is string => p !== undefined)
+			.map((p) => (p.endsWith(".json") ? p : path.join(p, "tsconfig.json")));
+	} catch {
+		return [];
+	}
 }
 
 /** Walks up from `startDir` to find the nearest tsconfig.json. */

@@ -58,6 +58,12 @@ Conveniences:
 - Every mutating tool accepts \`--dry-run\` to preview the changed-file list.
 - Tool names accept dashes (\`rename-symbol\`) and the legacy
   \`*_by_tsmorph\` aliases.
+- \`--git-changed\` / \`--git-staged\` set \`filePaths\` to the TS/JS files
+  git reports as changed (unstaged / staged):
+  \`ts-surgeon call organize_imports --git-changed\`.
+- Monorepos: pass the package's own tsconfig, not the solution root (a
+  \`references\`-only config holds no source files — the CLI warns). To run a
+  read-only tool across every referenced project, add \`--all-projects\`.
 - \`--stdin-files\` turns a piped file list into \`filePaths\`:
   \`git diff --name-only | ts-surgeon call organize_imports --stdin-files\`
   (non-source and missing paths are skipped).
@@ -78,6 +84,7 @@ Conveniences:
 | --- | --- |
 | Find every occurrence of a code *shape* (ast-grep pattern) | search_pattern |
 | Rewrite a code shape project-wide (sed-style codemod, safely) | rewrite_pattern |
+| Rewrite a code shape only where a capture has a specific *type* | rewrite_where |
 | Rename a symbol everywhere it is used | rename_symbol |
 | Rename/move files or folders and fix import paths | rename_filesystem_entry |
 | See every definition + usage of a symbol | find_references |

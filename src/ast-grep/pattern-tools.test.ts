@@ -29,7 +29,7 @@ describe("pattern tools (ast-grep)", () => {
 	});
 
 	describe("searchPattern", () => {
-		it("finds structural matches with positions, ignoring formatting", () => {
+		it("finds structural matches with positions, ignoring formatting", async () => {
 			fs.writeFileSync(
 				path.join(srcDir, "a.ts"),
 				'console.log("x");\nconsole.log(\n  1,\n  2,\n);\nconsole.error("not this");\n',
@@ -40,7 +40,7 @@ describe("pattern tools (ast-grep)", () => {
 			);
 
 			const project = initializeProject(tsconfigPath);
-			const result = searchPattern(project, {
+			const result = await searchPattern(project, {
 				pattern: "console.log($$$ARGS)",
 			});
 
@@ -56,13 +56,13 @@ describe("pattern tools (ast-grep)", () => {
 			expect(result.matches[0].column).toBeGreaterThanOrEqual(1);
 		});
 
-		it("respects filePaths and maxResults", () => {
+		it("respects filePaths and maxResults", async () => {
 			const aPath = path.join(srcDir, "a.ts");
 			fs.writeFileSync(aPath, "foo(1);\nfoo(2);\nfoo(3);\n");
 			fs.writeFileSync(path.join(srcDir, "b.ts"), "foo(4);\n");
 
 			const project = initializeProject(tsconfigPath);
-			const result = searchPattern(project, {
+			const result = await searchPattern(project, {
 				pattern: "foo($A)",
 				filePaths: [aPath],
 				maxResults: 2,
@@ -129,6 +129,66 @@ describe("pattern tools (ast-grep)", () => {
 			expect(result.matchCount).toBe(1);
 			expect(result.changedFiles).toEqual([filePath]);
 			expect(fs.readFileSync(filePath, "utf-8")).toBe(original);
+		});
+	});
+
+	describe("rewritePattern with fixImports", () => {
+		it("adds a resolvable import the rewrite introduced", async () => {
+			const appPath = path.join(srcDir, "app.ts");
+			fs.writeFileSync(
+				path.join(srcDir, "logger.ts"),
+				"export const logger = { debug(...args: unknown[]): void {} };\n",
+			);
+			fs.writeFileSync(appPath, 'console.log("x");\n');
+
+			const project = initializeProject(tsconfigPath);
+			const result = await rewritePattern(project, {
+				pattern: "console.log($$$A)",
+				rewrite: "logger.debug($$$A)",
+				fixImports: true,
+			});
+
+			expect(result.importsFixedIn).toEqual([appPath]);
+			const updated = fs.readFileSync(appPath, "utf-8");
+			expect(updated).toContain('import { logger } from "./logger";');
+			expect(updated).toContain('logger.debug("x");');
+		});
+
+		it("leaves identifiers with no resolvable export alone (documented limitation)", async () => {
+			const appPath = path.join(srcDir, "app.ts");
+			fs.writeFileSync(appPath, 'console.log("x");\n');
+
+			const project = initializeProject(tsconfigPath);
+			await rewritePattern(project, {
+				pattern: "console.log($$$A)",
+				rewrite: "mysteryFn($$$A)",
+				fixImports: true,
+			});
+
+			const updated = fs.readFileSync(appPath, "utf-8");
+			expect(updated).toContain('mysteryFn("x");');
+			expect(updated).not.toContain("import");
+		});
+
+		it("dryRun with fixImports writes nothing", async () => {
+			const appPath = path.join(srcDir, "app.ts");
+			const original = 'console.log("x");\n';
+			fs.writeFileSync(
+				path.join(srcDir, "logger.ts"),
+				"export const logger = { debug(...args: unknown[]): void {} };\n",
+			);
+			fs.writeFileSync(appPath, original);
+
+			const project = initializeProject(tsconfigPath);
+			const result = await rewritePattern(project, {
+				pattern: "console.log($$$A)",
+				rewrite: "logger.debug($$$A)",
+				fixImports: true,
+				dryRun: true,
+			});
+
+			expect(result.changedFiles).toEqual([appPath]);
+			expect(fs.readFileSync(appPath, "utf-8")).toBe(original);
 		});
 	});
 });

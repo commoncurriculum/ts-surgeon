@@ -22,8 +22,9 @@ export function registerRewritePatternTool(registry: ToolRegistry): void {
 - Example: pattern \`console.log($$$ARGS)\`, rewrite \`logger.debug($$$ARGS)\`.
 
 ## Critical constraints
-- The rewrite is textual within each match: imports are NOT added or removed — follow with \`add_missing_imports\` / \`organize_imports\`, then \`get_diagnostics\`.
+- The rewrite is textual within each match: imports are NOT touched unless \`fixImports\` is set, which adds missing imports on the changed files (only imports the language service can resolve; nothing is removed or reordered — follow with \`organize_imports\` for cleanup, then \`get_diagnostics\`).
 - Run with \`dryRun: true\` first when the pattern may fan out widely.
+- Need the rewrite to apply only where a capture has a specific TYPE? -> \`rewrite_where\`.
 
 ## Result
 Match count and the list of modified (or to-be-modified, in dryRun) file paths.`,
@@ -52,6 +53,13 @@ Match count and the list of modified (or to-be-modified, in dryRun) file paths.`
 				.describe(
 					"If true, only show intended changes without modifying files.",
 				),
+			fixImports: z
+				.boolean()
+				.optional()
+				.default(false)
+				.describe(
+					"After rewriting, add missing imports on the changed files (only imports the language service can resolve; nothing is removed or reordered).",
+				),
 		},
 		(args) =>
 			runTool(
@@ -68,6 +76,7 @@ Match count and the list of modified (or to-be-modified, in dryRun) file paths.`
 						rewrite: args.rewrite,
 						filePaths: args.filePaths,
 						dryRun: args.dryRun,
+						fixImports: args.fixImports,
 					});
 					const changedFilesList = formatChangedFiles(result.changedFiles);
 					const message = args.dryRun
