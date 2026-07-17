@@ -122,6 +122,20 @@ node dist/index.js call <tool> --params '<json>'
 6. **Error handling** (`src/errors/`)
    - Custom error class definitions
 
+7. **Agent packaging** (how the tools reach coding agents)
+   - `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`: the repo is a
+     Claude Code plugin and its own marketplace (`/plugin marketplace add
+     commoncurriculum/ts-surgeon`), shipping `skills/` and `hooks/hooks.json`
+   - `skills/ts-morph-refactoring/`: the published skill (installed by the plugin and
+     via skills.sh `npx skills add`). Dev-only skills stay in `.claude/skills/` and are
+     marked `metadata.internal: true` so skills.sh does not offer them publicly.
+   - `hooks/hooks.json`: the plugin's PreToolUse guard (wraps `ts-surgeon hook`;
+     `TS_SURGEON_STRICT=1` opts into strict mode, `TS_SURGEON_ALLOW=1` bypasses)
+   - `src/opencode-plugin.ts`: the package's import entry (`main`/`exports`) — an
+     opencode `tool.execute.before` guard plugin, registered by listing the package in
+     opencode.json's `plugin` array. The CLI is reached only via `bin`; never make
+     `dist/index.js` the import target (it runs the CLI on import).
+
 ### Test Structure
 
 - Each feature module has a corresponding `.test.ts` file

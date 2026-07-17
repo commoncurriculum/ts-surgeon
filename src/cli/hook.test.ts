@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCli } from "../cli";
 import {
 	ALLOW_MARKER,
@@ -124,6 +124,29 @@ describe("hook command (runCli)", () => {
 		expect(code).toBe(2);
 		expect(err.text).toContain("Unknown option for hook");
 	});
+
+	it("enables strict mode via TS_SURGEON_STRICT=1 (fixed plugin command lines)", async () => {
+		const search = payload("Bash", "grep -rn calculateSum src/");
+		const defaultCode = await runCli(
+			["hook"],
+			createCapture(),
+			createCapture(),
+			{ readStdin: () => search },
+		);
+		expect(defaultCode).toBe(0);
+
+		vi.stubEnv("TS_SURGEON_STRICT", "1");
+		try {
+			const err = createCapture();
+			const code = await runCli(["hook"], createCapture(), err, {
+				readStdin: () => search,
+			});
+			expect(code).toBe(2);
+			expect(err.text).toContain("find_references");
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
 });
 
 describe("installClaudeHook", () => {
@@ -149,23 +172,64 @@ describe("installClaudeHook", () => {
 		expect(out.text).toContain("Installed");
 	});
 
-	it("installs the opencode plugin and is idempotent", () => {
+	it("registers the opencode plugin in opencode.json and is idempotent", () => {
 		const out = createCapture();
 		installOpencodeHook(tempDir, out);
-		const pluginPath = path.join(
+		const config = JSON.parse(
+			fs.readFileSync(path.join(tempDir, "opencode.json"), "utf-8"),
+		);
+		expect(config.plugin).toEqual(["@commoncurriculum/ts-surgeon"]);
+		expect(config.$schema).toBe("https://opencode.ai/config.json");
+		expect(out.text).toContain("Registered");
+
+		const out2 = createCapture();
+		installOpencodeHook(tempDir, out2);
+		expect(out2.text).toContain("nothing to do");
+	});
+
+	it("rejects malformed opencode.json instead of corrupting it", () => {
+		const configPath = path.join(tempDir, "opencode.json");
+		// Root is an array — pushing a property onto it would serialize wrong.
+		fs.writeFileSync(configPath, "[]");
+		expect(() => installOpencodeHook(tempDir, createCapture())).toThrow(
+			/must contain a JSON object/,
+		);
+		// "plugin" is a string, not an array.
+		fs.writeFileSync(configPath, JSON.stringify({ plugin: "other-plugin" }));
+		expect(() => installOpencodeHook(tempDir, createCapture())).toThrow(
+			/non-array "plugin" field/,
+		);
+		// Untouched by the failed attempts.
+		expect(fs.readFileSync(configPath, "utf-8")).toBe(
+			JSON.stringify({ plugin: "other-plugin" }),
+		);
+	});
+
+	it("merges the opencode plugin into an existing config and flags the legacy file", () => {
+		fs.writeFileSync(
+			path.join(tempDir, "opencode.json"),
+			JSON.stringify({ model: "anthropic/claude", plugin: ["other-plugin"] }),
+		);
+		const legacyPath = path.join(
 			tempDir,
 			".opencode",
 			"plugin",
 			"ts-surgeon.js",
 		);
-		const plugin = fs.readFileSync(pluginPath, "utf-8");
-		expect(plugin).toContain('"tool.execute.before"');
-		expect(plugin).toContain("@commoncurriculum/ts-surgeon");
-		expect(out.text).toContain("Installed");
+		fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+		fs.writeFileSync(legacyPath, "// old copy-installed guard\n");
 
-		const out2 = createCapture();
-		installOpencodeHook(tempDir, out2);
-		expect(out2.text).toContain("nothing to do");
+		const out = createCapture();
+		installOpencodeHook(tempDir, out);
+		const config = JSON.parse(
+			fs.readFileSync(path.join(tempDir, "opencode.json"), "utf-8"),
+		);
+		expect(config.model).toBe("anthropic/claude");
+		expect(config.plugin).toEqual([
+			"other-plugin",
+			"@commoncurriculum/ts-surgeon",
+		]);
+		expect(out.text).toContain("old copy-installed guard");
 	});
 
 	it("merges into existing settings and is idempotent", () => {

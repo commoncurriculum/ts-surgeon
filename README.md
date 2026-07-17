@@ -5,7 +5,7 @@ A CLI that uses [ts-morph](https://ts-morph.com/) and [ast-grep](https://ast-gre
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-- [Use with any coding agent](#use-with-any-coding-agent)
+- [Install into your coding agent](#install-into-your-coding-agent)
 - [Available Tools](#available-tools)
 - [Logging Configuration](#logging-configuration)
 - [Development](#development)
@@ -47,7 +47,58 @@ npx -y @commoncurriculum/ts-surgeon call rename_symbol --params '{
 
 To customize logging, see [Logging Configuration](#logging-configuration). To run from a local build, see [Development](#development).
 
-## Use with any coding agent
+## Install into your coding agent
+
+The CLI itself needs no install — every command above runs via `npx`. What you install is the *wiring* that makes an agent reach for it. There are two pieces, packaged per harness below:
+
+- **The skill** ([`skills/ts-morph-refactoring/`](skills/ts-morph-refactoring/)) — teaches the agent when to use which tool, the survey→change→verify loop, and the anti-patterns.
+- **The guard hook** (`ts-surgeon hook`) — blocks Bash commands that hand-edit TS/JS sources with `sed -i`/`perl -i` before they run and points the agent at the AST-accurate tool instead. A genuine non-refactor use is one prefix away: `TS_SURGEON_ALLOW=1 sed -i …`. Setting `TS_SURGEON_STRICT=1` (or passing `--strict` where you control the command line) also redirects recursive identifier searches (`grep -r name` / `rg name`, unless scoped to non-source files) to `find_references`.
+
+### Claude Code — install the plugin
+
+This repo doubles as a Claude Code plugin marketplace; the plugin ships the skill **and** the guard hook in one install. In Claude Code:
+
+```
+/plugin marketplace add commoncurriculum/ts-surgeon
+/plugin install ts-surgeon@commoncurriculum
+```
+
+(Non-interactive: `claude plugin marketplace add commoncurriculum/ts-surgeon && claude plugin install ts-surgeon@commoncurriculum`.)
+
+To roll it out to a whole team, commit this to the project's `.claude/settings.json` instead — Claude Code offers the install to everyone who opens the repo:
+
+```json
+{
+	"extraKnownMarketplaces": {
+		"commoncurriculum": {
+			"source": { "source": "github", "repo": "commoncurriculum/ts-surgeon" }
+		}
+	},
+	"enabledPlugins": { "ts-surgeon@commoncurriculum": true }
+}
+```
+
+### Any agent — install the skill from skills.sh
+
+The skill is published on [skills.sh](https://skills.sh/commoncurriculum/ts-surgeon/ts-morph-refactoring) and installs into Claude Code, Cursor, Codex, opencode, Copilot, and dozens of other harnesses:
+
+```bash
+npx skills add commoncurriculum/ts-surgeon --skill ts-morph-refactoring
+```
+
+(Project-local by default; add `-g` for user-global, `-a <agent>` to target one harness.)
+
+### opencode — install the guard plugin
+
+The npm package is itself an [opencode plugin](https://opencode.ai/docs/plugins/): its import entry exports the guard as a `tool.execute.before` hook. Register it in `opencode.json`:
+
+```json
+{ "plugin": ["@commoncurriculum/ts-surgeon"] }
+```
+
+or let the CLI write that for you: `npx -y @commoncurriculum/ts-surgeon init --opencode-hook`. opencode installs the package automatically at startup. Get the skill too with the skills.sh command above (`-a opencode`).
+
+### Anything else — the self-describing CLI + instructions snippet
 
 The CLI is self-describing, so it works with **any** coding agent that can run shell commands — no editor plugin, no protocol, no vendor-specific config:
 
@@ -68,18 +119,7 @@ Use the ts-morph refactoring CLI:
     npx -y @commoncurriculum/ts-surgeon list    # tool names + summaries
 ```
 
-Claude Code users can alternatively copy the richer skill from [`.claude/skills/ts-morph-refactoring/`](.claude/skills/ts-morph-refactoring/).
-
-### Guard against hand-rolled refactors
-
-Instructions files are advisory — agents still sometimes reach for `sed`. The `hook` command turns the advice into an enforced guard for harnesses with pre-tool hooks:
-
-```bash
-npx -y @commoncurriculum/ts-surgeon init --claude-hook     # Claude Code: .claude/settings.json PreToolUse hook
-npx -y @commoncurriculum/ts-surgeon init --opencode-hook   # opencode: .opencode/plugin/ts-surgeon.js (tool.execute.before)
-```
-
-Once installed, any Bash command that hand-edits TS/JS sources with `sed -i`/`perl -i` is blocked before it runs, and the agent is told to use the AST-accurate tool instead (with `--dry-run` guidance). A genuine non-refactor use is one prefix away: `TS_SURGEON_ALLOW=1 sed -i …`. Pass `--strict` in the hook command to also redirect recursive identifier searches (`grep -r name` / `rg name`, unless scoped to non-source files) to `find_references`. Both installers wrap the same `ts-surgeon hook` command — a harness without hook support still gets the advisory `init` snippet.
+For Claude Code without the plugin, `npx -y @commoncurriculum/ts-surgeon init --claude-hook` installs just the guard as a `PreToolUse` hook in `.claude/settings.json` (append `--strict` to the command it writes for strict mode).
 
 ## Available Tools
 

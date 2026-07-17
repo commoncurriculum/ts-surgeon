@@ -1,6 +1,8 @@
 ---
 name: release
 description: Tag a new version and trigger the npm publish workflow for @commoncurriculum/ts-surgeon. Use when the user says "release", "tag it", "bump to v1.x.y", "publish to npm", or similar.
+metadata:
+  internal: true
 ---
 
 # Release a new version

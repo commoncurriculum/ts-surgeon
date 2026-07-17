@@ -1,6 +1,8 @@
 ---
 name: check-docs
 description: Checks consistency between registered tools (src/tools/register-*.ts) and the tool table in README.md and the module list in CLAUDE.md. Detects missing entries and drift after adding tools or reorganizing documentation. Use for "check doc consistency", "verify README matches code", "check tool list", or similar.
+metadata:
+  internal: true
 ---
 
 # Documentation Consistency Check

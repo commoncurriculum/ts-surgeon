@@ -2,6 +2,8 @@
 name: new-tool
 description: Guides the boilerplate work for adding a new ts-morph refactoring tool to this repository. Covers everything from ts-morph logic, the CLI registration file, co-located tests, aggregator registration, and appending entries to README/CLAUDE.md without omissions. Use when "adding a new tool", "creating more tools", "creating a register-*.ts", or similar.
 disable-model-invocation: true
+metadata:
+  internal: true
 ---
 
 # Adding a New Tool
