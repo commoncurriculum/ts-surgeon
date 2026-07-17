@@ -72,13 +72,14 @@ Claude Code users can alternatively copy the richer skill from [`.claude/skills/
 
 ### Guard against hand-rolled refactors
 
-Instructions files are advisory — agents still sometimes reach for `sed`. The `hook` command turns the advice into an enforced guard for harnesses that support pre-tool hooks (Claude Code today):
+Instructions files are advisory — agents still sometimes reach for `sed`. The `hook` command turns the advice into an enforced guard for harnesses with pre-tool hooks:
 
 ```bash
-npx -y @commoncurriculum/ts-surgeon init --claude-hook   # installs into .claude/settings.json
+npx -y @commoncurriculum/ts-surgeon init --claude-hook     # Claude Code: .claude/settings.json PreToolUse hook
+npx -y @commoncurriculum/ts-surgeon init --opencode-hook   # opencode: .opencode/plugin/ts-surgeon.js (tool.execute.before)
 ```
 
-Once installed, any Bash command that hand-edits TS/JS sources with `sed -i`/`perl -i` is blocked before it runs, and the agent is told to use the AST-accurate tool instead (with `--dry-run` guidance). A genuine non-refactor use is one prefix away: `TS_SURGEON_ALLOW=1 sed -i …`. Pass `--strict` in the hook command to also redirect recursive identifier searches (`grep -r name` / `rg name`) to `find_references`.
+Once installed, any Bash command that hand-edits TS/JS sources with `sed -i`/`perl -i` is blocked before it runs, and the agent is told to use the AST-accurate tool instead (with `--dry-run` guidance). A genuine non-refactor use is one prefix away: `TS_SURGEON_ALLOW=1 sed -i …`. Pass `--strict` in the hook command to also redirect recursive identifier searches (`grep -r name` / `rg name`, unless scoped to non-source files) to `find_references`. Both installers wrap the same `ts-surgeon hook` command — a harness without hook support still gets the advisory `init` snippet.
 
 ## Available Tools
 

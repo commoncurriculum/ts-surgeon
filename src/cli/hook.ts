@@ -19,6 +19,7 @@ const SOURCE_EXT_RE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)\b/;
 const IN_PLACE_SED_RE = /\bsed\s+(-[a-zA-Z]*i[a-zA-Z]*\b|--in-place\b)/;
 const IN_PLACE_PERL_RE = /\bperl\s+-[a-zA-Z]*i/;
 const RECURSIVE_SEARCH_RE = /\bgrep\s+[^|;&]*-[a-zA-Z]*r|\brg\s/;
+const ANY_EXT_RE = /\.[a-z0-9]{1,6}\b/i;
 
 const EDIT_BLOCK_MESSAGE = `ts-surgeon: this command hand-edits TypeScript/JavaScript sources with text replacement (sed/perl -i).
 Text replacement misses imports, re-exports, and same-name collisions. Use the AST-accurate CLI instead:
@@ -62,8 +63,15 @@ export function evaluateBashCommand(
 		return { block: true, reason: EDIT_BLOCK_MESSAGE };
 	}
 	if (strict && RECURSIVE_SEARCH_RE.test(command)) {
+		// A search explicitly scoped to non-source files (e.g. *.md) is not an
+		// identifier lookup — leave it alone.
+		const scopedToNonSources = ANY_EXT_RE.test(command) && !touchesSources;
 		const pattern = searchPattern(command);
-		if (pattern && /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(pattern)) {
+		if (
+			!scopedToNonSources &&
+			pattern &&
+			/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(pattern)
+		) {
 			return { block: true, reason: SEARCH_BLOCK_MESSAGE };
 		}
 	}
@@ -121,6 +129,53 @@ export function runHook(
 }
 
 const HOOK_COMMAND = "npx -y @commoncurriculum/ts-surgeon hook";
+
+/** Contents of the generated opencode plugin (see installOpencodeHook). */
+const OPENCODE_PLUGIN = `// Installed by \`ts-surgeon init --opencode-hook\`.
+// Guards against hand-rolled TS/JS refactors: every bash tool call is checked
+// by \`ts-surgeon hook\` (exit 2 = block, stderr explains what to use instead).
+// Prefix a command with ${ALLOW_MARKER} to bypass. Delete this file to remove.
+import { spawnSync } from "node:child_process";
+
+export const TsSurgeonGuard = async () => ({
+	"tool.execute.before": async (input, output) => {
+		if (input.tool !== "bash") return;
+		const command = output?.args?.command;
+		if (typeof command !== "string") return;
+		const payload = JSON.stringify({
+			tool_name: "Bash",
+			tool_input: { command },
+		});
+		const result = spawnSync(
+			"npx",
+			["-y", "@commoncurriculum/ts-surgeon", "hook"],
+			{ input: payload, encoding: "utf-8" },
+		);
+		if (result.status === 2) {
+			throw new Error(
+				(result.stderr || "").trim() || "ts-surgeon blocked this command",
+			);
+		}
+	},
+});
+`;
+
+/**
+ * Installs the guard as an opencode plugin
+ * (.opencode/plugin/ts-surgeon.js). Idempotent.
+ */
+export function installOpencodeHook(cwd: string, out: Writer): void {
+	const pluginPath = path.join(cwd, ".opencode", "plugin", "ts-surgeon.js");
+	if (existsSync(pluginPath)) {
+		out.write(`${pluginPath} already exists — nothing to do.\n`);
+		return;
+	}
+	mkdirSync(path.dirname(pluginPath), { recursive: true });
+	writeFileSync(pluginPath, OPENCODE_PLUGIN);
+	out.write(
+		`Installed the ts-surgeon guard as an opencode plugin at ${pluginPath} (blocks sed/perl -i on TS/JS sources; prefix a command with ${ALLOW_MARKER} to bypass).\n`,
+	);
+}
 
 /**
  * Installs the PreToolUse guard into a project's .claude/settings.json
