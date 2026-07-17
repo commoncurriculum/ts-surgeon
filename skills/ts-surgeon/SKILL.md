@@ -1,5 +1,5 @@
 ---
-name: ts-morph-refactoring
+name: ts-surgeon
 description: >-
   Drive the commoncurriculum/ts-surgeon refactoring CLI (via npx) for AST-accurate,
   project-wide TypeScript/JavaScript refactors instead of hand-editing. Use when renaming a

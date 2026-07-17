@@ -7,7 +7,7 @@
 		{
 			"name": "ts-surgeon",
 			"source": "./",
-			"description": "AST-accurate TypeScript/JavaScript refactoring: the ts-morph-refactoring skill plus a PreToolUse guard against hand-rolled sed/perl refactors.",
+			"description": "AST-accurate TypeScript/JavaScript refactoring: the ts-surgeon skill plus a PreToolUse guard against hand-rolled sed/perl refactors.",
 			"license": "MIT",
 			"tags": ["typescript", "refactoring", "ts-morph", "ast", "codemod"]
 		}

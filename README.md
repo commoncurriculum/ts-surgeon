@@ -54,7 +54,7 @@ To customize logging, see [Logging Configuration](#logging-configuration). To ru
 
 The CLI itself needs no install — every command above runs via `npx`. What you install is the *wiring* that makes an agent reach for it. There are two pieces, packaged per harness below:
 
-- **The skill** ([`skills/ts-morph-refactoring/`](skills/ts-morph-refactoring/)) — teaches the agent when to use which tool, the survey→change→verify loop, and the anti-patterns.
+- **The skill** ([`skills/ts-surgeon/`](skills/ts-surgeon/)) — teaches the agent when to use which tool, the survey→change→verify loop, and the anti-patterns.
 - **The guard hook** (`ts-surgeon hook`) — blocks Bash commands that hand-edit TS/JS sources with `sed -i`/`perl -i` before they run and points the agent at the AST-accurate tool instead. A genuine non-refactor use is one prefix away: `TS_SURGEON_ALLOW=1 sed -i …`. Setting `TS_SURGEON_STRICT=1` (or passing `--strict` where you control the command line) also redirects recursive identifier searches (`grep -r name` / `rg name`, unless scoped to non-source files) to `find_references`.
 
 ### Claude Code — install the plugin
@@ -83,10 +83,10 @@ To roll it out to a whole team, commit this to the project's `.claude/settings.j
 
 ### Any agent — install the skill from skills.sh
 
-The skill is published on [skills.sh](https://skills.sh/commoncurriculum/ts-surgeon/ts-morph-refactoring) and installs into Claude Code, Cursor, Codex, opencode, Copilot, and dozens of other harnesses:
+The skill is published on [skills.sh](https://skills.sh/commoncurriculum/ts-surgeon/ts-surgeon) and installs into Claude Code, Cursor, Codex, opencode, Copilot, and dozens of other harnesses:
 
 ```bash
-npx skills add commoncurriculum/ts-surgeon --skill ts-morph-refactoring
+npx skills add commoncurriculum/ts-surgeon --skill ts-surgeon
 ```
 
 (Project-local by default; add `-g` for user-global, `-a <agent>` to target one harness.)
