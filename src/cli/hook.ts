@@ -24,12 +24,15 @@ const ANY_EXT_RE = /\.[a-z0-9]{1,6}\b/i;
 const EDIT_BLOCK_MESSAGE = `ts-surgeon: this command hand-edits TypeScript/JavaScript sources with text replacement (sed/perl -i).
 Text replacement misses imports, re-exports, and same-name collisions. Use the AST-accurate CLI instead:
   npx -y @commoncurriculum/ts-surgeon guide     # when to use which tool
-  e.g. call rename_symbol / change_signature / organize_imports (all support --dry-run)
+  e.g. call rename_symbol / change_signature for symbol changes, or
+  call rewrite_pattern --pattern 'console.log($$$A)' --rewrite 'logger.debug($$$A)'
+  for sed-style codemods (all support --dry-run)
 If this is genuinely not a refactor, re-run the command prefixed with ${ALLOW_MARKER}.`;
 
 const SEARCH_BLOCK_MESSAGE = `ts-surgeon: this looks like a recursive text search for a code identifier.
-Text search misses aliased imports and matches unrelated same-name tokens. Prefer the type-aware lookup:
+Text search misses aliased imports and matches unrelated same-name tokens. Prefer the AST-aware lookups:
   npx -y @commoncurriculum/ts-surgeon call find_references --target-file-path <file> --symbol-name <name>
+  npx -y @commoncurriculum/ts-surgeon call search_pattern --pattern '<code shape with $META vars>'
 If you really want a text search, re-run the command prefixed with ${ALLOW_MARKER}.`;
 
 /** Extracts the first non-flag argument after a grep/rg invocation. */

@@ -1,6 +1,6 @@
 # ts-morph Refactoring Tools
 
-A CLI that uses [ts-morph](https://ts-morph.com/) to provide AST-based refactoring operations for TypeScript / JavaScript codebases. Rename symbols, rename files/folders, find references, and more — all while preserving project-wide consistency. Built for coding agents (invoke it directly via shell, [ast-grep agent-skill](https://github.com/ast-grep/agent-skill) style) and equally usable from scripts and CI.
+A CLI that uses [ts-morph](https://ts-morph.com/) and [ast-grep](https://ast-grep.github.io/) to provide AST-based refactoring and structural search/rewrite operations for TypeScript / JavaScript codebases. Rename symbols, rename files/folders, find references, and more — all while preserving project-wide consistency. Built for coding agents (invoke it directly via shell, [ast-grep agent-skill](https://github.com/ast-grep/agent-skill) style) and equally usable from scripts and CI.
 
 ## Table of Contents
 
@@ -102,6 +102,8 @@ Each tool uses `ts-morph` to parse the AST and applies changes while preserving 
 | [`add_missing_imports`](#add_missing_imports) | Add imports for unresolved identifiers across files |
 | [`apply_code_fix`](#apply_code_fix) | Apply a TypeScript "fix all" quick-fix (remove unused, implement members, infer types) |
 | [`safe_delete_symbol`](#safe_delete_symbol) | Delete a symbol only when it has no references, else report blockers |
+| [`search_pattern`](#search_pattern) | Find every occurrence of a structural code pattern (ast-grep) |
+| [`rewrite_pattern`](#rewrite_pattern) | Rewrite a code pattern project-wide — the safe sed replacement (ast-grep) |
 
 ### `rename_symbol`
 
@@ -249,6 +251,21 @@ Deletes a top-level symbol's declaration **only when** it has no references outs
 - **Required information**: Target file path and the `symbolName` (a top-level declaration).
 - **Behavior**: Resolves all references via the type checker. References inside the declaration itself (its name, recursive self-calls) are ignored; all other references — other files, same-file usages, local `export { x }` re-exports — block deletion. Overload signatures of the same symbol are deleted together; a single declarator is removed from a multi-variable statement.
 - **Note**: If two different symbols share the name, the first in the file is targeted. Imports that become unused after deletion are not removed — follow up with `organize_imports` / `apply_code_fix`.
+
+### `search_pattern`
+
+Finds every occurrence of a structural code pattern (an [ast-grep](https://ast-grep.github.io/) pattern with `$META` variables) across the project. Read-only.
+
+- **Use case**: "where does this code shape appear?" — `console.log($$$ARGS)`, `useEffect($FN, [])` — without grep's formatting false-negatives or string/comment false-positives.
+- **Required information**: The pattern. `$NAME` matches one node, `$$$NAME` matches many.
+
+### `rewrite_pattern`
+
+Rewrites every occurrence of a structural pattern using a template — the safe replacement for `sed -i` codemods.
+
+- **Use case**: Syntactic project-wide codemods: `console.log($$$ARGS)` → `logger.debug($$$ARGS)`, `assert.equal($A, $B)` → `expect($A).toBe($B)`.
+- **Required information**: `pattern` and `rewrite` (sharing `$NAME` / `$$$NAME` captures). Supports `dryRun`.
+- **Note**: The rewrite is textual within each match — imports are not added/removed; follow with `add_missing_imports` / `organize_imports`.
 
 ## Logging Configuration
 

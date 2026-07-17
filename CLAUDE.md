@@ -89,7 +89,11 @@ node dist/index.js call <tool> --params '<json>'
    - Each tool is registered by a `register-*.ts` file
    - All tools are consolidated in `ts-morph-tools.ts`
 
-3. **ts-morph layer** (`src/ts-morph/`)
+3. **ast-grep layer** (`src/ast-grep/`)
+   - `pattern-tools.ts`: structural pattern search/rewrite
+     (`search_pattern` / `rewrite_pattern`) via `@ast-grep/napi`
+
+4. **ts-morph layer** (`src/ts-morph/`)
    - Implements the actual refactoring logic
    - Each feature is implemented as an independent module:
      - `rename-symbol/`: Symbol renaming
@@ -111,11 +115,11 @@ node dist/index.js call <tool> --params '<json>'
      - `ts-morph-project.ts`: Common project creation logic
    - `_test-utils/`: Test helpers
 
-4. **Utilities** (`src/utils/`)
+5. **Utilities** (`src/utils/`)
    - `logger.ts`: Pino-based logger implementation
    - Other shared utilities
 
-5. **Error handling** (`src/errors/`)
+6. **Error handling** (`src/errors/`)
    - Custom error class definitions
 
 ### Test Structure
@@ -197,5 +201,6 @@ Controllable via environment variables:
 - **Adding missing imports**: `src/ts-morph/add-missing-imports/`
 - **Applying code fixes**: `src/ts-morph/apply-code-fix/`
 - **Safe symbol deletion**: `src/ts-morph/safe-delete-symbol/`
+- **Structural pattern search/rewrite**: `src/ast-grep/pattern-tools.ts`
 
 For detailed specifications of each feature, see README.md.

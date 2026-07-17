@@ -14,6 +14,8 @@ import { registerOrganizeImportsTool } from "./register-organize-imports-tool";
 import { registerRemovePathAliasTool } from "./register-remove-path-alias-tool";
 import { registerRenameFileSystemEntryTool } from "./register-rename-file-system-entry-tool";
 import { registerRenameSymbolTool } from "./register-rename-symbol-tool";
+import { registerRewritePatternTool } from "./register-rewrite-pattern-tool";
+import { registerSearchPatternTool } from "./register-search-pattern-tool";
 import { registerSafeDeleteSymbolTool } from "./register-safe-delete-symbol-tool";
 
 /**
@@ -35,4 +37,6 @@ export function registerTsMorphTools(registry: ToolRegistry): void {
 	registerAddMissingImportsTool(registry);
 	registerApplyCodeFixTool(registry);
 	registerSafeDeleteSymbolTool(registry);
+	registerSearchPatternTool(registry);
+	registerRewritePatternTool(registry);
 }
