@@ -1,7 +1,7 @@
 ---
 name: ts-morph-refactoring
 description: >-
-  Drive the commoncurriculum/mcp-ts-morph refactoring CLI (via npx) for AST-accurate,
+  Drive the commoncurriculum/ts-surgeon refactoring CLI (via npx) for AST-accurate,
   project-wide TypeScript/JavaScript refactors instead of hand-editing. Use when renaming a
   symbol or file, finding references, moving a symbol between files, changing a
   function signature, converting export styles, organizing/adding imports,
@@ -14,7 +14,7 @@ license: MIT
 
 # ts-morph Refactoring (CLI)
 
-[`commoncurriculum/mcp-ts-morph`](https://github.com/commoncurriculum/mcp-ts-morph)
+[`commoncurriculum/ts-surgeon`](https://github.com/commoncurriculum/ts-surgeon)
 drives [ts-morph](https://ts-morph.com/) to refactor TypeScript/JavaScript
 through the real AST + TypeScript type checker. Every change is resolved
 project-wide, so import paths, re-exports, and call sites stay consistent —
@@ -65,7 +65,7 @@ npx -y @commoncurriculum/ts-surgeon call rename_symbol --params '{
   reason), `2` usage/params error.
 - Pin a version for reproducibility (`@commoncurriculum/ts-surgeon@1.2.3`).
   Unreleased builds can be run from source with
-  `npx -y github:commoncurriculum/mcp-ts-morph` (needs git access for a
+  `npx -y github:commoncurriculum/ts-surgeon` (needs git access for a
   private repo).
 
 The parameter JSON documented in `reference.md` is exactly what `--params`

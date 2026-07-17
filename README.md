@@ -70,6 +70,16 @@ Use the ts-morph refactoring CLI:
 
 Claude Code users can alternatively copy the richer skill from [`.claude/skills/ts-morph-refactoring/`](.claude/skills/ts-morph-refactoring/).
 
+### Guard against hand-rolled refactors
+
+Instructions files are advisory — agents still sometimes reach for `sed`. The `hook` command turns the advice into an enforced guard for harnesses that support pre-tool hooks (Claude Code today):
+
+```bash
+npx -y @commoncurriculum/ts-surgeon init --claude-hook   # installs into .claude/settings.json
+```
+
+Once installed, any Bash command that hand-edits TS/JS sources with `sed -i`/`perl -i` is blocked before it runs, and the agent is told to use the AST-accurate tool instead (with `--dry-run` guidance). A genuine non-refactor use is one prefix away: `TS_SURGEON_ALLOW=1 sed -i …`. Pass `--strict` in the hook command to also redirect recursive identifier searches (`grep -r name` / `rg name`) to `find_references`.
+
 ## Available Tools
 
 Each tool uses `ts-morph` to parse the AST and applies changes while preserving project-wide references. Every tool resolves against a `tsconfig.json` (auto-discovered when not passed explicitly).
@@ -269,8 +279,8 @@ LOG_LEVEL=debug LOG_OUTPUT=file LOG_FILE_PATH=/tmp/tsmorph.log \
 ### Setup and Build
 
 ```bash
-git clone https://github.com/commoncurriculum/mcp-ts-morph.git
-cd mcp-ts-morph
+git clone https://github.com/commoncurriculum/ts-surgeon.git
+cd ts-surgeon
 pnpm install
 pnpm build      # outputs to dist/
 ```

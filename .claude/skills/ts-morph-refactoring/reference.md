@@ -1,7 +1,7 @@
 # Tool reference
 
 Per-tool parameters, worked examples, and gotchas for the
-`commoncurriculum/mcp-ts-morph` refactoring CLI (each tool takes its parameter
+`commoncurriculum/ts-surgeon` refactoring CLI (each tool takes its parameter
 JSON via `call <tool> --params`). Read
 [`SKILL.md`](SKILL.md) first for how to choose, chain, and invoke these tools.
 

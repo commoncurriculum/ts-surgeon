@@ -1,18 +1,18 @@
 ---
 name: run-ts-morph-cli
 description: >-
-  Build, launch, and drive the commoncurriculum/mcp-ts-morph refactoring CLI —
+  Build, launch, and drive the commoncurriculum/ts-surgeon refactoring CLI —
   a ts-morph TypeScript/JavaScript refactoring tool driven via shell. Use to
   build dist, run the CLI, smoke-test it end-to-end (list tools → describe →
   call a tool), or verify the refactoring tools still work after a change.
-  Triggers: "run mcp-ts-morph", "run the CLI", "smoke test the CLI", "drive the
+  Triggers: "run ts-surgeon", "run the CLI", "smoke test the CLI", "drive the
   ts-morph tools", "does the CLI work".
 license: MIT
 ---
 
-# Run: mcp-ts-morph (refactoring CLI)
+# Run: ts-surgeon (refactoring CLI)
 
-`commoncurriculum/mcp-ts-morph` is a **CLI** (`dist/index.js`, CommonJS) that
+`commoncurriculum/ts-surgeon` is a **CLI** (`dist/index.js`, CommonJS) that
 exposes 15 ts-morph refactoring tools as one-shot subcommands. There is no
 server and no GUI: every invocation is a plain process that prints its result
 to stdout and exits (0 = success, 1 = tool error, 2 = usage/params error).
@@ -79,7 +79,7 @@ Use it from any shell — published package or local build:
 
 ```bash
 npx -y @commoncurriculum/ts-surgeon list          # published
-node /abs/path/to/mcp-ts-morph/dist/index.js list     # local build
+node /abs/path/to/ts-surgeon/dist/index.js list     # local build
 ```
 
 ## Gotchas

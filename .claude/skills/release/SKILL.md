@@ -45,7 +45,7 @@ This package publishes to npm via tag-triggered GitHub Actions.
 3. Watch the release workflow until it finishes:
 
    ```bash
-   gh run list -R commoncurriculum/mcp-ts-morph --workflow=release.yml --limit 1
+   gh run list -R commoncurriculum/ts-surgeon --workflow=release.yml --limit 1
    gh run watch <id> --exit-status
    ```
 

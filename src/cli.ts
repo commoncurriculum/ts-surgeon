@@ -7,6 +7,7 @@ import {
 	readStdinDefault,
 	type StdinReader,
 } from "./cli/params";
+import { installClaudeHook, runHook } from "./cli/hook";
 import { prepareParams } from "./cli/paths";
 import { AGENT_SNIPPET, GUIDE, INIT_MARKER } from "./guide";
 import {
@@ -36,7 +37,14 @@ Usage:
   ts-surgeon call <tool> [params]         Run a tool once and print its result
   ts-surgeon batch [options]              Run several tools in one process
   ts-surgeon guide                        Print the full agent guide
-  ts-surgeon init [--file <path>]         Add the agent snippet to AGENTS.md (or <path>)
+  ts-surgeon init [--file <path>]         Add the agent snippet to AGENTS.md (or <path>);
+                                          --claude-hook also installs the PreToolUse
+                                          guard into .claude/settings.json
+  ts-surgeon hook [--strict]              PreToolUse guard for agent harnesses: blocks
+                                          sed/perl -i on TS/JS sources (exit 2) and
+                                          tells the agent to use ts-surgeon instead;
+                                          --strict also redirects recursive identifier
+                                          searches (grep -r / rg) to find_references
   ts-surgeon --help | --version
 
 Params for call (flags win over JSON; both can be combined):
@@ -155,6 +163,7 @@ interface Writer {
  */
 function runInit(rest: string[], out: Writer): number {
 	let file = "AGENTS.md";
+	let claudeHook = false;
 	for (let i = 0; i < rest.length; i++) {
 		if (rest[i] === "--file") {
 			const next = rest[++i];
@@ -164,9 +173,14 @@ function runInit(rest: string[], out: Writer): number {
 			file = next;
 		} else if (rest[i].startsWith("--file=")) {
 			file = rest[i].slice("--file=".length);
+		} else if (rest[i] === "--claude-hook") {
+			claudeHook = true;
 		} else {
 			throw new CliUsageError(`Unknown option for init: '${rest[i]}'`);
 		}
+	}
+	if (claudeHook) {
+		installClaudeHook(process.cwd(), out);
 	}
 	const target = path.resolve(process.cwd(), file);
 	const existing = existsSync(target) ? readFileSync(target, "utf-8") : "";
@@ -217,6 +231,8 @@ export async function runCli(
 				return 0;
 			case "init":
 				return runInit(rest, out);
+			case "hook":
+				return runHook(rest, readStdin, err);
 			case "list":
 			case "list-tools": {
 				const registry = createToolRegistry();

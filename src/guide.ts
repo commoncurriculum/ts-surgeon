@@ -105,6 +105,10 @@ Conveniences:
   files you touched, or --dry-run first.
 - Tools write files in place, not through git — keep the working tree clean
   before bulk operations so the diff is reviewable.
+- Never fall back to sed/perl for renames or signature changes — text
+  replacement misses imports, re-exports, and same-name collisions. (Projects
+  can enforce this: \`ts-surgeon init --claude-hook\` installs a guard that
+  blocks in-place sed/perl on TS/JS sources.)
 
 ## Anti-patterns
 
