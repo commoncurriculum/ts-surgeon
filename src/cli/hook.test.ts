@@ -187,6 +187,24 @@ describe("installClaudeHook", () => {
 		expect(out2.text).toContain("nothing to do");
 	});
 
+	it("rejects malformed opencode.json instead of corrupting it", () => {
+		const configPath = path.join(tempDir, "opencode.json");
+		// Root is an array — pushing a property onto it would serialize wrong.
+		fs.writeFileSync(configPath, "[]");
+		expect(() => installOpencodeHook(tempDir, createCapture())).toThrow(
+			/must contain a JSON object/,
+		);
+		// "plugin" is a string, not an array.
+		fs.writeFileSync(configPath, JSON.stringify({ plugin: "other-plugin" }));
+		expect(() => installOpencodeHook(tempDir, createCapture())).toThrow(
+			/non-array "plugin" field/,
+		);
+		// Untouched by the failed attempts.
+		expect(fs.readFileSync(configPath, "utf-8")).toBe(
+			JSON.stringify({ plugin: "other-plugin" }),
+		);
+	});
+
 	it("merges the opencode plugin into an existing config and flags the legacy file", () => {
 		fs.writeFileSync(
 			path.join(tempDir, "opencode.json"),

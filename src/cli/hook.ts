@@ -155,17 +155,33 @@ export function installOpencodeHook(cwd: string, out: Writer): void {
 		$schema: "https://opencode.ai/config.json",
 	};
 	if (existsSync(configPath)) {
+		let parsed: unknown;
 		try {
-			config = JSON.parse(readFileSync(configPath, "utf-8"));
+			parsed = JSON.parse(readFileSync(configPath, "utf-8"));
 		} catch (error) {
 			throw new CliUsageError(
 				`${configPath} is not valid JSON — fix it before installing the plugin: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
+		if (
+			parsed === null ||
+			typeof parsed !== "object" ||
+			Array.isArray(parsed)
+		) {
+			throw new CliUsageError(
+				`${configPath} must contain a JSON object to register the plugin (found ${Array.isArray(parsed) ? "an array" : typeof parsed}).`,
+			);
+		}
+		config = parsed as Record<string, unknown>;
 	}
 
 	config.plugin ??= [];
-	const plugins = config.plugin as unknown[];
+	if (!Array.isArray(config.plugin)) {
+		throw new CliUsageError(
+			`${configPath} has a non-array "plugin" field — fix it before installing (expected e.g. ["@commoncurriculum/ts-surgeon"]).`,
+		);
+	}
+	const plugins: unknown[] = config.plugin;
 	if (
 		plugins.some(
 			(entry) =>
