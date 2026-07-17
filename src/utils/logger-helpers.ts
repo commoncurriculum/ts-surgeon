@@ -118,8 +118,10 @@ function setupConsoleTransport(
 
 	try {
 		require.resolve("pino-pretty");
-		// Not needed in the test environment, so only log in development.
-		if (nodeEnv === "development") {
+		// Not needed in the test environment, so only log in development —
+		// and never when logs are silenced (e.g. the `hook` command, whose
+		// stderr must carry only the block reason).
+		if (nodeEnv === "development" && process.env.LOG_LEVEL !== "silent") {
 			console.error("Using pino-pretty for console logging.");
 		}
 		return {
@@ -227,7 +229,7 @@ export function setupExitHandlers(logger: pino.Logger) {
 	// Run the normal exit handler even in the test environment (some test runners require it).
 	process.on("exit", (code) => {
 		const isTestEnv = process.env.NODE_ENV === "test";
-		if (!isTestEnv) {
+		if (!isTestEnv && process.env.LOG_LEVEL !== "silent") {
 			console.error(
 				`Process exit code: ${code}. Logs should have been flushed.`,
 			);

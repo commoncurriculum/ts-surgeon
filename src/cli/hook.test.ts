@@ -3,7 +3,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCli } from "../cli";
-import { ALLOW_MARKER, evaluateBashCommand, installClaudeHook } from "./hook";
+import {
+	ALLOW_MARKER,
+	evaluateBashCommand,
+	installClaudeHook,
+	installOpencodeHook,
+} from "./hook";
 
 function createCapture() {
 	let buffer = "";
@@ -65,6 +70,17 @@ describe("evaluateBashCommand", () => {
 		expect(
 			evaluateBashCommand("grep -rn 'TODO|FIXME' src/", { strict: true }).block,
 		).toBe(false);
+		// searches scoped to non-source files are not identifier lookups
+		expect(
+			evaluateBashCommand("grep -rn calculateSum docs/*.md", { strict: true })
+				.block,
+		).toBe(false);
+		// ...but explicit source targets still block
+		expect(
+			evaluateBashCommand("grep -rn calculateSum src/**/*.ts", {
+				strict: true,
+			}).block,
+		).toBe(true);
 	});
 });
 
@@ -131,6 +147,25 @@ describe("installClaudeHook", () => {
 		expect(entry.matcher).toBe("Bash");
 		expect(entry.hooks[0].command).toContain("ts-surgeon hook");
 		expect(out.text).toContain("Installed");
+	});
+
+	it("installs the opencode plugin and is idempotent", () => {
+		const out = createCapture();
+		installOpencodeHook(tempDir, out);
+		const pluginPath = path.join(
+			tempDir,
+			".opencode",
+			"plugin",
+			"ts-surgeon.js",
+		);
+		const plugin = fs.readFileSync(pluginPath, "utf-8");
+		expect(plugin).toContain('"tool.execute.before"');
+		expect(plugin).toContain("@commoncurriculum/ts-surgeon");
+		expect(out.text).toContain("Installed");
+
+		const out2 = createCapture();
+		installOpencodeHook(tempDir, out2);
+		expect(out2.text).toContain("nothing to do");
 	});
 
 	it("merges into existing settings and is idempotent", () => {

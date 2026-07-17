@@ -7,7 +7,7 @@ import {
 	readStdinDefault,
 	type StdinReader,
 } from "./cli/params";
-import { installClaudeHook, runHook } from "./cli/hook";
+import { installClaudeHook, installOpencodeHook, runHook } from "./cli/hook";
 import { prepareParams } from "./cli/paths";
 import { AGENT_SNIPPET, GUIDE, INIT_MARKER } from "./guide";
 import {
@@ -38,8 +38,10 @@ Usage:
   ts-surgeon batch [options]              Run several tools in one process
   ts-surgeon guide                        Print the full agent guide
   ts-surgeon init [--file <path>]         Add the agent snippet to AGENTS.md (or <path>);
-                                          --claude-hook also installs the PreToolUse
-                                          guard into .claude/settings.json
+                                          --claude-hook installs the guard into
+                                          .claude/settings.json (Claude Code);
+                                          --opencode-hook installs it as an opencode
+                                          plugin (.opencode/plugin/ts-surgeon.js)
   ts-surgeon hook [--strict]              PreToolUse guard for agent harnesses: blocks
                                           sed/perl -i on TS/JS sources (exit 2) and
                                           tells the agent to use ts-surgeon instead;
@@ -164,6 +166,7 @@ interface Writer {
 function runInit(rest: string[], out: Writer): number {
 	let file = "AGENTS.md";
 	let claudeHook = false;
+	let opencodeHook = false;
 	for (let i = 0; i < rest.length; i++) {
 		if (rest[i] === "--file") {
 			const next = rest[++i];
@@ -175,12 +178,17 @@ function runInit(rest: string[], out: Writer): number {
 			file = rest[i].slice("--file=".length);
 		} else if (rest[i] === "--claude-hook") {
 			claudeHook = true;
+		} else if (rest[i] === "--opencode-hook") {
+			opencodeHook = true;
 		} else {
 			throw new CliUsageError(`Unknown option for init: '${rest[i]}'`);
 		}
 	}
 	if (claudeHook) {
 		installClaudeHook(process.cwd(), out);
+	}
+	if (opencodeHook) {
+		installOpencodeHook(process.cwd(), out);
 	}
 	const target = path.resolve(process.cwd(), file);
 	const existing = existsSync(target) ? readFileSync(target, "utf-8") : "";
