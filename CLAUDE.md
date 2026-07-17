@@ -129,7 +129,7 @@ node dist/index.js call <tool> --params '<json>'
    - `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`: the repo is a
      Claude Code plugin and its own marketplace (`/plugin marketplace add
      commoncurriculum/ts-surgeon`), shipping `skills/` and `hooks/hooks.json`
-   - `skills/ts-morph-refactoring/`: the published skill (installed by the plugin and
+   - `skills/ts-surgeon/`: the published skill (installed by the plugin and
      via skills.sh `npx skills add`). Dev-only skills stay in `.claude/skills/` and are
      marked `metadata.internal: true` so skills.sh does not offer them publicly.
    - `hooks/hooks.json`: the plugin's PreToolUse guard (wraps `ts-surgeon hook`;
