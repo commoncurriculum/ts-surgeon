@@ -164,6 +164,26 @@ position. Read-only.
 
 ---
 
+## `search_pattern`
+Finds every occurrence of an ast-grep pattern (`$NAME` = one node, `$$$NAME` =
+many). Read-only; the structural alternative to `grep -r`.
+
+- **Params**: `pattern`, `filePaths?`, `maxResults?` (default 200).
+- **Example**: `{ "pattern": "console.log($$$ARGS)" }`
+
+---
+
+## `rewrite_pattern`
+Rewrites every pattern occurrence using a template with the same captures —
+the safe `sed -i` replacement.
+
+- **Params**: `pattern`, `rewrite`, `filePaths?`, `dryRun?`.
+- **Example**: `{ "pattern": "assert.equal($A, $B)", "rewrite": "expect($A).toBe($B)" }`
+- **Gotchas**: textual within each match — imports are untouched; follow with
+  `add_missing_imports` / `organize_imports`, then `get_diagnostics`.
+
+---
+
 ## `find_unused_exports`
 Lists exports with no references outside their declaring file. Read-only.
 Returns **candidates, not verdicts**.
