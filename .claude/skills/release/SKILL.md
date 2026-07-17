@@ -1,86 +1,58 @@
 ---
 name: release
-description: Tag a new version and trigger the npm publish workflow for @commoncurriculum/ts-surgeon. Use when the user says "release", "tag it", "bump to v1.x.y", "publish to npm", or similar.
+description: Release @commoncurriculum/ts-surgeon via changesets — add/verify changesets, drive the Version Packages PR, and confirm the npm publish. Use when the user says "release", "publish to npm", "cut a version", or similar.
 metadata:
   internal: true
 ---
 
-# Release a new version
+# Release a new version (changesets)
 
-This package publishes to npm via tag-triggered GitHub Actions.
-**Git tag is the single source of truth for the version** — there is no
-`package.json` bump step. `release.yml` reads the tag, bakes the value into
-`src/version.ts` and `package.json`, then `pnpm publish`s with provenance.
+Releases are fully automated by [changesets](https://changesets.dev) +
+`.github/workflows/release.yml`. There is no manual tagging and no manual
+version bump: **merging the bot's "Version Packages" PR is the release.**
+`package.json` "version" is the single source of truth (bumped only by
+changesets); `src/version.ts` reads it at runtime.
 
-## Pre-flight checks
+## How it flows
 
-1. Confirm we are on `main` and clean:
-   ```bash
-   git checkout main && git pull --ff-only
-   git status --short    # must be empty
-   ```
-2. Confirm the last CI run on main is green (recent merge passed checks).
-3. Decide the new version. Default rule:
-   - `feat:` commit since last tag → minor bump (1.X.0)
-   - `fix:` only → patch bump (1.0.X)
-   - Breaking change → major bump (X.0.0)
-   - When in doubt, ask the user.
-   - **Stable SemVer only.** Prerelease tags (`v1.2.0-rc.1`), build metadata
-     (`v1.2.0+build.5`), and leading zeros (`v01.02.03`) are rejected by both
-     the workflow trigger and `scripts/release-version.mjs`. If a prerelease
-     channel is needed, update the workflow glob, the script's STRICT_SEMVER,
-     and this skill together.
-4. Verify the planned tag does not already exist:
-   ```bash
-   git tag --list 'v*' | sort -V | tail -5
-   ```
+1. Feature PRs each carry a `.changeset/*.md` describing their bump.
+2. Every push to main runs `release.yml`:
+   - pending changesets exist → the action opens/updates the
+     **"Version Packages" PR** (`chore: version package`) which applies them
+     (bumps `package.json`, prepends `CHANGELOG.md`).
+   - no pending changesets and `package.json` is ahead of npm → it publishes
+     (`pnpm run release` = build + `changeset publish`, npm Trusted
+     Publishing / OIDC + provenance) and pushes the `vX.Y.Z` tag.
+3. So a release = merge the Version Packages PR, then verify.
 
-## Steps
+## When the user says "release"
 
-1. Confirm the target version with the user if they did not specify it
-   explicitly.
-2. Create and push the tag:
-   ```bash
-   git tag vX.Y.Z
-   git push origin vX.Y.Z
-   ```
-3. Watch the release workflow until it finishes:
-
-   ```bash
-   gh run list -R commoncurriculum/ts-surgeon --workflow=release.yml --limit 1
-   gh run watch <id> --exit-status
-   ```
-
-   The workflow performs in order:
-   - Install dependencies
-   - Resolve version from tag ref (strict SemVer, no prerelease)
-   - `pnpm test` (run against the placeholder `0.0.0-development`)
-   - **Bake VERSION** into `src/version.ts` and `package.json` via
-     `node scripts/release-version.mjs --bake <version>`
-   - `pnpm build`
-   - Verify `dist/version.js` contains the exact baked line
-   - Strip internal `_version_note` from `package.json`
-   - `pnpm publish --provenance` via npm Trusted Publishing (OIDC)
-
-4. Confirm the package is live:
-   ```bash
-   npm view @commoncurriculum/ts-surgeon version
-   ```
+1. **Check for pending changesets**: `pnpm changeset status`. If the work to
+   release has no changeset, add one now (`pnpm changeset`, or write
+   `.changeset/<slug>.md` directly) on a PR — bump type per semver:
+   `feat:` → minor, `fix:` → patch, breaking → major. Confirm bump type with
+   the user when in doubt.
+2. **Find the Version Packages PR** (title `chore: version package`, author
+   github-actions[bot]). If it doesn't exist yet, the changesets landed on
+   main only just now — wait for the release.yml run on main to open it.
+3. **Review it** (version + CHANGELOG entries look right), then **merge it**.
+4. **Watch the release.yml run on main** until the publish step succeeds.
+5. **Confirm**: `npm view @commoncurriculum/ts-surgeon version` shows the new
+   version, and the `vX.Y.Z` tag exists on origin.
 
 ## Failure recovery
 
-- If `pnpm test` or `Verify baked version` fails inside the workflow,
-  **do not delete the tag**. Fix forward: push a fix commit to main, then
-  create the next patch tag (`vX.Y.(Z+1)`).
-- If `pnpm publish` fails (e.g. Trusted Publishing transient error),
-  check `gh run view <id> --log` and either re-run the failed job, or
-  publish the next patch tag.
+- Publish failed after the Version PR merged → **fix forward**: re-run the
+  failed workflow (`changeset publish` is idempotent — it skips versions npm
+  already has). Never try to unpublish or overwrite; npm versions are
+  immutable.
+- The action didn't open the Version PR → check the repo Actions setting
+  "Allow GitHub Actions to create and approve pull requests" is enabled, and
+  read the release.yml run logs.
 
 ## Things to NOT do
 
-- Do not edit `package.json` `"version"` — it is intentionally pinned at
-  `0.0.0-development` (see the `_version_note` field in the file).
-- Do not edit `src/version.ts` to change the literal — same reason.
-- Do not tag without explicit user approval for the version (semver
-  decisions matter to consumers of the package).
-- Do not skip the tag — the publish workflow only fires on tag push.
+- Do not edit `package.json` "version" or `CHANGELOG.md` by hand.
+- Do not create or push `vX.Y.Z` tags manually — `changeset publish` does.
+- Do not rename `release.yml` — npm Trusted Publishing pins the workflow
+  filename.

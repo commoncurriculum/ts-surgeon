@@ -383,42 +383,20 @@ node dist/index.js call get_diagnostics --params '{"tsconfigPath": "/abs/path/ts
 
 ## Release
 
-This package is published to npm automatically via the GitHub Actions workflow (`.github/workflows/release.yml`).
+Releases are automated with [changesets](https://changesets.dev) (`.github/workflows/release.yml`). **Never bump `package.json` by hand** — `src/version.ts` reads the version from it at runtime, and changesets owns the bump.
 
-**The Git tag is the single source of truth for the version.** Both `version` in `package.json` and `VERSION` in `src/version.ts` are fixed at `0.0.0-development`; the release workflow reads the tag and bakes the value in. **No manual version bump is needed.**
+### How a change becomes a release
 
-### Publishing Steps
+1. **Every user-facing PR includes a changeset.** Run `pnpm changeset` (pick the bump type, describe the change) and commit the generated `.changeset/*.md` with your PR. Internal-only changes (CI, docs, tests) can skip it with an empty changeset (`pnpm changeset --empty`) or none at all.
+2. **On merge to main**, the release workflow opens or updates a **"Version Packages" PR** that applies all pending changesets: it bumps `package.json` and prepends the entries to `CHANGELOG.md`.
+3. **Merging the Version Packages PR is the release.** The workflow then builds, runs `changeset publish` (npm Trusted Publishing / OIDC with provenance — no `NPM_TOKEN` anywhere), and pushes the `vX.Y.Z` git tag.
 
-```bash
-git checkout main && git pull --ff-only
-git tag v1.2.0
-git push origin v1.2.0
-```
+Confirm with `npm view @commoncurriculum/ts-surgeon version`.
 
-Pushing the tag triggers the workflow, which executes the following in order:
+### Recovery from failures
 
-1. Extract VERSION (`1.2.0`) from the tag (`v1.2.0`) (strict SemVer only; pre-releases are not supported)
-2. Run `pnpm test` with the placeholder version still in place
-3. Run `node scripts/release-version.mjs --bake 1.2.0` to rewrite `VERSION` in `src/version.ts` and `version` in `package.json`
-4. Run `pnpm build`
-5. Verify with `grep -F` that `dist/version.js` contains `exports.VERSION = "1.2.0";`
-6. Remove `_version_note` from `package.json`
-7. Publish to npm with `pnpm publish --provenance` (Trusted Publishing / OIDC)
-
-After completion, confirm the release with `npm view @commoncurriculum/ts-surgeon version`.
-
-> npm Trusted Publishing is required. `NPM_TOKEN` has been retired; publishing is done via GitHub Actions OIDC (see `id-token: write` in `release.yml`).
-
-### Why the Tag Is the Source of Truth
-
-Under the old workflow, releasing required three steps — "bump `version` in `package.json`", "bump the reported version in `src/version.ts`", and "push a tag" — and forgetting any one of them resulted in an inconsistent release (this actually happened). Under the new workflow, `0.0.0-development` is kept throughout development and CI reads the tag at release time to update all locations, making it **structurally impossible to forget a bump**.
-
-CI (`.github/workflows/ci.yml`) runs `node scripts/release-version.mjs --check` on every PR and push to main to confirm that both files still have the placeholder value. A PR that manually bumps the version will fail here.
-
-### Recovery from Failures
-
-- If the workflow fails partway through, **do not delete the tag**. Merge a fix into main and create the next patch tag (`vX.Y.(Z+1)`) (fix forward).
-- Re-publishing with the same tag is impossible due to npm's immutability, so overwriting the tag is pointless.
+- If the publish step fails after the Version Packages PR merged, **fix forward**: re-run the failed workflow (the publish is idempotent — `changeset publish` skips versions npm already has), or merge a fix plus a new patch changeset.
+- npm versions are immutable — a bad release is followed by a new patch release, never overwritten.
 
 ## License
 
