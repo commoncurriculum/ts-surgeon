@@ -1,6 +1,6 @@
 {
 	"name": "@commoncurriculum/ts-surgeon",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"_version_note": "Managed by changesets — never bump by hand. Feature PRs add a .changeset/*.md; merging the bot's 'Version Packages' PR bumps this field (src/version.ts reads it at runtime) and publishes. See .claude/skills/release/SKILL.md.",
 	"description": "AST-accurate TypeScript/JavaScript refactoring CLI powered by ts-morph",
 	"main": "dist/opencode-plugin.js",
@@ -12,7 +12,11 @@
 	"bin": {
 		"ts-surgeon": "dist/index.js"
 	},
-	"files": ["dist", "package.json", "README.md"],
+	"files": [
+		"dist",
+		"package.json",
+		"README.md"
+	],
 	"publishConfig": {
 		"access": "public"
 	},
@@ -37,9 +41,16 @@
 		"lint:fix": "biome lint --write ./",
 		"format": "biome check --write ./"
 	},
-	"keywords": ["cli", "ts-morph", "refactoring", "typescript"],
+	"keywords": [
+		"cli",
+		"ts-morph",
+		"refactoring",
+		"typescript"
+	],
 	"author": "Common Curriculum",
-	"contributors": ["SiroSuzume (original author of mcp-ts-morph)"],
+	"contributors": [
+		"SiroSuzume (original author of mcp-ts-morph)"
+	],
 	"license": "MIT",
 	"engines": {
 		"node": ">=22"
