@@ -59,15 +59,15 @@ node dist/index.js describe rename_symbol
 node dist/index.js call <tool> --params '<json>'
 ```
 
-### Release (version bump)
+### Release (changesets)
 
-**The Git tag is the single source of truth. Do not bump manually.**
+**Releases are driven by [changesets](https://changesets.dev). Never bump `package.json` "version" by hand** (`src/version.ts` reads it at runtime).
 
-- Both `version` in `package.json` and `VERSION` in `src/version.ts` are fixed at `0.0.0-development`.
-- To release, run `git tag vX.Y.Z && git push origin vX.Y.Z` only.
-- `.github/workflows/release.yml` extracts the value from the tag, rewrites both files, and runs `pnpm build` → `pnpm test` → dist consistency check → `pnpm publish`.
+- Every user-facing PR adds a `.changeset/*.md` (`pnpm changeset`; pick patch/minor/major and describe the change).
+- On merge to main, `.github/workflows/release.yml` opens/updates the **"Version Packages" PR** (bumps `package.json`, writes `CHANGELOG.md`).
+- **Merging the Version Packages PR is the release**: the workflow builds, publishes to npm via Trusted Publishing (OIDC), and pushes the `vX.Y.Z` tag. No manual tagging.
 - For detailed steps, see `.claude/skills/release/SKILL.md` and the "Release" section of the README.
-- When the user says "release", "tag it", or similar, use the release skill.
+- When the user says "release", "publish", or similar, use the release skill.
 
 ## Project Structure
 
