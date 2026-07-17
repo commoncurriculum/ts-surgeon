@@ -1,5 +1,6 @@
 import type { Lang, SgNode } from "@ast-grep/napi";
 import type { Project, SourceFile } from "ts-morph";
+import { addMissingImportsOnProject } from "../ts-morph/add-missing-imports/add-missing-imports";
 import {
 	getChangedFiles,
 	saveProjectChanges,
@@ -15,7 +16,7 @@ import {
 
 type AstGrepModule = typeof import("@ast-grep/napi");
 
-interface AstGrep {
+export interface AstGrep {
 	parse: AstGrepModule["parse"];
 	langByExt: Record<string, Lang>;
 }
@@ -26,10 +27,10 @@ let astGrep: AstGrep | undefined;
  * Loads @ast-grep/napi on first use rather than at import time. The module is
  * a native (napi) binary: on a platform without a prebuilt build, a top-level
  * import would crash every command (list, guide, hook) through the registry's
- * import chain. Lazy loading degrades that to "the two pattern tools error;
+ * import chain. Lazy loading degrades that to "the pattern tools error;
  * everything else works".
  */
-async function loadAstGrep(): Promise<AstGrep> {
+export async function loadAstGrep(): Promise<AstGrep> {
 	if (astGrep) {
 		return astGrep;
 	}
@@ -78,13 +79,13 @@ export async function probeAstGrep(): Promise<
 	}
 }
 
-function languageFor(ast: AstGrep, filePath: string): Lang | undefined {
+export function languageFor(ast: AstGrep, filePath: string): Lang | undefined {
 	const ext = filePath.slice(filePath.lastIndexOf("."));
 	return ast.langByExt[ext.toLowerCase()];
 }
 
 /** The project files a pattern operation runs over. */
-function targetFiles(
+export function targetFiles(
 	ast: AstGrep,
 	project: Project,
 	filePaths?: string[],
@@ -171,7 +172,11 @@ export async function searchPattern(
  * template. Multi-matches are reconstructed from the original source span so
  * separators survive verbatim.
  */
-function substitute(template: string, node: SgNode, source: string): string {
+export function substitute(
+	template: string,
+	node: SgNode,
+	source: string,
+): string {
 	return template
 		.replace(/\$\$\$([A-Z_][A-Z0-9_]*)/g, (whole, name: string) => {
 			const nodes = node.getMultipleMatches(name);
@@ -191,6 +196,37 @@ function substitute(template: string, node: SgNode, source: string): string {
 export interface RewritePatternResult {
 	changedFiles: string[];
 	matchCount: number;
+	/** Files the fixImports pass ran over (the rewrite-changed set). */
+	importsFixedIn?: string[];
+}
+
+/**
+ * Shared tail of the rewrite tools: optionally add missing imports for the
+ * files the rewrite changed (within the same Project, so the batch cache
+ * stays coherent), then save once unless dryRun. Only imports the language
+ * service can resolve are added — the target module must already be in the
+ * project graph.
+ */
+export async function finishRewrite(
+	project: Project,
+	{ dryRun, fixImports }: { dryRun: boolean; fixImports: boolean },
+): Promise<{ changedFiles: string[]; importsFixedIn?: string[] }> {
+	const rewriteChanged = getChangedFiles(project).map((sf) => sf.getFilePath());
+	let importsFixedIn: string[] | undefined;
+	if (fixImports && rewriteChanged.length > 0) {
+		// dryRun:true here means "don't save yet" — the import mutations stay in
+		// memory and are saved (or discarded) together with the rewrite below.
+		await addMissingImportsOnProject(project, {
+			filePaths: rewriteChanged,
+			dryRun: true,
+		});
+		importsFixedIn = rewriteChanged;
+	}
+	const changedFiles = getChangedFiles(project).map((sf) => sf.getFilePath());
+	if (!dryRun) {
+		await saveProjectChanges(project);
+	}
+	return { changedFiles, importsFixedIn };
 }
 
 /**
@@ -205,11 +241,13 @@ export async function rewritePattern(
 		rewrite,
 		filePaths,
 		dryRun = false,
+		fixImports = false,
 	}: {
 		pattern: string;
 		rewrite: string;
 		filePaths?: string[];
 		dryRun?: boolean;
+		fixImports?: boolean;
 	},
 ): Promise<RewritePatternResult> {
 	const ast = await loadAstGrep();
@@ -241,9 +279,9 @@ export async function rewritePattern(
 			sourceFile.replaceWithText(rewritten);
 		}
 	}
-	const changedFiles = getChangedFiles(project).map((sf) => sf.getFilePath());
-	if (!dryRun) {
-		await saveProjectChanges(project);
-	}
-	return { changedFiles, matchCount };
+	const { changedFiles, importsFixedIn } = await finishRewrite(project, {
+		dryRun,
+		fixImports,
+	});
+	return { changedFiles, matchCount, importsFixedIn };
 }

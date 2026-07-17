@@ -92,7 +92,9 @@ node dist/index.js call <tool> --params '<json>'
 3. **ast-grep layer** (`src/ast-grep/`)
    - `pattern-tools.ts`: structural pattern search/rewrite
      (`search_pattern` / `rewrite_pattern`) via `@ast-grep/napi`
-     (loaded lazily so a missing native binary only breaks these two tools)
+     (loaded lazily so a missing native binary only breaks the pattern tools)
+   - `rewrite-where.ts`: type-constrained structural rewrite (`rewrite_where`) —
+     ast-grep matches filtered by a ts-morph type predicate on a capture
 
 4. **ts-morph layer** (`src/ts-morph/`)
    - Implements the actual refactoring logic
@@ -203,5 +205,6 @@ Controllable via environment variables:
 - **Applying code fixes**: `src/ts-morph/apply-code-fix/`
 - **Safe symbol deletion**: `src/ts-morph/safe-delete-symbol/`
 - **Structural pattern search/rewrite**: `src/ast-grep/pattern-tools.ts`
+- **Type-constrained structural rewrite**: `src/ast-grep/rewrite-where.ts`
 
 For detailed specifications of each feature, see README.md.

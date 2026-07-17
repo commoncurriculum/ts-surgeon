@@ -82,6 +82,27 @@ describe("lazy @ast-grep/napi loading", () => {
 		);
 	});
 
+	it("call rewrite_where degrades the same way as the other pattern tools", async () => {
+		const out = createCapture();
+		const code = await runCli(
+			[
+				"call",
+				"rewrite_where",
+				"--params",
+				JSON.stringify({
+					tsconfigPath,
+					pattern: "$X.close()",
+					rewrite: "shutdown($X)",
+					where: { capture: "X", type: "DbConnection" },
+				}),
+			],
+			out,
+			createCapture(),
+		);
+		expect(code).toBe(1);
+		expect(out.text).toContain("@ast-grep/napi");
+	});
+
 	it("call search_pattern exits 1 with a message naming the platform issue", async () => {
 		const out = createCapture();
 		const code = await runCli(

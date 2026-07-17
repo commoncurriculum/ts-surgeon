@@ -131,4 +131,64 @@ describe("pattern tools (ast-grep)", () => {
 			expect(fs.readFileSync(filePath, "utf-8")).toBe(original);
 		});
 	});
+
+	describe("rewritePattern with fixImports", () => {
+		it("adds a resolvable import the rewrite introduced", async () => {
+			const appPath = path.join(srcDir, "app.ts");
+			fs.writeFileSync(
+				path.join(srcDir, "logger.ts"),
+				"export const logger = { debug(...args: unknown[]): void {} };\n",
+			);
+			fs.writeFileSync(appPath, 'console.log("x");\n');
+
+			const project = initializeProject(tsconfigPath);
+			const result = await rewritePattern(project, {
+				pattern: "console.log($$$A)",
+				rewrite: "logger.debug($$$A)",
+				fixImports: true,
+			});
+
+			expect(result.importsFixedIn).toEqual([appPath]);
+			const updated = fs.readFileSync(appPath, "utf-8");
+			expect(updated).toContain('import { logger } from "./logger";');
+			expect(updated).toContain('logger.debug("x");');
+		});
+
+		it("leaves identifiers with no resolvable export alone (documented limitation)", async () => {
+			const appPath = path.join(srcDir, "app.ts");
+			fs.writeFileSync(appPath, 'console.log("x");\n');
+
+			const project = initializeProject(tsconfigPath);
+			await rewritePattern(project, {
+				pattern: "console.log($$$A)",
+				rewrite: "mysteryFn($$$A)",
+				fixImports: true,
+			});
+
+			const updated = fs.readFileSync(appPath, "utf-8");
+			expect(updated).toContain('mysteryFn("x");');
+			expect(updated).not.toContain("import");
+		});
+
+		it("dryRun with fixImports writes nothing", async () => {
+			const appPath = path.join(srcDir, "app.ts");
+			const original = 'console.log("x");\n';
+			fs.writeFileSync(
+				path.join(srcDir, "logger.ts"),
+				"export const logger = { debug(...args: unknown[]): void {} };\n",
+			);
+			fs.writeFileSync(appPath, original);
+
+			const project = initializeProject(tsconfigPath);
+			const result = await rewritePattern(project, {
+				pattern: "console.log($$$A)",
+				rewrite: "logger.debug($$$A)",
+				fixImports: true,
+				dryRun: true,
+			});
+
+			expect(result.changedFiles).toEqual([appPath]);
+			expect(fs.readFileSync(appPath, "utf-8")).toBe(original);
+		});
+	});
 });

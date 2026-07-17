@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
+import * as ts from "typescript";
 import {
 	CliUsageError,
 	readBatchItems,
@@ -70,6 +71,11 @@ Params for call (flags win over JSON; both can be combined):
                          git diff --name-only (unstaged changes); no pipe
                          needed: ts-surgeon call organize_imports --git-changed
   --git-staged           Same, but for staged changes (git diff --staged)
+  --all-projects         When tsconfigPath is a solution-style config (a
+                         "references" array), run the tool once per referenced
+                         project and merge the results. Read-only tools only
+                         (search_pattern, find_references, find_unused_exports,
+                         get_diagnostics)
 
 Conveniences:
   - Relative paths are resolved against the current working directory.
@@ -217,6 +223,120 @@ function runInit(rest: string[], out: Writer): number {
 }
 
 /**
+ * Referenced tsconfig paths of a solution-style tsconfig (one with a
+ * "references" array), resolved to concrete tsconfig.json files. Empty for
+ * ordinary configs, unreadable files, and configs without references.
+ * Uses the TypeScript reader because tsconfig JSON allows comments.
+ */
+function solutionReferences(tsconfigPath: string): string[] {
+	try {
+		const { config } = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
+		const references: unknown = config?.references;
+		if (!Array.isArray(references)) {
+			return [];
+		}
+		return references
+			.map((ref) =>
+				typeof (ref as { path?: unknown })?.path === "string"
+					? path.resolve(
+							path.dirname(tsconfigPath),
+							(ref as { path: string }).path,
+						)
+					: undefined,
+			)
+			.filter((p): p is string => p !== undefined)
+			.map((p) => (p.endsWith(".json") ? p : path.join(p, "tsconfig.json")));
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Tools --all-projects may fan out: read-only ones. A mutating tool run once
+ * per referenced project would edit files shared between projects once per
+ * project — until that has a dedupe story, aggregation stays read-only.
+ */
+const ALL_PROJECTS_TOOLS = new Set([
+	"search_pattern",
+	"find_references",
+	"find_unused_exports",
+	"get_diagnostics",
+]);
+
+/**
+ * `call <tool> --all-projects` — runs a read-only tool once per referenced
+ * project of a solution-style tsconfig and merges the results (data gains
+ * byProject). Exit 1 if any project's run reported an error.
+ */
+async function runAllProjects(
+	registry: ToolRegistry,
+	toolName: string,
+	prepared: Record<string, unknown>,
+	references: string[],
+	wantsJson: boolean,
+	out: Writer,
+	err: Writer,
+): Promise<number> {
+	if (!ALL_PROJECTS_TOOLS.has(toolName)) {
+		throw new CliUsageError(
+			`--all-projects supports read-only tools only (${[...ALL_PROJECTS_TOOLS].join(", ")}). '${toolName}' mutates files — a file shared between referenced projects would be edited once per project.`,
+		);
+	}
+	if (references.length === 0) {
+		throw new CliUsageError(
+			`--all-projects: ${String(prepared.tsconfigPath)} has no "references" array — it is not a solution-style tsconfig.`,
+		);
+	}
+	const existing = references.filter((ref) => existsSync(ref));
+	const skipped = references.filter((ref) => !existsSync(ref));
+	if (existing.length === 0) {
+		throw new CliUsageError(
+			`--all-projects: none of the referenced tsconfigs exist on disk:\n  ${references.join("\n  ")}`,
+		);
+	}
+	for (const ref of skipped) {
+		err.write(`Warning: skipping missing referenced tsconfig ${ref}\n`);
+	}
+
+	const byProject: Array<{ tsconfigPath: string } & Record<string, unknown>> =
+		[];
+	let anyError = false;
+	for (const refPath of existing) {
+		const outcome = await callToolOnce(
+			toolName,
+			{ ...prepared, tsconfigPath: refPath },
+			registry,
+		);
+		anyError = anyError || outcome.isError;
+		byProject.push({
+			tsconfigPath: refPath,
+			...formatOutcomeJson(toolName, outcome),
+		});
+	}
+
+	if (wantsJson) {
+		out.write(
+			`${JSON.stringify(
+				{
+					tool: toolName,
+					status: anyError ? "error" : "success",
+					byProject,
+				},
+				null,
+				2,
+			)}\n`,
+		);
+	} else {
+		out.write(
+			`${byProject
+				.map((entry) => `## ${entry.tsconfigPath}\n${entry.message}`)
+				.join("\n\n")}\n`,
+		);
+	}
+	return anyError ? 1 : 0;
+}
+
+/**
  * `ts-surgeon doctor` — prints the environment facts a bug report needs and
  * exits 1 when part of the install is broken (currently: the ast-grep native
  * binary, without which search_pattern / rewrite_pattern cannot run).
@@ -309,17 +429,38 @@ export async function runCli(
 				}
 				const registry = createToolRegistry();
 				const tool = registry.get(toolName);
+				const allProjects = rest.includes("--all-projects");
 				const params = readCallParams(
-					rest.slice(1),
+					rest.slice(1).filter((arg) => arg !== "--all-projects"),
 					readStdin,
 					tool.schemaShape,
 					cwd,
 				);
-				const outcome = await callToolOnce(
-					tool.name,
-					prepareParams(params, cwd),
-					registry,
-				);
+				const prepared = prepareParams(params, cwd);
+				const references =
+					typeof prepared.tsconfigPath === "string"
+						? solutionReferences(prepared.tsconfigPath)
+						: [];
+				if (allProjects) {
+					// awaited so a CliUsageError rejection lands in this try/catch
+					return await runAllProjects(
+						registry,
+						tool.name,
+						prepared,
+						references,
+						wantsJson,
+						out,
+						err,
+					);
+				}
+				if (references.length > 0) {
+					// A solution-style config often contains no source files itself, so
+					// the tool would silently see a partial (or empty) project.
+					err.write(
+						`Warning: ${String(prepared.tsconfigPath)} is a solution-style tsconfig ("references" with ${references.length} project(s)). Pass a leaf tsconfig (e.g. ${references[0]}) or add --all-projects to run a read-only tool across every referenced project.\n`,
+					);
+				}
+				const outcome = await callToolOnce(tool.name, prepared, registry);
 				out.write(
 					wantsJson
 						? `${JSON.stringify(formatOutcomeJson(tool.name, outcome), null, 2)}\n`

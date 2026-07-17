@@ -504,6 +504,50 @@ describe("CLI", () => {
 			expect(results[1].status).toBe("success");
 		});
 
+		it("call rewrite_where accepts the nested where predicate via dot-path flags", async () => {
+			const filePath = path.join(srcDir, "conns.ts");
+			fs.writeFileSync(
+				filePath,
+				[
+					"class DbConnection { close(): void {} }",
+					"class FileHandle { close(): void {} }",
+					"const db = new DbConnection();",
+					"const fh = new FileHandle();",
+					"db.close();",
+					"fh.close();",
+					"",
+				].join("\n"),
+			);
+			const out = createCapture();
+			const err = createCapture();
+
+			const code = await runCli(
+				[
+					"call",
+					"rewrite_where",
+					"--tsconfig-path",
+					tsconfigPath,
+					"--pattern",
+					"$X.close()",
+					"--rewrite",
+					"shutdown($X)",
+					"--where.capture",
+					"X",
+					"--where.type",
+					"DbConnection",
+				],
+				out,
+				err,
+			);
+
+			expect(err.text).toBe("");
+			expect(code).toBe(0);
+			expect(out.text).toContain("1 of 2 pattern match(es)");
+			const updated = fs.readFileSync(filePath, "utf-8");
+			expect(updated).toContain("shutdown(db)");
+			expect(updated).toContain("fh.close()");
+		});
+
 		it("call --stdin-files reads a file list, skipping non-source and missing paths", async () => {
 			const usedPath = path.join(srcDir, "stdin-used.ts");
 			const appPath = path.join(srcDir, "stdin-app.ts");
@@ -812,6 +856,152 @@ describe("CLI", () => {
 			);
 			expect(code).toBe(2);
 			expect(err.text).toContain("at most one of");
+		});
+	});
+
+	describe("solution-style tsconfigs (--all-projects)", () => {
+		let solutionPath: string;
+
+		function writeSolution(): void {
+			const monoDir = path.join(tempDir, "mono");
+			solutionPath = path.join(monoDir, "tsconfig.json");
+			for (const pkg of ["pkg-a", "pkg-b"]) {
+				const pkgSrc = path.join(monoDir, pkg, "src");
+				fs.mkdirSync(pkgSrc, { recursive: true });
+				fs.writeFileSync(
+					path.join(monoDir, pkg, "tsconfig.json"),
+					JSON.stringify({
+						compilerOptions: { strict: true, composite: true },
+						include: ["src/**/*"],
+					}),
+				);
+			}
+			fs.writeFileSync(
+				path.join(monoDir, "pkg-a", "src", "a.ts"),
+				"export const ok: number = 1;\n",
+			);
+			fs.writeFileSync(
+				path.join(monoDir, "pkg-b", "src", "b.ts"),
+				"export const bad: number = 'oops';\n",
+			);
+			fs.writeFileSync(
+				solutionPath,
+				// tsconfig JSON allows comments — the reader must cope
+				`{\n\t// solution root\n\t"files": [],\n\t"references": [{ "path": "./pkg-a" }, { "path": "./pkg-b" }]\n}\n`,
+			);
+		}
+
+		it("warns on stderr when the tsconfig is solution-style and --all-projects is absent", async () => {
+			writeSolution();
+			const out = createCapture();
+			const err = createCapture();
+
+			const code = await runCli(
+				["call", "get_diagnostics", "--tsconfig-path", solutionPath],
+				out,
+				err,
+			);
+
+			expect(code).toBe(0);
+			expect(err.text).toContain("solution-style tsconfig");
+			expect(err.text).toContain("--all-projects");
+			expect(err.text).toContain(path.join("pkg-a", "tsconfig.json"));
+		});
+
+		it("--all-projects runs a read-only tool per referenced project and merges results", async () => {
+			writeSolution();
+			const out = createCapture();
+			const err = createCapture();
+
+			const code = await runCli(
+				[
+					"call",
+					"get_diagnostics",
+					"--all-projects",
+					"--json",
+					"--tsconfig-path",
+					solutionPath,
+				],
+				out,
+				err,
+			);
+
+			expect(code).toBe(0);
+			const parsed = JSON.parse(out.text);
+			expect(parsed.byProject).toHaveLength(2);
+			const [a, b] = parsed.byProject;
+			expect(a.tsconfigPath).toContain("pkg-a");
+			expect(a.message).toContain("No diagnostics");
+			expect(b.tsconfigPath).toContain("pkg-b");
+			expect(b.message).toContain("TS2322");
+			// the solution root's own (empty) project is not run
+			expect(
+				parsed.byProject.some(
+					(p: { tsconfigPath: string }) => p.tsconfigPath === solutionPath,
+				),
+			).toBe(false);
+		});
+
+		it("--all-projects text output sections results per project", async () => {
+			writeSolution();
+			const out = createCapture();
+
+			const code = await runCli(
+				[
+					"call",
+					"get_diagnostics",
+					"--all-projects",
+					"--tsconfig-path",
+					solutionPath,
+				],
+				out,
+				createCapture(),
+			);
+
+			expect(code).toBe(0);
+			expect(out.text).toContain(
+				`## ${path.join(tempDir, "mono", "pkg-a", "tsconfig.json")}`,
+			);
+			expect(out.text).toContain("TS2322");
+		});
+
+		it("--all-projects rejects mutating tools with a usage error", async () => {
+			writeSolution();
+			const err = createCapture();
+
+			const code = await runCli(
+				[
+					"call",
+					"organize_imports",
+					"--all-projects",
+					"--tsconfig-path",
+					solutionPath,
+				],
+				createCapture(),
+				err,
+			);
+
+			expect(code).toBe(2);
+			expect(err.text).toContain("read-only tools only");
+		});
+
+		it("--all-projects on a non-solution tsconfig is a usage error", async () => {
+			const err = createCapture();
+
+			const code = await runCli(
+				[
+					"call",
+					"get_diagnostics",
+					"--all-projects",
+					"--tsconfig-path",
+					tsconfigPath,
+				],
+				createCapture(),
+				err,
+			);
+
+			expect(code).toBe(2);
+			expect(err.text).toContain('no "references"');
 		});
 	});
 
