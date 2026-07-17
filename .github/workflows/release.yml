@@ -15,6 +15,11 @@ name: Release Package
 on:
   push:
     branches: [main]
+  # Merges performed through GitHub App integrations (e.g. Claude Code
+  # sessions) do not emit workflow-triggering push events, so the release
+  # cycle must also be startable by hand. Safe to dispatch anytime: the
+  # changesets action just re-evaluates pending changesets / publishable state.
+  workflow_dispatch:
 
 # One release run at a time; never cancel a publish in flight.
 concurrency:
