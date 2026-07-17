@@ -50,9 +50,8 @@ Usage:
   ts-surgeon hook [--strict]              PreToolUse guard for agent harnesses: blocks
                                           sed/perl -i on TS/JS sources (exit 2) and
                                           tells the agent to use ts-surgeon instead;
-                                          --strict also redirects recursive searches
-                                          (grep -r / rg) to find_references /
-                                          search_pattern / search_text
+                                          --strict also redirects recursive identifier
+                                          searches (grep -r / rg) to find_references
   ts-surgeon --help | --version
 
 Params for call (flags win over JSON; both can be combined):

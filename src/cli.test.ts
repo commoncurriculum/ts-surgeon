@@ -504,31 +504,6 @@ describe("CLI", () => {
 			expect(results[1].status).toBe("success");
 		});
 
-		it("call search_text reports grep-style matches from the project corpus", async () => {
-			const filePath = path.join(srcDir, "todo.ts");
-			fs.writeFileSync(filePath, "// TODO: refactor\nconst x = 1;\n");
-			const out = createCapture();
-			const err = createCapture();
-
-			const code = await runCli(
-				[
-					"call",
-					"search_text",
-					"--tsconfig-path",
-					tsconfigPath,
-					"--query",
-					"TODO",
-				],
-				out,
-				err,
-			);
-
-			expect(err.text).toBe("");
-			expect(code).toBe(0);
-			expect(out.text).toContain(`${filePath}:1:4  // TODO: refactor`);
-			expect(out.text).toContain("Text matches: 1 total");
-		});
-
 		it("call --stdin-files reads a file list, skipping non-source and missing paths", async () => {
 			const usedPath = path.join(srcDir, "stdin-used.ts");
 			const appPath = path.join(srcDir, "stdin-app.ts");

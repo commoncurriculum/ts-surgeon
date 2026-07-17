@@ -56,24 +56,21 @@ describe("evaluateBashCommand", () => {
 		).toBe(false);
 	});
 
-	it("allows recursive searches by default, blocks them in strict mode", () => {
+	it("allows recursive identifier searches by default, blocks them in strict mode", () => {
 		const command = "grep -rn calculateSum src/";
 		expect(evaluateBashCommand(command).block).toBe(false);
 		const strict = evaluateBashCommand(command, { strict: true });
 		expect(strict.block).toBe(true);
-		// the message routes by intent: symbols, shapes, and plain text
 		expect(strict.reason).toContain("find_references");
-		expect(strict.reason).toContain("search_pattern");
-		expect(strict.reason).toContain("search_text");
 		// rg too
 		expect(
 			evaluateBashCommand("rg calculateSum src/", { strict: true }).block,
 		).toBe(true);
-		// plain-text/regex searches now have a home too (search_text) — blocked
+		// regex-y patterns are not identifier lookups — leave them alone
 		expect(
 			evaluateBashCommand("grep -rn 'TODO|FIXME' src/", { strict: true }).block,
-		).toBe(true);
-		// searches scoped to non-source files are not code lookups
+		).toBe(false);
+		// searches scoped to non-source files are not identifier lookups
 		expect(
 			evaluateBashCommand("grep -rn calculateSum docs/*.md", { strict: true })
 				.block,

@@ -69,8 +69,8 @@ Conveniences:
 ## The loop
 
 1. **Survey** — \`find_references\` (symbol usages) / \`search_pattern\` (code
-   shapes) / \`search_text\` (plain text) / \`find_unused_exports\` /
-   \`get_type_at_position\` to understand blast radius before touching anything.
+   shapes) / \`find_unused_exports\` / \`get_type_at_position\` to understand
+   blast radius before touching anything.
 2. **Change** — the mutating tool, with \`--dry-run\` first when it fans out.
 3. **Verify** — \`get_diagnostics\` on the touched files to confirm no new type
    errors, then \`organize_imports\` to clean up.
@@ -81,7 +81,6 @@ Conveniences:
 | --- | --- |
 | Find every occurrence of a code *shape* (ast-grep pattern) | search_pattern |
 | Rewrite a code shape project-wide (sed-style codemod, safely) | rewrite_pattern |
-| Find plain text / a regex (TODOs, strings, config keys) | search_text |
 | Rename a symbol everywhere it is used | rename_symbol |
 | Rename/move files or folders and fix import paths | rename_filesystem_entry |
 | See every definition + usage of a symbol | find_references |
@@ -112,15 +111,14 @@ Conveniences:
   files you touched, or --dry-run first.
 - Tools write files in place, not through git — keep the working tree clean
   before bulk operations so the diff is reviewable.
-- Never fall back to grep/sed: route searches by intent — symbol usages ->
-  \`find_references\` (type-aware), code shapes -> \`search_pattern\` (ast-grep
-  patterns like \`console.log($$$ARGS)\`; formatting never false-negatives,
-  strings/comments never false-positive), plain text -> \`search_text\`
-  (project-scoped, so node_modules/dist are never scanned). For rewrites use
-  \`rewrite_pattern\` instead of sed/perl; for symbol renames and signature
-  changes use the type-aware tools — rewrite_pattern does not touch imports.
-  (Projects can enforce this: \`ts-surgeon init --claude-hook\` installs a
-  guard that blocks in-place sed/perl on TS/JS sources.)
+- Never fall back to grep for code shapes or sed/perl for rewrites:
+  \`search_pattern\` / \`rewrite_pattern\` take ast-grep patterns
+  (\`console.log($$$ARGS)\` -> \`logger.debug($$$ARGS)\`) and match the AST, so
+  formatting never false-negatives and strings/comments never false-positive.
+  For symbol renames and signature changes use the type-aware tools —
+  rewrite_pattern does not touch imports. (Projects can enforce this:
+  \`ts-surgeon init --claude-hook\` installs a guard that blocks in-place
+  sed/perl on TS/JS sources.)
 
 ## Anti-patterns
 

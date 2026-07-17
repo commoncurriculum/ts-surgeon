@@ -16,7 +16,6 @@ import { registerRenameFileSystemEntryTool } from "./register-rename-file-system
 import { registerRenameSymbolTool } from "./register-rename-symbol-tool";
 import { registerRewritePatternTool } from "./register-rewrite-pattern-tool";
 import { registerSearchPatternTool } from "./register-search-pattern-tool";
-import { registerSearchTextTool } from "./register-search-text-tool";
 import { registerSafeDeleteSymbolTool } from "./register-safe-delete-symbol-tool";
 
 /**
@@ -40,5 +39,4 @@ export function registerTsMorphTools(registry: ToolRegistry): void {
 	registerSafeDeleteSymbolTool(registry);
 	registerSearchPatternTool(registry);
 	registerRewritePatternTool(registry);
-	registerSearchTextTool(registry);
 }

@@ -15,7 +15,7 @@ export function registerSearchPatternTool(registry: ToolRegistry): void {
 
 ## When NOT to use
 - Finding usages of a *symbol* -> use \`find_references\` (type-aware; follows imports and aliases).
-- Plain-text search (TODO comments, strings, config keys) -> use \`search_text\` (project-scoped, regex-capable).
+- Plain-text search (TODO comments, strings) -> ordinary grep is fine.
 
 ## Pattern syntax (ast-grep)
 - Write the code you want to find; \`$NAME\` matches one node, \`$$$NAME\` matches zero or more (e.g. argument lists).
