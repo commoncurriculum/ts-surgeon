@@ -40,8 +40,8 @@ Usage:
   ts-surgeon init [--file <path>]         Add the agent snippet to AGENTS.md (or <path>);
                                           --claude-hook installs the guard into
                                           .claude/settings.json (Claude Code);
-                                          --opencode-hook installs it as an opencode
-                                          plugin (.opencode/plugin/ts-surgeon.js)
+                                          --opencode-hook registers the guard plugin
+                                          in opencode.json's "plugin" array
   ts-surgeon hook [--strict]              PreToolUse guard for agent harnesses: blocks
                                           sed/perl -i on TS/JS sources (exit 2) and
                                           tells the agent to use ts-surgeon instead;

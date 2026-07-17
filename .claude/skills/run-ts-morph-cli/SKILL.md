@@ -8,6 +8,8 @@ description: >-
   Triggers: "run ts-surgeon", "run the CLI", "smoke test the CLI", "drive the
   ts-morph tools", "does the CLI work".
 license: MIT
+metadata:
+  internal: true
 ---
 
 # Run: ts-surgeon (refactoring CLI)

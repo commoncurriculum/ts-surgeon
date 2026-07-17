@@ -47,6 +47,14 @@ export interface HookVerdict {
 }
 
 /**
+ * Strict mode without a flag: the Claude Code plugin and the opencode plugin
+ * both run a fixed command line, so TS_SURGEON_STRICT=1 is the opt-in there.
+ */
+export function strictFromEnv(): boolean {
+	return process.env.TS_SURGEON_STRICT === "1";
+}
+
+/**
  * Decides whether a Bash command should be redirected to ts-surgeon.
  * Default mode blocks only in-place text edits of TS/JS sources; strict mode
  * additionally blocks recursive text searches for plain identifiers.
@@ -95,7 +103,7 @@ export function runHook(
 	readStdin: StdinReader,
 	err: Writer,
 ): number {
-	let strict = false;
+	let strict = strictFromEnv();
 	for (const arg of rest) {
 		if (arg === "--strict") {
 			strict = true;
@@ -133,51 +141,59 @@ export function runHook(
 
 const HOOK_COMMAND = "npx -y @commoncurriculum/ts-surgeon hook";
 
-/** Contents of the generated opencode plugin (see installOpencodeHook). */
-const OPENCODE_PLUGIN = `// Installed by \`ts-surgeon init --opencode-hook\`.
-// Guards against hand-rolled TS/JS refactors: every bash tool call is checked
-// by \`ts-surgeon hook\` (exit 2 = block, stderr explains what to use instead).
-// Prefix a command with ${ALLOW_MARKER} to bypass. Delete this file to remove.
-import { spawnSync } from "node:child_process";
-
-export const TsSurgeonGuard = async () => ({
-	"tool.execute.before": async (input, output) => {
-		if (input.tool !== "bash") return;
-		const command = output?.args?.command;
-		if (typeof command !== "string") return;
-		const payload = JSON.stringify({
-			tool_name: "Bash",
-			tool_input: { command },
-		});
-		const result = spawnSync(
-			"npx",
-			["-y", "@commoncurriculum/ts-surgeon", "hook"],
-			{ input: payload, encoding: "utf-8" },
-		);
-		if (result.status === 2) {
-			throw new Error(
-				(result.stderr || "").trim() || "ts-surgeon blocked this command",
-			);
-		}
-	},
-});
-`;
+/** npm package opencode loads as the guard plugin (this package itself). */
+const OPENCODE_PLUGIN_PACKAGE = "@commoncurriculum/ts-surgeon";
 
 /**
- * Installs the guard as an opencode plugin
- * (.opencode/plugin/ts-surgeon.js). Idempotent.
+ * Registers the guard in the project's opencode.json `"plugin"` array — the
+ * package's main export is the opencode plugin, and opencode auto-installs
+ * npm plugins at startup. Merges with existing config; idempotent.
  */
 export function installOpencodeHook(cwd: string, out: Writer): void {
-	const pluginPath = path.join(cwd, ".opencode", "plugin", "ts-surgeon.js");
-	if (existsSync(pluginPath)) {
-		out.write(`${pluginPath} already exists — nothing to do.\n`);
+	const configPath = path.join(cwd, "opencode.json");
+	let config: Record<string, unknown> = {
+		$schema: "https://opencode.ai/config.json",
+	};
+	if (existsSync(configPath)) {
+		try {
+			config = JSON.parse(readFileSync(configPath, "utf-8"));
+		} catch (error) {
+			throw new CliUsageError(
+				`${configPath} is not valid JSON — fix it before installing the plugin: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
+
+	config.plugin ??= [];
+	const plugins = config.plugin as unknown[];
+	if (
+		plugins.some(
+			(entry) =>
+				typeof entry === "string" && entry.startsWith(OPENCODE_PLUGIN_PACKAGE),
+		)
+	) {
+		out.write(
+			`${configPath} already lists the ${OPENCODE_PLUGIN_PACKAGE} plugin — nothing to do.\n`,
+		);
 		return;
 	}
-	mkdirSync(path.dirname(pluginPath), { recursive: true });
-	writeFileSync(pluginPath, OPENCODE_PLUGIN);
+	plugins.push(OPENCODE_PLUGIN_PACKAGE);
+	writeFileSync(configPath, `${JSON.stringify(config, null, "\t")}\n`);
 	out.write(
-		`Installed the ts-surgeon guard as an opencode plugin at ${pluginPath} (blocks sed/perl -i on TS/JS sources; prefix a command with ${ALLOW_MARKER} to bypass).\n`,
+		`Registered the ${OPENCODE_PLUGIN_PACKAGE} guard plugin in ${configPath} (blocks sed/perl -i on TS/JS sources; prefix a command with ${ALLOW_MARKER} to bypass).\n`,
 	);
+
+	// Older versions of this installer copied a standalone plugin file instead.
+	for (const legacy of [
+		path.join(cwd, ".opencode", "plugin", "ts-surgeon.js"),
+		path.join(cwd, ".opencode", "plugins", "ts-surgeon.js"),
+	]) {
+		if (existsSync(legacy)) {
+			out.write(
+				`Note: ${legacy} is the old copy-installed guard — delete it to avoid running the check twice.\n`,
+			);
+		}
+	}
 }
 
 /**

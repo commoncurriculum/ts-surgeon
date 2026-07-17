@@ -3,7 +3,12 @@
 	"version": "0.0.0-development",
 	"_version_note": "Pinned on purpose. Git tag (vX.Y.Z) is the single source of truth — release.yml bakes the tag value into this field and into src/version.ts before `pnpm publish`. Do NOT bump by hand. See .claude/skills/release/SKILL.md.",
 	"description": "AST-accurate TypeScript/JavaScript refactoring CLI powered by ts-morph",
-	"main": "dist/index.js",
+	"main": "dist/opencode-plugin.js",
+	"_main_note": "The importable entry is the opencode guard plugin (list the package in opencode.json's `plugin` array); the CLI is reached via `bin`, which does not go through `exports`. dist/index.js runs the CLI on import, so it must never be the import target.",
+	"exports": {
+		".": "./dist/opencode-plugin.js",
+		"./package.json": "./package.json"
+	},
 	"bin": {
 		"ts-surgeon": "dist/index.js"
 	},
