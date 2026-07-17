@@ -182,7 +182,7 @@ function convertDeclaration(
 	if (currentName) {
 		if (newName !== undefined && newName !== currentName) {
 			throw new Error(
-				`The default export is already named '${currentName}'. Omit newName to keep it, or rename it first with rename_symbol_by_tsmorph (then convert).`,
+				`The default export is already named '${currentName}'. Omit newName to keep it, or rename it first with rename_symbol (then convert).`,
 			);
 		}
 		assertExportNameAvailable(sourceFile, currentName);

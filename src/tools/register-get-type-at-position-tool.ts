@@ -1,12 +1,16 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
-import { getTypeAtPosition } from "../../ts-morph/get-type-at-position/get-type-at-position";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
+import { getTypeAtPosition } from "../ts-morph/get-type-at-position/get-type-at-position";
+import {
+	getIdentifierPosition,
+	resolveTargetIdentifier,
+} from "../ts-morph/_utils/resolve-identifier";
 import { runTool } from "./_tool-runner";
 
-export function registerGetTypeAtPositionTool(server: McpServer): void {
-	server.tool(
-		"get_type_at_position_by_tsmorph",
+export function registerGetTypeAtPositionTool(registry: ToolRegistry): void {
+	registry.tool(
+		"get_type_at_position",
 		`[ts-morph] Return the TypeChecker-inferred type at a specific position in a TypeScript/JavaScript file, plus the symbol and its declaration location.
 
 ## When to use
@@ -16,11 +20,10 @@ export function registerGetTypeAtPositionTool(server: McpServer): void {
 
 ## When NOT to use
 - Bulk type analysis across many positions — call \`tsc\` directly instead.
-- Listing every reference of a symbol — use \`find_references_by_tsmorph\`.
+- Listing every reference of a symbol — use \`find_references\`.
 
 ## Critical constraints
-- \`position\` is 1-based (line/column), matching what editors display.
-- All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
+- Target the node either with \`position\` (1-based line/column, matching what editors display) or with \`symbolName\` (a declaration name, when unambiguous in the file). Pass at least one.
 - For function/method identifiers (where ALL declarations are signature-bearing) the type is rendered as a call-style \`(arg: T) => R\` text taken directly from the declaration source, preserving rest \`...\`, optional \`?\`, default values, and destructuring patterns. Overloads are joined with \`&\` and the implementation signature is hidden.
 - For function/namespace merges or other mixed symbols (function with extra properties), the raw TypeChecker text (e.g. \`typeof fn\`) is returned to avoid silently dropping the property side of the type.
 - For imported symbols the resolved (aliased) symbol's declaration location is reported, including barrel re-export chains (\`export * from\`, \`export { x } from\`) which are recursively unwrapped.
@@ -51,18 +54,40 @@ export function registerGetTypeAtPositionTool(server: McpServer): void {
 						.positive()
 						.describe("1-based column number."),
 				})
-				.describe("Exact position to inspect."),
+				.optional()
+				.describe(
+					"Exact position to inspect. Optional when symbolName is given.",
+				),
+			symbolName: z
+				.string()
+				.optional()
+				.describe(
+					"Declaration name to inspect instead of a position; must be unambiguous in the file.",
+				),
 		},
 		(args) =>
 			runTool(
-				"get_type_at_position_by_tsmorph",
-				{ targetFilePath: args.targetFilePath, position: args.position },
+				"get_type_at_position",
+				{
+					targetFilePath: args.targetFilePath,
+					position: args.position,
+					symbolName: args.symbolName,
+				},
 				() => {
 					const project = initializeProject(args.tsconfigPath);
+					// getTypeAtPosition works on any node kind, so a given position is
+					// used verbatim; only name-based targeting goes through the resolver.
+					const position =
+						args.position ??
+						getIdentifierPosition(
+							resolveTargetIdentifier(project, args.targetFilePath, {
+								symbolName: args.symbolName,
+							}),
+						);
 					const result = getTypeAtPosition(
 						project,
 						args.targetFilePath,
-						args.position,
+						position,
 					);
 
 					const lines: string[] = [
@@ -77,7 +102,7 @@ export function registerGetTypeAtPositionTool(server: McpServer): void {
 							`Declared at: ${result.declaration.filePath}:${result.declaration.line}:${result.declaration.column}`,
 						);
 					}
-					return { message: lines.join("\n") };
+					return { message: lines.join("\n"), data: result };
 				},
 			),
 	);

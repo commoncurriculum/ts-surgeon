@@ -1,5 +1,5 @@
-// Version is the single source of truth for the MCP server's reported
-// version (returned via initialize -> serverInfo.version). The literal below
+// Version is the single source of truth for the version the CLI reports
+// (via `--version`). The literal below
 // is rewritten at release time by .github/workflows/release.yml — see
 // "Bake VERSION from tag" step — and the same value is mirrored into
 // package.json "version" before `pnpm publish`.

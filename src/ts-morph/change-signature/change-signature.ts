@@ -10,10 +10,7 @@ import {
 	initializeProject,
 	saveProjectChanges,
 } from "../_utils/ts-morph-project";
-import {
-	findIdentifierNode,
-	validateSymbol,
-} from "../rename-symbol/rename-symbol";
+import { resolveTargetIdentifier } from "../_utils/resolve-identifier";
 import {
 	callHasSpreadArgument,
 	computeNewArgumentTexts,
@@ -81,8 +78,10 @@ export async function changeSignatureOnProject(
 		throw new Error("changes array is empty");
 	}
 
-	const identifier = findIdentifierNode(project, targetFilePath, position);
-	validateSymbol(identifier, functionName);
+	const identifier = resolveTargetIdentifier(project, targetFilePath, {
+		position,
+		symbolName: functionName,
+	});
 
 	const primary = findFunctionLikeDeclaration(identifier);
 	const allDeclarations = getAllRelatedFunctionDeclarations(primary);

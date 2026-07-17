@@ -1,12 +1,12 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { applyCodeFix } from "../../ts-morph/apply-code-fix/apply-code-fix";
+import { applyCodeFix } from "../ts-morph/apply-code-fix/apply-code-fix";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
-export function registerApplyCodeFixTool(server: McpServer): void {
-	server.tool(
-		"apply_code_fix_by_tsmorph",
-		`[ts-morph] Apply a TypeScript "fix all in file" quick-fix across specific files or the whole project. Pairs with \`get_diagnostics_by_tsmorph\` to turn a diagnosis into an automated fix.
+export function registerApplyCodeFixTool(registry: ToolRegistry): void {
+	registry.tool(
+		"apply_code_fix",
+		`[ts-morph] Apply a TypeScript "fix all in file" quick-fix across specific files or the whole project. Pairs with \`get_diagnostics\` to turn a diagnosis into an automated fix.
 
 ## Supported fixes (\`fix\`)
 - \`remove_unused\` — delete unused declarations and unused imports.
@@ -15,11 +15,11 @@ export function registerApplyCodeFixTool(server: McpServer): void {
 - \`infer_types_from_usage\` — add inferred type annotations for implicit-\`any\` parameters/variables (only offered under \`noImplicitAny\`).
 
 ## When to use
-- Bulk-clearing a class of diagnostics surfaced by \`get_diagnostics_by_tsmorph\` (unused code, unimplemented interface/abstract members, implicit any).
+- Bulk-clearing a class of diagnostics surfaced by \`get_diagnostics\` (unused code, unimplemented interface/abstract members, implicit any).
 
 ## When NOT to use
-- Adding missing imports — use \`add_missing_imports_by_tsmorph\`.
-- Sorting/coalescing imports — use \`organize_imports_by_tsmorph\`.
+- Adding missing imports — use \`add_missing_imports\`.
+- Sorting/coalescing imports — use \`organize_imports\`.
 
 ## Critical constraints
 - All paths (\`tsconfigPath\`, \`filePaths\`) MUST be absolute.
@@ -57,7 +57,7 @@ Returns the number of files processed and the list of modified (or, in dryRun, t
 		},
 		(args) =>
 			runTool(
-				"apply_code_fix_by_tsmorph",
+				"apply_code_fix",
 				{
 					fix: args.fix,
 					fileCount: args.filePaths?.length ?? "all",
@@ -80,6 +80,7 @@ Returns the number of files processed and the list of modified (or, in dryRun, t
 					return {
 						message,
 						log: { changedFilesCount: result.changedFiles.length },
+						data: result,
 					};
 				},
 			),

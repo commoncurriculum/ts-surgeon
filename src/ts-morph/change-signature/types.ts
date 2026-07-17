@@ -33,7 +33,8 @@ export type ChangeSignatureOperation =
 export interface ChangeSignatureParams {
 	tsconfigPath: string;
 	targetFilePath: string;
-	position: { line: number; column: number };
+	/** Optional when functionName is unambiguous in the file. */
+	position?: { line: number; column: number };
 	functionName: string;
 	changes: ChangeSignatureOperation[];
 	dryRun?: boolean;

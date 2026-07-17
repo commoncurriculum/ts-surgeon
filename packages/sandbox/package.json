@@ -1,8 +1,8 @@
 {
-	"name": "mcp-sandbox",
+	"name": "tsmorph-sandbox",
 	"version": "0.0.0",
 	"private": true,
-	"description": "Sandbox environment for functional testing of MCP tools. Not intended for publication.",
+	"description": "Sandbox environment for functional testing of the refactoring tools. Not intended for publication.",
 	"scripts": {
 		"check-types": "tsc --noEmit"
 	},

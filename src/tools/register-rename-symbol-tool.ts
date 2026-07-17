@@ -1,11 +1,11 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { renameSymbol } from "../../ts-morph/rename-symbol/rename-symbol";
+import { renameSymbol } from "../ts-morph/rename-symbol/rename-symbol";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
-export function registerRenameSymbolTool(server: McpServer): void {
-	server.tool(
-		"rename_symbol_by_tsmorph",
+export function registerRenameSymbolTool(registry: ToolRegistry): void {
+	registry.tool(
+		"rename_symbol",
 		`[ts-morph] Type-aware rename of a TypeScript/JavaScript symbol (function, variable, class, type, interface, enum, etc.) across the entire project.
 
 ## When to use
@@ -14,13 +14,13 @@ export function registerRenameSymbolTool(server: McpServer): void {
 - Even for a "local-only" symbol, this tool is the correct default: it costs nothing extra and guarantees no missed reference.
 
 ## When NOT to use
-- Renaming a file or folder (and updating imports to it) -> use \`rename_filesystem_entry_by_tsmorph\`.
-- Moving a symbol to a different file -> use \`move_symbol_to_file_by_tsmorph\`.
-- Just looking up where a symbol is used (no rename) -> use \`find_references_by_tsmorph\`.
+- Renaming a file or folder (and updating imports to it) -> use \`rename_filesystem_entry\`.
+- Moving a symbol to a different file -> use \`move_symbol_to_file\`.
+- Just looking up where a symbol is used (no rename) -> use \`find_references\`.
 
 ## Critical constraints
-- \`position\` must point at the symbol's identifier (1-based line/column, as shown by editors). If the position lands on whitespace or a different token, the rename fails.
-- \`symbolName\` must match the identifier text at that position; it is used as a sanity check.
+- \`position\` is optional: when omitted, the symbol is located by \`symbolName\` among the file's declaration names, which must be unambiguous (the error lists candidate positions otherwise). When given, it must point at the symbol's identifier (1-based line/column, as shown by editors).
+- \`symbolName\` must match the identifier text at the resolved position; it is used as a sanity check.
 - All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
 
 ## Tips
@@ -40,7 +40,10 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					line: z.number().describe("1-based line number."),
 					column: z.number().describe("1-based column number."),
 				})
-				.describe("The exact position of the symbol to rename."),
+				.optional()
+				.describe(
+					"The exact position of the symbol to rename. Optional when symbolName is an unambiguous declaration name in the file.",
+				),
 			symbolName: z.string().describe("The current name of the symbol."),
 			newName: z.string().describe("The new name for the symbol."),
 			dryRun: z
@@ -53,7 +56,7 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 		},
 		(args) =>
 			runTool(
-				"rename_symbol_by_tsmorph",
+				"rename_symbol",
 				{
 					targetFilePath: args.targetFilePath,
 					position: args.position,
@@ -80,6 +83,7 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					return {
 						message,
 						log: { changedFilesCount: result.changedFiles.length },
+						data: result,
 					};
 				},
 			),

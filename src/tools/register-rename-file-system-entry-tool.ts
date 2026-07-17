@@ -1,9 +1,9 @@
 import * as path from "node:path";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { TimeoutError } from "../../errors/timeout-error";
-import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
-import { renameFileSystemEntry } from "../../ts-morph/rename-file-system/rename-file-system-entry";
+import { TimeoutError } from "../errors/timeout-error";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
+import { renameFileSystemEntry } from "../ts-morph/rename-file-system/rename-file-system-entry";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
 const renameSchema = z.object({
@@ -43,9 +43,11 @@ const renameSchema = z.object({
 
 type RenameArgs = z.infer<typeof renameSchema>;
 
-export function registerRenameFileSystemEntryTool(server: McpServer): void {
-	server.tool(
-		"rename_filesystem_entry_by_tsmorph",
+export function registerRenameFileSystemEntryTool(
+	registry: ToolRegistry,
+): void {
+	registry.tool(
+		"rename_filesystem_entry",
 		`[ts-morph] Rename or move one or more TypeScript/JavaScript files and/or folders, and automatically rewrite every import/export path that references them.
 
 ## When to use
@@ -54,11 +56,11 @@ export function registerRenameFileSystemEntryTool(server: McpServer): void {
 - Use batch mode (multiple entries in \`renames\`) when reorganizing several files at once -- a single AST pass is much faster than running the tool repeatedly.
 
 ## When NOT to use
-- Renaming a symbol inside a file -> \`rename_symbol_by_tsmorph\`.
-- Moving a single symbol (not the whole file) to another file -> \`move_symbol_to_file_by_tsmorph\`.
+- Renaming a symbol inside a file -> \`rename_symbol\`.
+- Moving a single symbol (not the whole file) to another file -> \`move_symbol_to_file\`.
 
 ## Critical constraints
-- Path aliases in updated imports are REWRITTEN AS RELATIVE PATHS (e.g., \`@/foo\` -> \`../foo\`). If you want to keep aliases, run \`remove_path_alias_by_tsmorph\` separately beforehand, or accept the conversion.
+- Path aliases in updated imports are REWRITTEN AS RELATIVE PATHS (e.g., \`@/foo\` -> \`../foo\`). If you want to keep aliases, run \`remove_path_alias\` separately beforehand, or accept the conversion.
 - Barrel imports like \`import X from '../components'\` are rewritten to point at the resolved index file (e.g., \`'../components/index.tsx'\`).
 - Default exports declared via a bare identifier (\`export default Foo;\`) may not be updated correctly. Default function/class declarations (\`export default function foo() {}\`) are handled.
 - All paths (\`tsconfigPath\`, \`oldPath\`, \`newPath\`) MUST be absolute.
@@ -83,59 +85,56 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 				timeoutSeconds,
 			};
 
-			return runTool(
-				"rename_filesystem_entry_by_tsmorph",
-				logArgs,
-				async () => {
-					const controller = new AbortController();
-					const timeoutId = setTimeout(() => {
-						controller.abort(
-							new TimeoutError(
-								`Operation timed out after ${timeoutSeconds} seconds`,
-								timeoutSeconds,
-							),
+			return runTool("rename_filesystem_entry", logArgs, async () => {
+				const controller = new AbortController();
+				const timeoutId = setTimeout(() => {
+					controller.abort(
+						new TimeoutError(
+							`Operation timed out after ${timeoutSeconds} seconds`,
+							timeoutSeconds,
+						),
+					);
+				}, timeoutSeconds * 1000);
+
+				try {
+					const project = initializeProject(tsconfigPath);
+					const result = await renameFileSystemEntry({
+						project,
+						renames,
+						dryRun,
+						signal: controller.signal,
+					});
+
+					const renameSummary = renames
+						.map(
+							(r) =>
+								`'${path.basename(r.oldPath)}' -> '${path.basename(r.newPath)}'`,
+						)
+						.join(", ");
+					const changedFilesList = formatChangedFiles(result.changedFiles);
+					const message = dryRun
+						? `Dry run complete: Renaming [${renameSummary}] would modify the following files:\n - ${changedFilesList}`
+						: `Rename successful: Renamed [${renameSummary}]. The following files were modified:\n - ${changedFilesList}`;
+					return {
+						message,
+						log: { changedFilesCount: result.changedFiles.length },
+						data: result,
+					};
+				} catch (error) {
+					// Map cancellation into friendly messages; the harness prefixes "Error:".
+					if (error instanceof TimeoutError) {
+						throw new Error(
+							`The operation timed out because it did not complete within ${error.durationSeconds} seconds. The operation has been cancelled.\nThe project may be large or the number of changes may be high.`,
 						);
-					}, timeoutSeconds * 1000);
-
-					try {
-						const project = initializeProject(tsconfigPath);
-						const result = await renameFileSystemEntry({
-							project,
-							renames,
-							dryRun,
-							signal: controller.signal,
-						});
-
-						const renameSummary = renames
-							.map(
-								(r) =>
-									`'${path.basename(r.oldPath)}' -> '${path.basename(r.newPath)}'`,
-							)
-							.join(", ");
-						const changedFilesList = formatChangedFiles(result.changedFiles);
-						const message = dryRun
-							? `Dry run complete: Renaming [${renameSummary}] would modify the following files:\n - ${changedFilesList}`
-							: `Rename successful: Renamed [${renameSummary}]. The following files were modified:\n - ${changedFilesList}`;
-						return {
-							message,
-							log: { changedFilesCount: result.changedFiles.length },
-						};
-					} catch (error) {
-						// Map cancellation into friendly messages; the harness prefixes "Error:".
-						if (error instanceof TimeoutError) {
-							throw new Error(
-								`The operation timed out because it did not complete within ${error.durationSeconds} seconds. The operation has been cancelled.\nThe project may be large or the number of changes may be high.`,
-							);
-						}
-						if (error instanceof Error && error.name === "AbortError") {
-							throw new Error(`The operation was cancelled: ${error.message}`);
-						}
-						throw error;
-					} finally {
-						clearTimeout(timeoutId);
 					}
-				},
-			);
+					if (error instanceof Error && error.name === "AbortError") {
+						throw new Error(`The operation was cancelled: ${error.message}`);
+					}
+					throw error;
+				} finally {
+					clearTimeout(timeoutId);
+				}
+			});
 		},
 	);
 }

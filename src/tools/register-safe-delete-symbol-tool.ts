@@ -1,7 +1,7 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { safeDeleteSymbol } from "../../ts-morph/safe-delete-symbol/safe-delete-symbol";
-import type { BlockingReference } from "../../ts-morph/safe-delete-symbol/types";
+import { safeDeleteSymbol } from "../ts-morph/safe-delete-symbol/safe-delete-symbol";
+import type { BlockingReference } from "../ts-morph/safe-delete-symbol/types";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
 function formatBlockers(blockers: BlockingReference[]): string {
@@ -10,18 +10,18 @@ function formatBlockers(blockers: BlockingReference[]): string {
 		.join("\n");
 }
 
-export function registerSafeDeleteSymbolTool(server: McpServer): void {
-	server.tool(
-		"safe_delete_symbol_by_tsmorph",
+export function registerSafeDeleteSymbolTool(registry: ToolRegistry): void {
+	registry.tool(
+		"safe_delete_symbol",
 		`[ts-morph] Delete a top-level symbol's declaration ONLY when it has no references outside its own declaration; otherwise report the blocking references and change nothing.
 
 ## When to use
 - Removing a function/class/variable/type you believe is dead, with a guarantee you won't break a reference you missed.
-- The mutating partner to \`find_unused_exports_by_tsmorph\`: confirm a candidate is truly unused, then delete it.
+- The mutating partner to \`find_unused_exports\`: confirm a candidate is truly unused, then delete it.
 
 ## When NOT to use
-- Renaming or moving the symbol — use \`rename_symbol_by_tsmorph\` / \`move_symbol_to_file_by_tsmorph\`.
-- Removing unused imports — use \`organize_imports_by_tsmorph\` or \`apply_code_fix_by_tsmorph\` (\`remove_unused\`).
+- Renaming or moving the symbol — use \`rename_symbol\` / \`move_symbol_to_file\`.
+- Removing unused imports — use \`organize_imports\` or \`apply_code_fix\` (\`remove_unused\`).
 
 ## Behavior
 - Finds the named top-level declaration (and any overload signatures of the same symbol) and resolves all references via the type checker.
@@ -55,7 +55,7 @@ On success: the deleted symbol and the modified file(s). When blocked: the list 
 		},
 		(args) =>
 			runTool(
-				"safe_delete_symbol_by_tsmorph",
+				"safe_delete_symbol",
 				{
 					targetFilePath: args.targetFilePath,
 					symbolName: args.symbolName,
@@ -76,6 +76,7 @@ On success: the deleted symbol and the modified file(s). When blocked: the list 
 								deleted: false,
 								blockers: result.blockingReferences.length,
 							},
+							data: result,
 						};
 					}
 
@@ -90,6 +91,7 @@ On success: the deleted symbol and the modified file(s). When blocked: the list 
 							deleted: true,
 							changedFilesCount: result.changedFiles.length,
 						},
+						data: result,
 					};
 				},
 			),

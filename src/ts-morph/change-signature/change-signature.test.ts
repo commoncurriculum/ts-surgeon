@@ -1,7 +1,7 @@
 import type { Project } from "ts-morph";
 import { describe, expect, it } from "vitest";
 import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { findIdentifierNode } from "../rename-symbol/rename-symbol";
+import { findIdentifierNode } from "../_utils/resolve-identifier";
 import {
 	computeNewArgumentTexts,
 	computeNewParameterStructures,

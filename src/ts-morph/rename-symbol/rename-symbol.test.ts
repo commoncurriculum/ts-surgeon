@@ -2,10 +2,10 @@ import { SyntaxKind, type Identifier } from "ts-morph";
 import { describe, it, expect } from "vitest";
 import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import {
-	findAllReferencesAsNodes,
 	findIdentifierNode,
 	validateSymbol,
-} from "./rename-symbol";
+} from "../_utils/resolve-identifier";
+import { findAllReferencesAsNodes } from "./rename-symbol";
 
 const TEST_FILE_PATH = "/test.ts";
 

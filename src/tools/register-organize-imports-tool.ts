@@ -1,11 +1,11 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { organizeImports } from "../../ts-morph/organize-imports/organize-imports";
+import { organizeImports } from "../ts-morph/organize-imports/organize-imports";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
-export function registerOrganizeImportsTool(server: McpServer): void {
-	server.tool(
-		"organize_imports_by_tsmorph",
+export function registerOrganizeImportsTool(registry: ToolRegistry): void {
+	registry.tool(
+		"organize_imports",
 		`[ts-morph] Run the "Organize Imports" action — remove unused imports, sort them, and coalesce multiple imports from the same module — on specific files or the whole project.
 
 ## When to use
@@ -13,7 +13,7 @@ export function registerOrganizeImportsTool(server: McpServer): void {
 - Normalizing import order/formatting across a set of files in one pass.
 
 ## When NOT to use
-- Removing unused *exports* (use \`find_unused_exports_by_tsmorph\`).
+- Removing unused *exports* (use \`find_unused_exports\`).
 - Adding a missing import for an undefined symbol (organize only removes/sorts existing imports).
 
 ## Behavior
@@ -49,7 +49,7 @@ Returns the number of files organized and the list of modified (or, in dryRun, t
 		},
 		(args) =>
 			runTool(
-				"organize_imports_by_tsmorph",
+				"organize_imports",
 				{ fileCount: args.filePaths?.length ?? "all", dryRun: args.dryRun },
 				async () => {
 					const result = await organizeImports({
@@ -67,6 +67,7 @@ Returns the number of files organized and the list of modified (or, in dryRun, t
 					return {
 						message,
 						log: { changedFilesCount: result.changedFiles.length },
+						data: result,
 					};
 				},
 			),

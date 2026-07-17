@@ -29,7 +29,7 @@ export interface UnusedExport {
 	 * - 0: The name does not appear anywhere outside the declaration file. However, same-file usage is tracked separately
 	 *   in `sameFileReferenceCount` (this field alone is not enough to conclude "safe to delete the whole declaration").
 	 * - 1+: The name may be referenced via JSX names / string literals / dynamic references (`import().then`) etc.
-	 *   Confirm with `find_references_by_tsmorph`. Short names (`a`, `id`, etc.) are prone to coincidental matches.
+	 *   Confirm with `find_references`. Short names (`a`, `id`, etc.) are prone to coincidental matches.
 	 */
 	textOccurrences: number;
 	/**

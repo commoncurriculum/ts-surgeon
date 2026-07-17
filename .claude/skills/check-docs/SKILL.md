@@ -1,6 +1,6 @@
 ---
 name: check-docs
-description: Checks consistency between registered MCP tools (src/mcp/tools/register-*.ts) and the tool table in README.md and the module list in CLAUDE.md. Detects missing entries and drift after adding tools or reorganizing documentation. Use for "check doc consistency", "verify README matches code", "check tool list", or similar.
+description: Checks consistency between registered tools (src/tools/register-*.ts) and the tool table in README.md and the module list in CLAUDE.md. Detects missing entries and drift after adding tools or reorganizing documentation. Use for "check doc consistency", "verify README matches code", "check tool list", or similar.
 ---
 
 # Documentation Consistency Check
@@ -13,22 +13,24 @@ This skill is **read-only inspection**. It may suggest fixes but will not modify
 
 ### 1. Extract Registered Tool Names
 
+The CLI itself is the source of truth:
+
 ```bash
-grep -rhoE '"[a-z_]+_by_tsmorph"' src/mcp/tools/ | tr -d '"' | sort -u
+pnpm build >/dev/null && node dist/index.js list --json | node -e 'JSON.parse(require("fs").readFileSync(0,"utf8")).forEach(t=>console.log(t.name))' | sort
 ```
 
-This is the source of truth. Also cross-reference with the registration functions actually called inside `registerTsMorphTools` in `ts-morph-tools.ts` (to detect: imported but not called / called but missing import):
+Also cross-reference with the registration functions actually called inside `registerTsMorphTools` in `ts-morph-tools.ts` (to detect: imported but not called / called but missing import):
 
 ```bash
-grep -E 'register[A-Za-z]+Tool' src/mcp/tools/ts-morph-tools.ts
+grep -E 'register[A-Za-z]+Tool' src/tools/ts-morph-tools.ts
 ```
 
 ### 2. Cross-reference the README Tool Table
 
-Extract the "Available Tools" table (`| [\`xxx_by_tsmorph\`]... |`) and each detail section (`### \`xxx_by_tsmorph\``) from `README.md`:
+Extract the "Available Tools" table (`| [\`xxx\`]... |`) and each detail section (`### \`xxx\``) from `README.md`. Tool names are unsuffixed snake_case, so compare against the names emitted by `list --json` rather than a suffix pattern:
 
 ```bash
-grep -oE '`[a-z_]+_by_tsmorph`' README.md | tr -d '`' | sort -u
+grep -oE '^### `[a-z_]+`' README.md | grep -oE '[a-z_]+' | grep -v '^$' | sort -u
 ```
 
 - In the table but not in code → surplus (candidate for removal)
@@ -56,7 +58,7 @@ ls src/ts-morph/
 
 ### README
 - [OK] Table and detail sections match
-- [MISSING] xxx_by_tsmorph is not in the table
+- [MISSING] xxx is not in the table
 - [BROKEN LINK] anchor target section for yyy is missing
 
 ### CLAUDE.md

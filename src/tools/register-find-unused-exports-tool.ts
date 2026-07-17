@@ -1,15 +1,15 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
 import {
 	findUnusedExports,
 	type UnusedExport,
-} from "../../ts-morph/find-unused-exports/find-unused-exports";
-import type { PackageExportWarning } from "../../ts-morph/find-unused-exports/package-export-warnings";
+} from "../ts-morph/find-unused-exports/find-unused-exports";
+import type { PackageExportWarning } from "../ts-morph/find-unused-exports/package-export-warnings";
 import {
 	summarizeUnusedExports,
 	type UnusedExportsSummary,
-} from "../../ts-morph/find-unused-exports/summarize-unused-exports";
+} from "../ts-morph/find-unused-exports/summarize-unused-exports";
 import { runTool } from "./_tool-runner";
 
 /** Scan cap for summary mode to get a full picture (distinct from the default 100 used in list mode). */
@@ -32,7 +32,7 @@ function formatPackageWarnings(warnings: PackageExportWarning[]): string[] {
 	for (const w of warnings) {
 		const label = w.packageName ?? w.packageJsonPath;
 		lines.push(
-			`- ${label} (${w.packageJsonPath}): ${w.candidateCount} candidate(s) from this package may actually be consumed by other packages. Its package.json entry points (${w.externalEntryTargets.join(", ")}) resolve OUTSIDE the scanned sources, so cross-package imports resolve to built output / node_modules and are invisible to this analysis. Cross-check textHits and find_references_by_tsmorph before deleting anything from this package.`,
+			`- ${label} (${w.packageJsonPath}): ${w.candidateCount} candidate(s) from this package may actually be consumed by other packages. Its package.json entry points (${w.externalEntryTargets.join(", ")}) resolve OUTSIDE the scanned sources, so cross-package imports resolve to built output / node_modules and are invisible to this analysis. Cross-check textHits and find_references before deleting anything from this package.`,
 		);
 	}
 	lines.push("");
@@ -96,18 +96,18 @@ function formatSummary(
 	return lines.join("\n");
 }
 
-export function registerFindUnusedExportsTool(server: McpServer): void {
-	server.tool(
-		"find_unused_exports_by_tsmorph",
+export function registerFindUnusedExportsTool(registry: ToolRegistry): void {
+	registry.tool(
+		"find_unused_exports",
 		`[ts-morph] List exports that have no references outside their declaring file across the project. Read-only.
 
 ## When to use
 - Hunting for dead code candidates after a refactor or migration.
 - Auditing a module's surface area: which exports does nobody actually consume?
-- Pre-deletion safety check before manually removing exports — combine with \`find_references_by_tsmorph\` to double-confirm.
+- Pre-deletion safety check before manually removing exports — combine with \`find_references\` to double-confirm.
 
 ## When NOT to use
-- You want a single symbol's references — use \`find_references_by_tsmorph\`.
+- You want a single symbol's references — use \`find_references\`.
 - Single-file unused locals — \`tsc --noUnusedLocals\` is faster.
 
 ## Detection scope
@@ -131,12 +131,12 @@ Static analysis cannot see:
 - Symbols looked up via reflection or string keys.
 - Pure local re-exports (\`export { x }\` without \`from\`) where \`x\` is declared by a separate \`const x = ...\` in the same file — this form is not enumerated.
 - Mixed function + namespace declarations may be partially missed.
-- **Workspace packages that publish built output**: in a monorepo, when a scanned package's \`package.json\` entry points (\`exports\` / \`main\` / \`module\` / \`types\`) resolve outside the scanned sources (e.g. \`"exports": { ".": "./dist/index.js" }\`), imports from OTHER workspace packages resolve to the built files (or node_modules) instead of the scanned sources. Every export of such a package is then reported unused even when it IS consumed — a systematic false positive. The tool detects this shape and prepends a ⚠ package-level warning to the result; treat all candidates from a warned package as low confidence. Workaround: point that package's \`exports\` at source files for analysis, or verify each candidate with \`find_references_by_tsmorph\` / \`textHits\`.
+- **Workspace packages that publish built output**: in a monorepo, when a scanned package's \`package.json\` entry points (\`exports\` / \`main\` / \`module\` / \`types\`) resolve outside the scanned sources (e.g. \`"exports": { ".": "./dist/index.js" }\`), imports from OTHER workspace packages resolve to the built files (or node_modules) instead of the scanned sources. Every export of such a package is then reported unused even when it IS consumed — a systematic false positive. The tool detects this shape and prepends a ⚠ package-level warning to the result; treat all candidates from a warned package as low confidence. Workaround: point that package's \`exports\` at source files for analysis, or verify each candidate with \`find_references\` / \`textHits\`.
 
 ### Default exports are high false-positive
-\`export default <Identifier>\` / \`export = <Identifier>\` (shown with the \`[default]\` tag) are prone to FALSE POSITIVES: \`findReferencesAsNodes\` runs on the local identifier and often fails to connect to \`import Foo from "./mod"\` default-import sites. A default export reported here with \`textHits\` well above 0 is almost certainly actually used. Treat \`[default]\` candidates as low confidence and always confirm with \`find_references_by_tsmorph\`.
+\`export default <Identifier>\` / \`export = <Identifier>\` (shown with the \`[default]\` tag) are prone to FALSE POSITIVES: \`findReferencesAsNodes\` runs on the local identifier and often fails to connect to \`import Foo from "./mod"\` default-import sites. A default export reported here with \`textHits\` well above 0 is almost certainly actually used. Treat \`[default]\` candidates as low confidence and always confirm with \`find_references\`.
 
-Always verify a candidate with \`find_references_by_tsmorph\` before deletion.
+Always verify a candidate with \`find_references\` before deletion.
 
 ## Options
 - \`tsconfigPath\`: absolute path to \`tsconfig.json\`.
@@ -161,7 +161,7 @@ Deleting every reported declaration blindly will break the build: the majority a
 ### \`textHits\` — text-occurrence triage hint
 \`textHits\` is the number of word-boundary occurrences of the export's name in OTHER source files (declaring file excluded — so it says nothing about same-file usage; use \`sameFileRefs\` for that):
 - \`textHits=0\`: no OTHER file mentions the name. Does NOT by itself mean deletable — still check \`sameFileRefs\`.
-- \`textHits=1+\`: the name appears as a string literal, JSX tag, dynamic \`import().then(m => m.X)\`, or comment. Verify with \`find_references_by_tsmorph\` before deleting. Short names (e.g. \`a\`, \`id\`) match incidentally — discount accordingly.
+- \`textHits=1+\`: the name appears as a string literal, JSX tag, dynamic \`import().then(m => m.X)\`, or comment. Verify with \`find_references\` before deleting. Short names (e.g. \`a\`, \`id\`) match incidentally — discount accordingly.
 
 ### ⚠ Package-level warnings
 When a package that produced candidates publishes built output (see Known limitations), a ⚠ warnings block is prepended to the result (both list and summary modes) naming the package, its out-of-scan entry points, and how many candidates are affected. Those candidates are likely false positives.
@@ -217,7 +217,7 @@ Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 				expandNamespaceImports: args.expandNamespaceImports,
 			};
 
-			return runTool("find_unused_exports_by_tsmorph", logArgs, () => {
+			return runTool("find_unused_exports", logArgs, () => {
 				const project = initializeProject(args.tsconfigPath);
 				// summary mode aims for a full picture, so use effectively unlimited results unless the user specifies otherwise.
 				const effectiveMaxResults = isSummary
@@ -238,11 +238,13 @@ Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 							result.truncated,
 							result.packageWarnings,
 						),
+						data: result,
 					};
 				}
 				if (result.unusedExports.length === 0) {
 					return {
 						message: `No unused exports found.\nScanned files: ${result.scannedFiles}\nTruncated: ${result.truncated}`,
+						data: result,
 					};
 				}
 				const lines = [
@@ -253,7 +255,7 @@ Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 					`Scanned files: ${result.scannedFiles}`,
 					`Truncated: ${result.truncated}`,
 				];
-				return { message: lines.join("\n") };
+				return { message: lines.join("\n"), data: result };
 			});
 		},
 	);

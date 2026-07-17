@@ -1,31 +1,33 @@
 # Tool reference
 
 Per-tool parameters, worked examples, and gotchas for the
-`commoncurriculum/mcp-ts-morph` MCP server. Read
-[`SKILL.md`](SKILL.md) first for how to choose and chain these tools.
+`commoncurriculum/ts-surgeon` refactoring CLI (each tool takes its parameter
+JSON via `call <tool> --params`). Read
+[`SKILL.md`](SKILL.md) first for how to choose, chain, and invoke these tools.
 
-All paths are absolute. `tsconfigPath` is required by every tool. Positions are
-1-based and must land on the identifier. Mutating tools accept `dryRun: true` to
-preview the changed-file list without writing.
+Relative paths are resolved against the CLI's working directory (absolute paths
+shown in the examples below work anywhere). `tsconfigPath` may be omitted — the
+nearest `tsconfig.json` above the target file is discovered automatically.
+Positions are 1-based and must land on the identifier. Mutating tools accept
+`dryRun: true` (`--dry-run`) to preview the changed-file list without writing.
 
 ---
 
-## `rename_symbol_by_tsmorph`
+## `rename_symbol`
 Type-aware rename of a symbol (function, variable, class, type, interface, enum,
 parameter, …) across the whole project.
 
 - **When**: any symbol that may be imported, re-exported, or referenced
   elsewhere — and as the safe default even for local-only symbols. Also the
   right tool to **rename a parameter** (vs. changing the signature shape).
-- **Params**: `targetFilePath`, `position {line, column}` (on the identifier),
-  `symbolName` (current name; sanity-checked against the position), `newName`,
-  `dryRun?`.
+- **Params**: `targetFilePath`, `symbolName` (current name), `newName`,
+  `position? {line, column}` (only needed when the name is ambiguous in the
+  file — the error lists candidates), `dryRun?`.
 
 ```json
 {
   "tsconfigPath": "/repo/tsconfig.json",
   "targetFilePath": "/repo/src/user.ts",
-  "position": { "line": 8, "column": 14 },
   "symbolName": "getUser",
   "newName": "fetchUser"
 }
@@ -36,7 +38,7 @@ parameter, …) across the whole project.
 
 ---
 
-## `rename_filesystem_entry_by_tsmorph`
+## `rename_filesystem_entry`
 Renames/moves files and folders and rewrites every `import`/`export` path.
 
 - **When**: restructuring the file tree. **Batch all moves into one call** — a
@@ -62,18 +64,19 @@ Renames/moves files and folders and rewrites every `import`/`export` path.
 
 ---
 
-## `find_references_by_tsmorph`
+## `find_references`
 Lists the definition and every reference of a symbol at a position. Read-only.
 
 - **When**: assess blast radius before a change; confirm a symbol is used. The
   pre-check before any delete.
-- **Params**: `targetFilePath`, `position {line, column}`.
+- **Params**: `targetFilePath`, plus `symbolName` (declaration name) and/or
+  `position {line, column}`.
 - **Tip**: its output gives you `file:line:col` for each site — feed those
   straight into position-taking tools instead of counting columns by hand.
 
 ---
 
-## `remove_path_alias_by_tsmorph`
+## `remove_path_alias`
 Replaces path aliases (`@/components`) with relative paths (`../../components`)
 in a file or directory.
 
@@ -82,7 +85,7 @@ in a file or directory.
 
 ---
 
-## `move_symbol_to_file_by_tsmorph`
+## `move_symbol_to_file`
 Moves one top-level symbol to another file, carrying its internal-only
 dependencies and rewriting all imports/exports.
 
@@ -109,12 +112,13 @@ dependencies and rewriting all imports/exports.
 
 ---
 
-## `change_signature_by_tsmorph`
+## `change_signature`
 Adds, removes, or reorders parameters and updates the arguments at every call
 site. The cross-file change LLM one-shot edits miss most.
 
-- **Params**: `targetFilePath`, `position {line, column}` (on the function-name
-  identifier — for `const foo = () => {}` point at `foo`), `functionName`,
+- **Params**: `targetFilePath`, `functionName`, `position? {line, column}` (only
+  when the name is ambiguous; must land on the function-name identifier — for
+  `const foo = () => {}` point at `foo`),
   `changes: [...]` (applied in order — later ops see the list produced by
   earlier ones), `dryRun?`.
 - **`changes` operations** (discriminated by `kind`):
@@ -146,20 +150,21 @@ site. The cross-file change LLM one-shot edits miss most.
 
 ---
 
-## `get_type_at_position_by_tsmorph`
+## `get_type_at_position`
 Returns the checker-inferred type, symbol, and declaration location at a
 position. Read-only.
 
 - **When**: "what is the actual type here" without spawning `tsc`; a signature
   without reading a whole `.d.ts`.
-- **Params**: `targetFilePath`, `position {line, column}`.
+- **Params**: `targetFilePath`, plus `symbolName` (declaration name) and/or
+  `position {line, column}`.
 - **Gotchas**: check `nodeKind` in the response — a position on whitespace
   yields the file-level `typeof import(...)`, not what you want; re-target to an
   identifier.
 
 ---
 
-## `find_unused_exports_by_tsmorph`
+## `find_unused_exports`
 Lists exports with no references outside their declaring file. Read-only.
 Returns **candidates, not verdicts**.
 
@@ -187,12 +192,12 @@ Returns **candidates, not verdicts**.
     produced systematic false positives — treat those as low confidence.
 - **Tip**: on large repos start with `"summary"` to see where dead code
   clusters, then narrow with `entryPoints` / `excludeFilePatterns` and switch to
-  `"list"`. Always confirm with `find_references_by_tsmorph` before deleting; or
-  delete via `safe_delete_symbol_by_tsmorph`, which can't break a reference.
+  `"list"`. Always confirm with `find_references` before deleting; or
+  delete via `safe_delete_symbol`, which can't break a reference.
 
 ---
 
-## `convert_default_export_to_named_by_tsmorph`
+## `convert_default_export_to_named`
 Converts a file's `export default` to a named export and rewrites every importer
 and re-exporter.
 
@@ -216,7 +221,7 @@ and re-exporter.
 
 ---
 
-## `convert_named_export_to_default_by_tsmorph`
+## `convert_named_export_to_default`
 The inverse: converts a named export to the file's default export and rewrites
 importers/re-exporters.
 
@@ -230,7 +235,7 @@ importers/re-exporters.
 
 ---
 
-## `organize_imports_by_tsmorph`
+## `organize_imports`
 Runs editor "Organize Imports" — removes unused imports, sorts, and coalesces
 same-module imports.
 
@@ -241,7 +246,7 @@ same-module imports.
 
 ---
 
-## `get_diagnostics_by_tsmorph`
+## `get_diagnostics`
 Returns the TypeScript pre-emit diagnostics (`tsc --noEmit`) for files or the
 whole project. Read-only. **Your standard post-refactor check.**
 
@@ -254,7 +259,7 @@ whole project. Read-only. **Your standard post-refactor check.**
 
 ---
 
-## `add_missing_imports_by_tsmorph`
+## `add_missing_imports`
 Adds import statements for unresolved identifiers (editor "Add all missing
 imports").
 
@@ -266,9 +271,9 @@ imports").
 
 ---
 
-## `apply_code_fix_by_tsmorph`
+## `apply_code_fix`
 Applies a TypeScript "fix all in file" quick-fix — the automated counterpart to
-`get_diagnostics_by_tsmorph`.
+`get_diagnostics`.
 
 - **Params**: `fix` (enum, below), `filePaths?` (omit = whole project),
   `dryRun?`.
@@ -290,10 +295,10 @@ Applies a TypeScript "fix all in file" quick-fix — the automated counterpart t
 
 ---
 
-## `safe_delete_symbol_by_tsmorph`
+## `safe_delete_symbol`
 Deletes a top-level symbol **only when** it has no references outside its own
 declaration; otherwise reports the blockers and changes nothing. The mutating
-partner to `find_unused_exports_by_tsmorph`.
+partner to `find_unused_exports`.
 
 - **When**: removing code you believe is dead, with a type-checker guarantee you
   won't break a missed reference.

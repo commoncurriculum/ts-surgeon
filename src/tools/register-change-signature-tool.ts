@@ -1,6 +1,6 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "./registry";
 import { z } from "zod";
-import { changeSignature } from "../../ts-morph/change-signature/change-signature";
+import { changeSignature } from "../ts-morph/change-signature/change-signature";
 import { formatChangedFiles, runTool } from "./_tool-runner";
 
 const addOpSchema = z.object({
@@ -62,9 +62,9 @@ const operationSchema = z.discriminatedUnion("kind", [
 	reorderOpSchema,
 ]);
 
-export function registerChangeSignatureTool(server: McpServer): void {
-	server.tool(
-		"change_signature_by_tsmorph",
+export function registerChangeSignatureTool(registry: ToolRegistry): void {
+	registry.tool(
+		"change_signature",
 		`[ts-morph] Add, remove, or reorder parameters of a function/method/arrow-function and propagate the matching argument changes to every call site in the project.
 
 ## When to use
@@ -73,13 +73,13 @@ export function registerChangeSignatureTool(server: McpServer): void {
 - Inserting a context-like first parameter (\`ctx\`, \`logger\`, etc.) into existing helpers.
 
 ## When NOT to use
-- Renaming a parameter — use \`rename_symbol_by_tsmorph\` on the parameter identifier instead.
+- Renaming a parameter — use \`rename_symbol\` on the parameter identifier instead.
 - Changing only the parameter's type annotation without changing arity — edit the source file directly.
-- Moving the function to another file — use \`move_symbol_to_file_by_tsmorph\`.
+- Moving the function to another file — use \`move_symbol_to_file\`.
 
 ## Critical constraints
-- \`position\` must point at the function's name identifier (1-based line/column). For \`const foo = () => {}\`, point at \`foo\`; for \`class C { foo() {} }\`, point at \`foo\`.
-- \`functionName\` must match the identifier text at that position (sanity check).
+- \`position\` is optional: when omitted, the function is located by \`functionName\` among the file's declaration names, which must be unambiguous. When given, it must point at the function's name identifier (1-based line/column). For \`const foo = () => {}\`, point at \`foo\`; for \`class C { foo() {} }\`, point at \`foo\`.
+- \`functionName\` must match the identifier text at the resolved position (sanity check).
 - All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
 - **Spread arguments** (\`fn(...args)\`) at call sites cause the operation to fail when a change would modify arguments. Refactor those callers manually first, or limit changes to trailing optional/defaulted parameters with no \`argumentForCallers\`.
 - Operations apply sequentially; later operations see the parameter list produced by earlier ones.
@@ -111,7 +111,10 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 						.positive()
 						.describe("1-based column number."),
 				})
-				.describe("Exact position of the function name identifier."),
+				.optional()
+				.describe(
+					"Exact position of the function name identifier. Optional when functionName is an unambiguous declaration name in the file.",
+				),
 			functionName: z
 				.string()
 				.describe("Name of the function/method at that position."),
@@ -131,7 +134,7 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 		},
 		(args) =>
 			runTool(
-				"change_signature_by_tsmorph",
+				"change_signature",
 				{
 					targetFilePath: args.targetFilePath,
 					functionName: args.functionName,
@@ -156,6 +159,7 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					return {
 						message,
 						log: { changedFilesCount: result.changedFiles.length },
+						data: result,
 					};
 				},
 			),

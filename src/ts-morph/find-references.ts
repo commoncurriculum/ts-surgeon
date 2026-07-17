@@ -1,6 +1,6 @@
 import type { Node, SourceFile } from "ts-morph";
 import { initializeProject } from "./_utils/ts-morph-project";
-import { findIdentifierNode } from "./rename-symbol/rename-symbol";
+import { resolveTargetIdentifier } from "./_utils/resolve-identifier";
 
 // --- Data Structure for Result ---
 
@@ -14,16 +14,19 @@ export interface ReferenceLocation {
 // --- Main Function ---
 
 /**
- * Searches the entire project for all references to the symbol at the specified position.
+ * Searches the entire project for all references to a symbol, targeted either
+ * by position or by (unambiguous) declaration name.
  */
 export async function findSymbolReferences({
 	tsconfigPath,
 	targetFilePath,
 	position,
+	symbolName,
 }: {
 	tsconfigPath: string;
 	targetFilePath: string;
-	position: { line: number; column: number };
+	position?: { line: number; column: number };
+	symbolName?: string;
 }): Promise<{
 	references: ReferenceLocation[];
 	definition: ReferenceLocation | null;
@@ -31,7 +34,10 @@ export async function findSymbolReferences({
 	const project = initializeProject(tsconfigPath);
 
 	// targetFilePath is expected to be an absolute path
-	const identifierNode = findIdentifierNode(project, targetFilePath, position);
+	const identifierNode = resolveTargetIdentifier(project, targetFilePath, {
+		position,
+		symbolName,
+	});
 
 	// findReferencesAsNodes() may not include the definition site itself
 	const referenceNodes: Node[] = identifierNode.findReferencesAsNodes();

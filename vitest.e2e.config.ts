@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
  * Vitest configuration for E2E tests.
  *
  * Clones well-known OSS projects (hono, etc.) at pinned versions, applies each
- * MCP tool to the real project, then verifies that type-checking and the target
+ * refactoring tool to the real project, then verifies that type-checking and the target
  * repository's unit tests produce the same result before and after refactoring
  * (differential green).
  *

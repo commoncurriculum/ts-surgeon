@@ -1,11 +1,11 @@
 {
-	"name": "@sirosuzume/mcp-tsmorph-refactor",
+	"name": "@commoncurriculum/ts-surgeon",
 	"version": "0.0.0-development",
 	"_version_note": "Pinned on purpose. Git tag (vX.Y.Z) is the single source of truth — release.yml bakes the tag value into this field and into src/version.ts before `pnpm publish`. Do NOT bump by hand. See .claude/skills/release/SKILL.md.",
-	"description": "MCP refactoring server powered by ts-morph",
+	"description": "AST-accurate TypeScript/JavaScript refactoring CLI powered by ts-morph",
 	"main": "dist/index.js",
 	"bin": {
-		"mcp-tsmorph-refactor": "dist/index.js"
+		"ts-surgeon": "dist/index.js"
 	},
 	"files": ["dist", "package.json", "README.md"],
 	"publishConfig": {
@@ -13,7 +13,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/SiroSuzume/mcp-ts-morph.git"
+		"url": "git+https://github.com/commoncurriculum/ts-surgeon.git"
 	},
 	"packageManager": "pnpm@11.1.2",
 	"scripts": {
@@ -21,7 +21,6 @@
 		"build": "pnpm run clean && tsc && shx chmod +x dist/index.js",
 		"prepare": "shx rm -rf dist && tsc && shx chmod +x dist/index.js",
 		"prepublishOnly": "pnpm run build",
-		"inspector": "npx @modelcontextprotocol/inspector node dist/index.js",
 		"test": "vitest run --pool threads --poolOptions.threads.singleThread",
 		"test:e2e": "vitest run --config vitest.e2e.config.ts",
 		"test:watch": "vitest",
@@ -31,8 +30,9 @@
 		"lint:fix": "biome lint --write ./",
 		"format": "biome check --write ./"
 	},
-	"keywords": ["mcp", "ts-morph", "refactoring"],
-	"author": "SiroSuzume",
+	"keywords": ["cli", "ts-morph", "refactoring", "typescript"],
+	"author": "Common Curriculum",
+	"contributors": ["SiroSuzume (original author of mcp-ts-morph)"],
 	"license": "MIT",
 	"engines": {
 		"node": ">=22"
@@ -51,10 +51,10 @@
 		"vitest": "3.1.2"
 	},
 	"dependencies": {
-		"@modelcontextprotocol/sdk": "1.17.5",
 		"pino": "9.6.0",
 		"ts-morph": "25.0.1",
 		"typescript": "5.8.3",
-		"zod": "3.24.3"
+		"zod": "3.24.3",
+		"zod-to-json-schema": "3.24.5"
 	}
 }

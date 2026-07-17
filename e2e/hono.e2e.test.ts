@@ -27,7 +27,7 @@ describe("hono E2E (read-only tools)", () => {
 			"getPattern",
 		);
 
-		const result = await harness.callTool("find_references_by_tsmorph", {
+		const result = await harness.callTool("find_references", {
 			tsconfigPath: tsconfigPathOf(HONO),
 			targetFilePath: absFilePath,
 			position,
@@ -45,7 +45,7 @@ describe("hono E2E (read-only tools)", () => {
 			"getPattern",
 		);
 
-		const result = await harness.callTool("get_type_at_position_by_tsmorph", {
+		const result = await harness.callTool("get_type_at_position", {
 			tsconfigPath: tsconfigPathOf(HONO),
 			targetFilePath: absFilePath,
 			position,
@@ -59,7 +59,7 @@ describe("hono E2E (read-only tools)", () => {
 
 	it("find_unused_exports: lists candidates without error", async (ctx) => {
 		requirePrepared(ctx);
-		const result = await harness.callTool("find_unused_exports_by_tsmorph", {
+		const result = await harness.callTool("find_unused_exports", {
 			tsconfigPath: tsconfigPathOf(HONO),
 		});
 
@@ -79,7 +79,7 @@ describe("hono E2E (mutating tools, differential-green verification)", () => {
 		const tmpName = "getPattern_e2e_tmp";
 
 		const forward = locateSymbolPosition(HONO, URL_FILE, "getPattern");
-		const r1 = await harness.callTool("rename_symbol_by_tsmorph", {
+		const r1 = await harness.callTool("rename_symbol", {
 			tsconfigPath,
 			targetFilePath: forward.absFilePath,
 			position: forward.position,
@@ -93,7 +93,7 @@ describe("hono E2E (mutating tools, differential-green verification)", () => {
 
 		// Round-trip: rename back to original
 		const back = locateSymbolPosition(HONO, URL_FILE, tmpName);
-		const r2 = await harness.callTool("rename_symbol_by_tsmorph", {
+		const r2 = await harness.callTool("rename_symbol", {
 			tsconfigPath,
 			targetFilePath: back.absFilePath,
 			position: back.position,
@@ -109,7 +109,7 @@ describe("hono E2E (mutating tools, differential-green verification)", () => {
 		requirePrepared(ctx);
 		const targetFilePath = absPath(HONO, "src/utils/_e2e-get-pattern.ts");
 
-		const result = await harness.callTool("move_symbol_to_file_by_tsmorph", {
+		const result = await harness.callTool("move_symbol_to_file", {
 			tsconfigPath: tsconfigPathOf(HONO),
 			originalFilePath: absPath(HONO, URL_FILE),
 			targetFilePath,
@@ -134,7 +134,7 @@ describe("hono E2E (mutating tools, differential-green verification)", () => {
 		requirePrepared(ctx);
 		const targetFilePath = absPath(HONO, "src/utils/_e2e-split.ts");
 
-		const result = await harness.callTool("move_symbol_to_file_by_tsmorph", {
+		const result = await harness.callTool("move_symbol_to_file", {
 			tsconfigPath: tsconfigPathOf(HONO),
 			originalFilePath: absPath(HONO, URL_FILE),
 			targetFilePath,
@@ -157,7 +157,7 @@ describe("hono E2E (mutating tools, differential-green verification)", () => {
 			"tryDecode",
 		);
 
-		const result = await harness.callTool("change_signature_by_tsmorph", {
+		const result = await harness.callTool("change_signature", {
 			tsconfigPath: tsconfigPathOf(HONO),
 			targetFilePath: absFilePath,
 			position,

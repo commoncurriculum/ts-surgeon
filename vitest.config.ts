@@ -22,8 +22,6 @@ export default defineConfig({
 				"**/*.spec.ts",
 				"**/index.ts",
 				"vitest.config.ts",
-				"src/mcp/index.ts",
-				"src/mcp/stdio.ts",
 				"src/utils/logger.ts",
 				"src/utils/logger-helpers.ts",
 				"src/errors/**",
