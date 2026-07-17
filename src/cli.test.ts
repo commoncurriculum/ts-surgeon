@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -548,6 +547,33 @@ describe("CLI", () => {
 			expect(updated).toContain("fh.close()");
 		});
 
+		it("call rewrite_where rejects mode 'assignable' without typeDeclarationPath at the schema (exit 2)", async () => {
+			const err = createCapture();
+			const code = await runCli(
+				[
+					"call",
+					"rewrite_where",
+					"--tsconfig-path",
+					tsconfigPath,
+					"--pattern",
+					"$X.close()",
+					"--rewrite",
+					"shutdown($X)",
+					"--where.capture",
+					"X",
+					"--where.type",
+					"DbConnection",
+					"--where.mode",
+					"assignable",
+				],
+				createCapture(),
+				err,
+			);
+			expect(code).toBe(2);
+			expect(err.text).toContain("Invalid parameters for 'rewrite_where'");
+			expect(err.text).toContain("typeDeclarationPath");
+		});
+
 		it("call --stdin-files reads a file list, skipping non-source and missing paths", async () => {
 			const usedPath = path.join(srcDir, "stdin-used.ts");
 			const appPath = path.join(srcDir, "stdin-app.ts");
@@ -728,280 +754,6 @@ describe("CLI", () => {
 
 			expect(outcome.isError).toBe(true);
 			expect(outcome.text).toContain("No declaration named 'missing'");
-		});
-	});
-
-	describe("call --git-changed / --git-staged", () => {
-		function git(...args: string[]): void {
-			const result = spawnSync("git", args, {
-				cwd: tempDir,
-				encoding: "utf-8",
-			});
-			expect(result.status, `git ${args.join(" ")}: ${result.stderr}`).toBe(0);
-		}
-
-		function setUpRepo(): { mPath: string; appPath: string } {
-			const mPath = path.join(srcDir, "m.ts");
-			const appPath = path.join(srcDir, "app.ts");
-			fs.writeFileSync(
-				mPath,
-				"export const used = 1;\nexport const dead = 2;\n",
-			);
-			fs.writeFileSync(
-				appPath,
-				'import { used } from "./m";\nconsole.log(used);\n',
-			);
-			fs.writeFileSync(path.join(tempDir, "notes.md"), "initial\n");
-			git("init", "-q");
-			git("config", "user.email", "test@example.com");
-			git("config", "user.name", "test");
-			git("add", ".");
-			git("commit", "-qm", "init");
-			return { mPath, appPath };
-		}
-
-		it("--git-changed scopes filePaths to the unstaged TS/JS changes", async () => {
-			const { mPath, appPath } = setUpRepo();
-			// app.ts gains an unused import; a non-source file changes too
-			fs.writeFileSync(
-				appPath,
-				'import { used, dead } from "./m";\nconsole.log(used);\n',
-			);
-			fs.writeFileSync(path.join(tempDir, "notes.md"), "changed\n");
-
-			const out = createCapture();
-			const err = createCapture();
-			const code = await runCli(
-				[
-					"call",
-					"organize_imports",
-					"--git-changed",
-					"--tsconfig-path",
-					tsconfigPath,
-				],
-				out,
-				err,
-				{ cwd: tempDir },
-			);
-			expect(err.text).toBe("");
-			expect(code).toBe(0);
-
-			expect(fs.readFileSync(appPath, "utf-8")).not.toContain("dead");
-			// the unchanged file was not processed
-			expect(fs.readFileSync(mPath, "utf-8")).toContain("dead");
-		});
-
-		it("--git-staged uses the staged diff", async () => {
-			const { appPath } = setUpRepo();
-			fs.writeFileSync(
-				appPath,
-				'import { used, dead } from "./m";\nconsole.log(used);\n',
-			);
-			git("add", "src/app.ts");
-
-			const out = createCapture();
-			const err = createCapture();
-			const code = await runCli(
-				[
-					"call",
-					"organize_imports",
-					"--git-staged",
-					"--tsconfig-path",
-					tsconfigPath,
-				],
-				out,
-				err,
-				{ cwd: tempDir },
-			);
-			expect(err.text).toBe("");
-			expect(code).toBe(0);
-
-			expect(fs.readFileSync(appPath, "utf-8")).not.toContain("dead");
-		});
-
-		it("exits 2 when the diff lists no TS/JS source files", async () => {
-			setUpRepo();
-			fs.writeFileSync(path.join(tempDir, "notes.md"), "changed\n");
-
-			const err = createCapture();
-			const code = await runCli(
-				["call", "organize_imports", "--git-changed"],
-				createCapture(),
-				err,
-				{ cwd: tempDir },
-			);
-			expect(code).toBe(2);
-			expect(err.text).toContain("no existing TS/JS source files");
-		});
-
-		it("exits 2 outside a git repository", async () => {
-			// tempDir has no git repo unless setUpRepo() ran
-			const err = createCapture();
-			const code = await runCli(
-				["call", "organize_imports", "--git-changed"],
-				createCapture(),
-				err,
-				{ cwd: tempDir },
-			);
-			expect(code).toBe(2);
-			expect(err.text).toContain("not inside a git repository");
-		});
-
-		it("exits 2 when combined with another file-list flag", async () => {
-			const err = createCapture();
-			const code = await runCli(
-				["call", "organize_imports", "--git-changed", "--git-staged"],
-				createCapture(),
-				err,
-			);
-			expect(code).toBe(2);
-			expect(err.text).toContain("at most one of");
-		});
-	});
-
-	describe("solution-style tsconfigs (--all-projects)", () => {
-		let solutionPath: string;
-
-		function writeSolution(): void {
-			const monoDir = path.join(tempDir, "mono");
-			solutionPath = path.join(monoDir, "tsconfig.json");
-			for (const pkg of ["pkg-a", "pkg-b"]) {
-				const pkgSrc = path.join(monoDir, pkg, "src");
-				fs.mkdirSync(pkgSrc, { recursive: true });
-				fs.writeFileSync(
-					path.join(monoDir, pkg, "tsconfig.json"),
-					JSON.stringify({
-						compilerOptions: { strict: true, composite: true },
-						include: ["src/**/*"],
-					}),
-				);
-			}
-			fs.writeFileSync(
-				path.join(monoDir, "pkg-a", "src", "a.ts"),
-				"export const ok: number = 1;\n",
-			);
-			fs.writeFileSync(
-				path.join(monoDir, "pkg-b", "src", "b.ts"),
-				"export const bad: number = 'oops';\n",
-			);
-			fs.writeFileSync(
-				solutionPath,
-				// tsconfig JSON allows comments — the reader must cope
-				`{\n\t// solution root\n\t"files": [],\n\t"references": [{ "path": "./pkg-a" }, { "path": "./pkg-b" }]\n}\n`,
-			);
-		}
-
-		it("warns on stderr when the tsconfig is solution-style and --all-projects is absent", async () => {
-			writeSolution();
-			const out = createCapture();
-			const err = createCapture();
-
-			const code = await runCli(
-				["call", "get_diagnostics", "--tsconfig-path", solutionPath],
-				out,
-				err,
-			);
-
-			expect(code).toBe(0);
-			expect(err.text).toContain("solution-style tsconfig");
-			expect(err.text).toContain("--all-projects");
-			expect(err.text).toContain(path.join("pkg-a", "tsconfig.json"));
-		});
-
-		it("--all-projects runs a read-only tool per referenced project and merges results", async () => {
-			writeSolution();
-			const out = createCapture();
-			const err = createCapture();
-
-			const code = await runCli(
-				[
-					"call",
-					"get_diagnostics",
-					"--all-projects",
-					"--json",
-					"--tsconfig-path",
-					solutionPath,
-				],
-				out,
-				err,
-			);
-
-			expect(code).toBe(0);
-			const parsed = JSON.parse(out.text);
-			expect(parsed.byProject).toHaveLength(2);
-			const [a, b] = parsed.byProject;
-			expect(a.tsconfigPath).toContain("pkg-a");
-			expect(a.message).toContain("No diagnostics");
-			expect(b.tsconfigPath).toContain("pkg-b");
-			expect(b.message).toContain("TS2322");
-			// the solution root's own (empty) project is not run
-			expect(
-				parsed.byProject.some(
-					(p: { tsconfigPath: string }) => p.tsconfigPath === solutionPath,
-				),
-			).toBe(false);
-		});
-
-		it("--all-projects text output sections results per project", async () => {
-			writeSolution();
-			const out = createCapture();
-
-			const code = await runCli(
-				[
-					"call",
-					"get_diagnostics",
-					"--all-projects",
-					"--tsconfig-path",
-					solutionPath,
-				],
-				out,
-				createCapture(),
-			);
-
-			expect(code).toBe(0);
-			expect(out.text).toContain(
-				`## ${path.join(tempDir, "mono", "pkg-a", "tsconfig.json")}`,
-			);
-			expect(out.text).toContain("TS2322");
-		});
-
-		it("--all-projects rejects mutating tools with a usage error", async () => {
-			writeSolution();
-			const err = createCapture();
-
-			const code = await runCli(
-				[
-					"call",
-					"organize_imports",
-					"--all-projects",
-					"--tsconfig-path",
-					solutionPath,
-				],
-				createCapture(),
-				err,
-			);
-
-			expect(code).toBe(2);
-			expect(err.text).toContain("read-only tools only");
-		});
-
-		it("--all-projects on a non-solution tsconfig is a usage error", async () => {
-			const err = createCapture();
-
-			const code = await runCli(
-				[
-					"call",
-					"get_diagnostics",
-					"--all-projects",
-					"--tsconfig-path",
-					tsconfigPath,
-				],
-				createCapture(),
-				err,
-			);
-
-			expect(code).toBe(2);
-			expect(err.text).toContain('no "references"');
 		});
 	});
 

@@ -68,6 +68,16 @@ Match/rewrite counts and the list of modified (or to-be-modified, in dryRun) fil
 							"File declaring the target type; required for mode 'assignable'.",
 						),
 				})
+				.refine(
+					(where) =>
+						where.mode !== "assignable" ||
+						where.typeDeclarationPath !== undefined,
+					{
+						message:
+							"mode 'assignable' requires typeDeclarationPath (the file declaring the target type) so the name resolves unambiguously.",
+						path: ["typeDeclarationPath"],
+					},
+				)
 				.describe("Type predicate applied to each match's capture."),
 			filePaths: z
 				.array(z.string())

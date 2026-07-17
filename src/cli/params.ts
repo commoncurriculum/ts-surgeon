@@ -36,17 +36,22 @@ function kebabToCamel(key: string): string {
 
 type FlagType = "string" | "number" | "boolean" | "json";
 
-/** Strips optional/default/nullable wrappers off a Zod schema. */
+/** Strips optional/default/nullable/effects (refine) wrappers off a Zod schema. */
 function unwrapSchema(schema: ZodTypeAny | undefined): ZodTypeAny | undefined {
 	let current = schema;
-	while (
-		current instanceof z.ZodOptional ||
-		current instanceof z.ZodDefault ||
-		current instanceof z.ZodNullable
-	) {
-		current = (current._def as { innerType: ZodTypeAny }).innerType;
+	for (;;) {
+		if (
+			current instanceof z.ZodOptional ||
+			current instanceof z.ZodDefault ||
+			current instanceof z.ZodNullable
+		) {
+			current = (current._def as { innerType: ZodTypeAny }).innerType;
+		} else if (current instanceof z.ZodEffects) {
+			current = current.innerType();
+		} else {
+			return current;
+		}
 	}
-	return current;
 }
 
 /**

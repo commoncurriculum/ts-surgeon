@@ -193,24 +193,87 @@ export function substitute(
 		});
 }
 
-export interface RewritePatternResult {
+export interface PatternRewriteOptions {
+	pattern: string;
+	rewrite: string;
+	filePaths?: string[];
+	dryRun?: boolean;
+	fixImports?: boolean;
+	/**
+	 * Per-match filter (e.g. rewrite_where's type predicate). Omitted =
+	 * rewrite every match. Runs against the original text, before any edit.
+	 */
+	shouldRewrite?: (sourceFile: SourceFile, match: SgNode) => boolean;
+}
+
+export interface PatternRewriteResult {
 	changedFiles: string[];
+	/** Every syntactic pattern match, filtered or not. */
 	matchCount: number;
+	/** Matches that passed shouldRewrite (== matchCount without a filter). */
+	rewrittenCount: number;
 	/** Files the fixImports pass ran over (the rewrite-changed set). */
 	importsFixedIn?: string[];
 }
 
 /**
- * Shared tail of the rewrite tools: optionally add missing imports for the
- * files the rewrite changed (within the same Project, so the batch cache
- * stays coherent), then save once unless dryRun. Only imports the language
- * service can resolve are added — the target module must already be in the
- * project graph.
+ * The rewrite engine shared by rewrite_pattern and rewrite_where: find every
+ * ast-grep match, keep the ones shouldRewrite accepts, substitute the
+ * template, and commit the edits once per file. Writes through the ts-morph
+ * project so the in-memory AST stays in sync with disk (batch cache safe),
+ * optionally adding missing imports on the changed files before the single
+ * save (only imports the language service can resolve — the target module
+ * must already be in the project graph).
  */
-export async function finishRewrite(
+export async function applyPatternRewrite(
 	project: Project,
-	{ dryRun, fixImports }: { dryRun: boolean; fixImports: boolean },
-): Promise<{ changedFiles: string[]; importsFixedIn?: string[] }> {
+	{
+		pattern,
+		rewrite,
+		filePaths,
+		dryRun = false,
+		fixImports = false,
+		shouldRewrite,
+	}: PatternRewriteOptions,
+): Promise<PatternRewriteResult> {
+	const ast = await loadAstGrep();
+	const files = targetFiles(ast, project, filePaths);
+	let matchCount = 0;
+	let rewrittenCount = 0;
+	for (const sourceFile of files) {
+		const filePath = sourceFile.getFilePath();
+		const lang = languageFor(ast, filePath);
+		if (lang === undefined) {
+			continue;
+		}
+		const source = sourceFile.getFullText();
+		let root: ReturnType<AstGrepModule["parse"]>;
+		try {
+			root = ast.parse(lang, source);
+		} catch {
+			continue;
+		}
+		const matches = root.root().findAll(pattern);
+		if (matches.length === 0) {
+			continue;
+		}
+		matchCount += matches.length;
+		const accepted = shouldRewrite
+			? matches.filter((match) => shouldRewrite(sourceFile, match))
+			: matches;
+		if (accepted.length === 0) {
+			continue;
+		}
+		rewrittenCount += accepted.length;
+		const edits = accepted.map((match) =>
+			match.replace(substitute(rewrite, match, source)),
+		);
+		const rewritten = root.root().commitEdits(edits);
+		if (rewritten !== source) {
+			sourceFile.replaceWithText(rewritten);
+		}
+	}
+
 	const rewriteChanged = getChangedFiles(project).map((sf) => sf.getFilePath());
 	let importsFixedIn: string[] | undefined;
 	if (fixImports && rewriteChanged.length > 0) {
@@ -226,62 +289,23 @@ export async function finishRewrite(
 	if (!dryRun) {
 		await saveProjectChanges(project);
 	}
-	return { changedFiles, importsFixedIn };
+	return { changedFiles, matchCount, rewrittenCount, importsFixedIn };
 }
+
+export type RewritePatternResult = Omit<PatternRewriteResult, "rewrittenCount">;
 
 /**
  * Rewrites every occurrence of an ast-grep pattern using a template with
- * $VAR / $$$VARS metavariables. Writes through the ts-morph project so the
- * in-memory AST stays in sync with disk (batch cache safe).
+ * $VAR / $$$VARS metavariables (rewrite_where is the same engine plus a
+ * type predicate on a capture).
  */
 export async function rewritePattern(
 	project: Project,
-	{
-		pattern,
-		rewrite,
-		filePaths,
-		dryRun = false,
-		fixImports = false,
-	}: {
-		pattern: string;
-		rewrite: string;
-		filePaths?: string[];
-		dryRun?: boolean;
-		fixImports?: boolean;
-	},
+	options: Omit<PatternRewriteOptions, "shouldRewrite">,
 ): Promise<RewritePatternResult> {
-	const ast = await loadAstGrep();
-	const files = targetFiles(ast, project, filePaths);
-	let matchCount = 0;
-	for (const sourceFile of files) {
-		const filePath = sourceFile.getFilePath();
-		const lang = languageFor(ast, filePath);
-		if (lang === undefined) {
-			continue;
-		}
-		const source = sourceFile.getFullText();
-		let root: ReturnType<AstGrepModule["parse"]>;
-		try {
-			root = ast.parse(lang, source);
-		} catch {
-			continue;
-		}
-		const nodes = root.root().findAll(pattern);
-		if (nodes.length === 0) {
-			continue;
-		}
-		matchCount += nodes.length;
-		const edits = nodes.map((node) =>
-			node.replace(substitute(rewrite, node, source)),
-		);
-		const rewritten = root.root().commitEdits(edits);
-		if (rewritten !== source) {
-			sourceFile.replaceWithText(rewritten);
-		}
-	}
-	const { changedFiles, importsFixedIn } = await finishRewrite(project, {
-		dryRun,
-		fixImports,
-	});
-	return { changedFiles, matchCount, importsFixedIn };
+	const { rewrittenCount, ...result } = await applyPatternRewrite(
+		project,
+		options,
+	);
+	return result;
 }

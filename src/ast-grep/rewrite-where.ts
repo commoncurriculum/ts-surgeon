@@ -1,18 +1,14 @@
 import type { SgNode } from "@ast-grep/napi";
 import type { Node, Project, SourceFile, Type } from "ts-morph";
 import {
-	type AstGrep,
-	finishRewrite,
-	languageFor,
-	loadAstGrep,
-	substitute,
-	targetFiles,
+	applyPatternRewrite,
+	type PatternRewriteResult,
 } from "./pattern-tools";
 
 /**
- * Type-constrained structural rewrite: rewrite_pattern plus a type predicate
- * on one of the pattern's captures. Example: rewrite `$X.close()` ->
- * `await $X.close()` only where `$X`'s checker type is/extends DbConnection.
+ * Type-constrained structural rewrite: the rewrite_pattern engine plus a type
+ * predicate on one of the pattern's captures. Example: rewrite `$X.close()`
+ * -> `shutdown($X)` only where `$X`'s checker type is/extends DbConnection.
  *
  * ast-grep supplies the syntax matches; ts-morph's type checker decides,
  * per match, whether the capture's type satisfies the predicate. Offsets are
@@ -37,14 +33,7 @@ export interface RewriteWhereParams {
 	fixImports?: boolean;
 }
 
-export interface RewriteWhereResult {
-	changedFiles: string[];
-	/** Every syntactic pattern match, predicated or not. */
-	matchCount: number;
-	/** Matches whose capture passed the type predicate and were rewritten. */
-	rewrittenCount: number;
-	importsFixedIn?: string[];
-}
+export type RewriteWhereResult = PatternRewriteResult;
 
 /**
  * Names a type can be referred to by: its symbol, its alias symbol, or (for
@@ -102,11 +91,12 @@ function resolveTargetType(
 }
 
 /**
- * Maps an ast-grep capture span onto the ts-morph node with the same span.
- * getDescendantAtPos returns the deepest node at the start position (e.g. the
- * `db` identifier inside `db.close()` — where the property access and call
- * expression share the same start), so ascend until the span matches exactly,
- * keeping the widest in-span node as a fallback.
+ * Maps an ast-grep capture span onto the ts-morph node with exactly the same
+ * span. getDescendantAtPos returns the deepest node at the start position
+ * (e.g. the `db` identifier inside `db.close()` — where the property access
+ * and call expression share the same start), so ascend until start AND end
+ * match. No same-span node -> undefined; the caller skips the match rather
+ * than type-checking a nearby-but-different node.
  */
 function nodeForSpan(
 	sourceFile: SourceFile,
@@ -114,21 +104,17 @@ function nodeForSpan(
 	end: number,
 ): Node | undefined {
 	let node: Node | undefined = sourceFile.getDescendantAtPos(start);
-	let best: Node | undefined;
 	while (node) {
 		if (node.getStart() === start && node.getEnd() === end) {
 			return node;
 		}
-		if (node.getStart() >= start && node.getEnd() <= end) {
-			best = node;
-		}
 		const parent: Node | undefined = node.getParent();
 		if (!parent || parent.getStart() < start || parent.getEnd() > end) {
-			break;
+			return undefined;
 		}
 		node = parent;
 	}
-	return best;
+	return undefined;
 }
 
 function capturePredicate(
@@ -182,59 +168,15 @@ function capturePredicate(
 
 /**
  * Rewrites only the pattern matches whose capture satisfies the type
- * predicate. Matching and predicate evaluation both run against the original
- * text before any edit is applied; edits are committed once per file.
+ * predicate — the shared engine does the matching/editing; this module owns
+ * only the predicate.
  */
 export async function rewriteWhere(
 	project: Project,
-	{
-		pattern,
-		rewrite,
-		where,
-		filePaths,
-		dryRun = false,
-		fixImports = false,
-	}: RewriteWhereParams,
+	{ where, ...options }: RewriteWhereParams,
 ): Promise<RewriteWhereResult> {
-	const ast: AstGrep = await loadAstGrep();
-	const predicate = capturePredicate(project, where);
-	const files = targetFiles(ast, project, filePaths);
-	let matchCount = 0;
-	let rewrittenCount = 0;
-	for (const sourceFile of files) {
-		const filePath = sourceFile.getFilePath();
-		const lang = languageFor(ast, filePath);
-		if (lang === undefined) {
-			continue;
-		}
-		const source = sourceFile.getFullText();
-		let root: ReturnType<AstGrep["parse"]>;
-		try {
-			root = ast.parse(lang, source);
-		} catch {
-			continue;
-		}
-		const matches = root.root().findAll(pattern);
-		if (matches.length === 0) {
-			continue;
-		}
-		matchCount += matches.length;
-		const predicated = matches.filter((match) => predicate(sourceFile, match));
-		if (predicated.length === 0) {
-			continue;
-		}
-		rewrittenCount += predicated.length;
-		const edits = predicated.map((match) =>
-			match.replace(substitute(rewrite, match, source)),
-		);
-		const rewritten = root.root().commitEdits(edits);
-		if (rewritten !== source) {
-			sourceFile.replaceWithText(rewritten);
-		}
-	}
-	const { changedFiles, importsFixedIn } = await finishRewrite(project, {
-		dryRun,
-		fixImports,
+	return applyPatternRewrite(project, {
+		...options,
+		shouldRewrite: capturePredicate(project, where),
 	});
-	return { changedFiles, matchCount, rewrittenCount, importsFixedIn };
 }

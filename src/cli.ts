@@ -1,6 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
-import * as ts from "typescript";
 import {
 	CliUsageError,
 	readBatchItems,
@@ -9,7 +8,11 @@ import {
 	type StdinReader,
 } from "./cli/params";
 import { installClaudeHook, installOpencodeHook, runHook } from "./cli/hook";
-import { findNearestTsconfig, prepareParams } from "./cli/paths";
+import {
+	findNearestTsconfig,
+	prepareParams,
+	solutionReferences,
+} from "./cli/paths";
 import { probeAstGrep } from "./ast-grep/pattern-tools";
 import { AGENT_SNIPPET, GUIDE, INIT_MARKER } from "./guide";
 import {
@@ -223,35 +226,6 @@ function runInit(rest: string[], out: Writer): number {
 }
 
 /**
- * Referenced tsconfig paths of a solution-style tsconfig (one with a
- * "references" array), resolved to concrete tsconfig.json files. Empty for
- * ordinary configs, unreadable files, and configs without references.
- * Uses the TypeScript reader because tsconfig JSON allows comments.
- */
-function solutionReferences(tsconfigPath: string): string[] {
-	try {
-		const { config } = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
-		const references: unknown = config?.references;
-		if (!Array.isArray(references)) {
-			return [];
-		}
-		return references
-			.map((ref) =>
-				typeof (ref as { path?: unknown })?.path === "string"
-					? path.resolve(
-							path.dirname(tsconfigPath),
-							(ref as { path: string }).path,
-						)
-					: undefined,
-			)
-			.filter((p): p is string => p !== undefined)
-			.map((p) => (p.endsWith(".json") ? p : path.join(p, "tsconfig.json")));
-	} catch {
-		return [];
-	}
-}
-
-/**
  * Tools --all-projects may fan out: read-only ones. A mutating tool run once
  * per referenced project would edit files shared between projects once per
  * project — until that has a dedupe story, aggregation stays read-only.
@@ -298,8 +272,12 @@ async function runAllProjects(
 		err.write(`Warning: skipping missing referenced tsconfig ${ref}\n`);
 	}
 
-	const byProject: Array<{ tsconfigPath: string } & Record<string, unknown>> =
-		[];
+	const byProject: Array<{
+		tsconfigPath: string;
+		status: string;
+		data: unknown;
+		message: string;
+	}> = [];
 	let anyError = false;
 	for (const refPath of existing) {
 		const outcome = await callToolOnce(
@@ -310,28 +288,32 @@ async function runAllProjects(
 		anyError = anyError || outcome.isError;
 		byProject.push({
 			tsconfigPath: refPath,
-			...formatOutcomeJson(toolName, outcome),
+			status: outcome.isError ? "error" : "success",
+			data: outcome.data ?? null,
+			message: outcome.text,
 		});
 	}
 
+	// One message and one { tool, status, data, message } envelope — the same
+	// shape every other `call` emits, with the per-project detail under data.
+	const message = byProject
+		.map((entry) => `## ${entry.tsconfigPath}\n${entry.message}`)
+		.join("\n\n");
 	if (wantsJson) {
 		out.write(
 			`${JSON.stringify(
 				{
 					tool: toolName,
 					status: anyError ? "error" : "success",
-					byProject,
+					data: { byProject },
+					message,
 				},
 				null,
 				2,
 			)}\n`,
 		);
 	} else {
-		out.write(
-			`${byProject
-				.map((entry) => `## ${entry.tsconfigPath}\n${entry.message}`)
-				.join("\n\n")}\n`,
-		);
+		out.write(`${message}\n`);
 	}
 	return anyError ? 1 : 0;
 }
