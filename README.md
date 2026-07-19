@@ -1,11 +1,11 @@
 # ts-morph Refactoring Tools
 
-A CLI that uses [ts-morph](https://ts-morph.com/) to provide AST-based refactoring operations for TypeScript / JavaScript codebases. Rename symbols, rename files/folders, find references, and more — all while preserving project-wide consistency. Built for coding agents (invoke it directly via shell, [ast-grep agent-skill](https://github.com/ast-grep/agent-skill) style) and equally usable from scripts and CI.
+A CLI that uses [ts-morph](https://ts-morph.com/) and [ast-grep](https://ast-grep.github.io/) to provide AST-based refactoring and structural search/rewrite operations for TypeScript / JavaScript codebases. Rename symbols, rename files/folders, find references, and more — all while preserving project-wide consistency. Built for coding agents (invoke it directly via shell, [ast-grep agent-skill](https://github.com/ast-grep/agent-skill) style) and equally usable from scripts and CI.
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-- [Use with any coding agent](#use-with-any-coding-agent)
+- [Install into your coding agent](#install-into-your-coding-agent)
 - [Available Tools](#available-tools)
 - [Logging Configuration](#logging-configuration)
 - [Development](#development)
@@ -40,14 +40,68 @@ npx -y @commoncurriculum/ts-surgeon call rename_symbol --params '{
 - `--json` prints a machine-readable result: `{ tool, status, data, message }` (e.g. `data.changedFiles`).
 - `batch` runs several tools in one process: pass a JSON array of `{ "tool": "...", "params": { ... } }` via `--params`, `--params-file`, or stdin. Output is a JSON array; it stops at the first failure unless `--continue-on-error` is set. Operations **share one parsed project per tsconfig** (one AST parse for N operations; later ops see earlier results) — pass `--fresh-project` to re-parse from disk per operation.
 - `call` also accepts `--params-file <path>` or JSON piped via stdin (handy for large payloads); flags win when combined with JSON.
+- `--git-changed` / `--git-staged` set `filePaths` to the TS/JS files git reports as changed (unstaged / staged) — `npx -y @commoncurriculum/ts-surgeon call organize_imports --git-changed` — no pipe needed; a usage error outside a git repository or when nothing usable changed.
 - `--stdin-files` turns a piped file list into `filePaths` — `git diff --name-only | npx -y @commoncurriculum/ts-surgeon call organize_imports --stdin-files` (non-source and missing paths are skipped; refuses to run if nothing usable arrives).
 - Tool names accept dashes (`rename-symbol`) and the legacy `*_by_tsmorph` aliases.
+- `doctor` prints install diagnostics (version, Node, resolved tsconfig, tool count, ast-grep native binary status) and exits non-zero on a broken install — include its output in bug reports.
+- **Solution-style tsconfigs** (a `"references"` array): passing one directly warns on stderr — it usually contains no source files itself, so tools would see a partial project. Pass a leaf tsconfig, or add `--all-projects` to run a **read-only** tool (`search_pattern`, `find_references`, `find_unused_exports`, `get_diagnostics`) once per referenced project with merged output (`--json` data gains `byProject`; exit 1 if any project's run failed). Mutating tools are rejected: a file shared between referenced projects would be edited once per project.
 - Exit codes: `0` success, `1` the tool reported an error, `2` usage error (including params that fail the tool's schema).
 - Tool output goes to stdout; logs go to stderr (`LOG_LEVEL` defaults to `warn`).
 
 To customize logging, see [Logging Configuration](#logging-configuration). To run from a local build, see [Development](#development).
 
-## Use with any coding agent
+## Install into your coding agent
+
+The CLI itself needs no install — every command above runs via `npx`. What you install is the *wiring* that makes an agent reach for it. There are two pieces, packaged per harness below:
+
+- **The skill** ([`skills/ts-surgeon/`](skills/ts-surgeon/)) — teaches the agent when to use which tool, the survey→change→verify loop, and the anti-patterns.
+- **The guard hook** (`ts-surgeon hook`) — blocks Bash commands that hand-edit TS/JS sources with `sed -i`/`perl -i` before they run and points the agent at the AST-accurate tool instead. A genuine non-refactor use is one prefix away: `TS_SURGEON_ALLOW=1 sed -i …`. Setting `TS_SURGEON_STRICT=1` (or passing `--strict` where you control the command line) also redirects recursive identifier searches (`grep -r name` / `rg name`, unless scoped to non-source files) to `find_references`.
+
+### Claude Code — install the plugin
+
+This repo doubles as a Claude Code plugin marketplace; the plugin ships the skill **and** the guard hook in one install. In Claude Code:
+
+```
+/plugin marketplace add commoncurriculum/ts-surgeon
+/plugin install ts-surgeon@commoncurriculum
+```
+
+(Non-interactive: `claude plugin marketplace add commoncurriculum/ts-surgeon && claude plugin install ts-surgeon@commoncurriculum`.)
+
+To roll it out to a whole team, commit this to the project's `.claude/settings.json` instead — Claude Code offers the install to everyone who opens the repo:
+
+```json
+{
+	"extraKnownMarketplaces": {
+		"commoncurriculum": {
+			"source": { "source": "github", "repo": "commoncurriculum/ts-surgeon" }
+		}
+	},
+	"enabledPlugins": { "ts-surgeon@commoncurriculum": true }
+}
+```
+
+### Any agent — install the skill from skills.sh
+
+The skill is published on [skills.sh](https://skills.sh/commoncurriculum/ts-surgeon/ts-surgeon) and installs into Claude Code, Cursor, Codex, opencode, Copilot, and dozens of other harnesses:
+
+```bash
+npx skills add commoncurriculum/ts-surgeon --skill ts-surgeon
+```
+
+(Project-local by default; add `-g` for user-global, `-a <agent>` to target one harness.)
+
+### opencode — install the guard plugin
+
+The npm package is itself an [opencode plugin](https://opencode.ai/docs/plugins/): its import entry exports the guard as a `tool.execute.before` hook. Register it in `opencode.json`:
+
+```json
+{ "plugin": ["@commoncurriculum/ts-surgeon"] }
+```
+
+or let the CLI write that for you: `npx -y @commoncurriculum/ts-surgeon init --opencode-hook`. opencode installs the package automatically at startup. Get the skill too with the skills.sh command above (`-a opencode`).
+
+### Anything else — the self-describing CLI + instructions snippet
 
 The CLI is self-describing, so it works with **any** coding agent that can run shell commands — no editor plugin, no protocol, no vendor-specific config:
 
@@ -68,27 +122,16 @@ Use the ts-morph refactoring CLI:
     npx -y @commoncurriculum/ts-surgeon list    # tool names + summaries
 ```
 
-Claude Code users can alternatively copy the richer skill from [`.claude/skills/ts-morph-refactoring/`](.claude/skills/ts-morph-refactoring/).
+### The guard: block policy
 
-### Guard against hand-rolled refactors
+For Claude Code without the plugin, `npx -y @commoncurriculum/ts-surgeon init --claude-hook` installs just the guard as a `PreToolUse` hook in `.claude/settings.json` (matcher `Bash|Grep`). The plugin's [`hooks/hooks.json`](hooks/hooks.json) registers the same guard.
 
-Instructions files are advisory — agents still sometimes reach for `sed`. The `hook` command turns the advice into an enforced guard for harnesses with pre-tool hooks:
+**Updating projects that already use the guard:** the Claude Code hook entry shells out to `npx -y @commoncurriculum/ts-surgeon hook`, which resolves the latest published version — new verdict logic reaches those projects automatically after a release. The one exception is the `.claude/settings.json` entry written by older installs, which matched only `Bash`; re-run `npx -y @commoncurriculum/ts-surgeon init --claude-hook` once per project and the installer upgrades the matcher to `Bash|Grep` in place. Plugin users update like any Claude Code plugin (`claude plugin update ts-surgeon`); opencode auto-installs the plugin package at startup.
 
-```bash
-npx -y @commoncurriculum/ts-surgeon init --claude-hook     # Claude Code: .claude/settings.json PreToolUse hook
-npx -y @commoncurriculum/ts-surgeon init --opencode-hook   # opencode: .opencode/plugin/ts-surgeon.js (tool.execute.before)
-```
-
-Claude Code can also load this repository as a plugin: [`hooks/hooks.json`](hooks/hooks.json) registers the same guard on every `Bash` and `Grep` PreToolUse.
-
-**Updating projects that already use the guard:** every install path shells out to `npx -y @commoncurriculum/ts-surgeon hook`, which resolves the latest published version — so new verdict logic reaches all projects automatically after a release, with no per-project action. The one exception is the `.claude/settings.json` entry written by older installs, which matched only `Bash`; re-run `npx -y @commoncurriculum/ts-surgeon init --claude-hook` once per project and the installer upgrades the matcher to `Bash|Grep` in place. Plugin users update like any Claude Code plugin (`claude plugin update ts-surgeon`); projects that copied the skill directory re-copy it.
-
-#### Block policy
-
-There is one mode (the old `--strict` flag is accepted as a deprecated no-op). Before any `Bash` or `Grep` tool call runs, the hook blocks (exit 2) and names the exact replacement invocation when the call is:
+There is one mode — the old `--strict` flag and `TS_SURGEON_STRICT` env opt-in are retired (`--strict` is accepted as a deprecated no-op). Before any `Bash` or `Grep` tool call runs, the hook blocks (exit 2) and names the exact replacement invocation when the call is:
 
 - **A hand-rolled text edit of TS/JS sources** — `sed -i` / `perl -i` touching `.ts/.tsx/.js/...` → use `rename_symbol` / `change_signature` / `organize_imports` (all support `--dry-run`).
-- **A recursive text search for a code identifier** — `grep -r name`, `rg name`, `git grep name`, or the harness's native Grep tool over source trees → use `find_references` (or `find_unused_exports` for dead-export audits). *Every* `grep`/`rg` in a compound command is inspected — pipelines, `;`/`&&` chains, loops, and `$(...)` substitutions — so an export-enumeration loop that greps a shell variable (`grep -rl --include='*.ts' "$name" src/`) is caught, not just the first `grep` in the string.
+- **A recursive text search for a code identifier** — `grep -r name`, `rg name`, `git grep name`, or the harness's native Grep tool over source trees → use `find_references` / `search_pattern` (or `find_unused_exports` for dead-export audits). *Every* `grep`/`rg` in a compound command is inspected — pipelines, `;`/`&&` chains, loops, and `$(...)` substitutions — so an export-enumeration loop that greps a shell variable (`grep -rl --include='*.ts' "$name" src/`) is caught, not just the first `grep` in the string.
 
 The hook deliberately allows, in every mode:
 
@@ -109,7 +152,7 @@ pnpm test:e2e:agent   # needs the `claude` CLI + credentials; slow and billed
 #           TS_SURGEON_E2E_AGENT_MODEL (sonnet)
 ```
 
-Both installers wrap the same `ts-surgeon hook` command — a harness without hook support still gets the advisory `init` snippet.
+Every install path evaluates the same policy (the Claude Code hook via `ts-surgeon hook`, the opencode plugin in-process) — a harness without hook support still gets the advisory `init` snippet.
 
 ## Available Tools
 
@@ -132,6 +175,9 @@ Each tool uses `ts-morph` to parse the AST and applies changes while preserving 
 | [`add_missing_imports`](#add_missing_imports) | Add imports for unresolved identifiers across files |
 | [`apply_code_fix`](#apply_code_fix) | Apply a TypeScript "fix all" quick-fix (remove unused, implement members, infer types) |
 | [`safe_delete_symbol`](#safe_delete_symbol) | Delete a symbol only when it has no references, else report blockers |
+| [`search_pattern`](#search_pattern) | Find every occurrence of a structural code pattern (ast-grep) |
+| [`rewrite_pattern`](#rewrite_pattern) | Rewrite a code pattern project-wide — the safe sed replacement (ast-grep) |
+| [`rewrite_where`](#rewrite_where) | Rewrite a code pattern only where a capture's checker type matches (ast-grep + ts-morph) |
 
 ### `rename_symbol`
 
@@ -280,6 +326,35 @@ Deletes a top-level symbol's declaration **only when** it has no references outs
 - **Behavior**: Resolves all references via the type checker. References inside the declaration itself (its name, recursive self-calls) are ignored; all other references — other files, same-file usages, local `export { x }` re-exports — block deletion. Overload signatures of the same symbol are deleted together; a single declarator is removed from a multi-variable statement.
 - **Note**: If two different symbols share the name, the first in the file is targeted. Imports that become unused after deletion are not removed — follow up with `organize_imports` / `apply_code_fix`.
 
+### `search_pattern`
+
+Finds every occurrence of a structural code pattern (an [ast-grep](https://ast-grep.github.io/) pattern with `$META` variables) across the project. Read-only.
+
+- **Use case**: "where does this code shape appear?" — `console.log($$$ARGS)`, `useEffect($FN, [])` — without grep's formatting false-negatives or string/comment false-positives.
+- **Required information**: The pattern. `$NAME` matches one node, `$$$NAME` matches many.
+
+### `rewrite_pattern`
+
+Rewrites every occurrence of a structural pattern using a template — the safe replacement for `sed -i` codemods.
+
+- **Use case**: Syntactic project-wide codemods: `console.log($$$ARGS)` → `logger.debug($$$ARGS)`, `assert.equal($A, $B)` → `expect($A).toBe($B)`.
+- **Required information**: `pattern` and `rewrite` (sharing `$NAME` / `$$$NAME` captures). Supports `dryRun`.
+- **`fixImports`**: When set, missing imports are added on the changed files after the rewrite (within the same project pass). Only imports the language service can resolve are added — the target module must already be in the project graph — and nothing is removed or reordered; follow with `organize_imports` for cleanup.
+- **Note**: Apart from `fixImports`, the rewrite is textual within each match. Need the rewrite to apply only where a capture has a specific *type*? Use `rewrite_where`.
+
+### `rewrite_where`
+
+Rewrites a structural pattern **only where a captured node's checker type satisfies a predicate** — the type-aware codemod plain pattern tools can't do. Example: rewrite `$X.close()` → `shutdown($X)` only where `$X` is a `DbConnection`, leaving `FileHandle.close()` call sites untouched.
+
+- **Use case**: Any `rewrite_pattern` job where the pattern over-matches syntactically and the discriminator is the type of a capture (two APIs sharing a method name; migrating calls on one class but not its look-alikes).
+- **Required information**: `pattern`, `rewrite`, and `where: { capture, type, mode? }`. `capture` names the metavariable to test without the `$` (pattern `$X.close()` → capture `"X"`).
+- **Predicate modes** (`where.mode`):
+  - `"is"` (default): the capture's type is exactly the named type, matched by symbol or alias name (not `type.getText()` string equality, which renders import-qualified names). A union containing the type does **not** match.
+  - `"extends"`: the type is the named type or inherits from it (walks the base-type chain).
+  - `"assignable"`: TypeScript assignability — **structural**, so a same-shape type matches. Requires `where.typeDeclarationPath` (the file declaring the target type), because a bare name is ambiguous across a project.
+- **Result**: Reports `matchCount` (syntactic matches) vs `rewrittenCount` (matches that passed the predicate), so a `dryRun` shows exactly how much the predicate filtered.
+- **Note**: Supports `dryRun` and `fixImports` like `rewrite_pattern`. Offsets between the ast-grep match and the type checker are exact (both parse the same in-memory text; positions are UTF-16 indices, verified against non-ASCII sources).
+
 ## Logging Configuration
 
 Operation logs are controlled via environment variables.
@@ -338,42 +413,20 @@ node dist/index.js call get_diagnostics --params '{"tsconfigPath": "/abs/path/ts
 
 ## Release
 
-This package is published to npm automatically via the GitHub Actions workflow (`.github/workflows/release.yml`).
+Releases are automated with [changesets](https://changesets.dev) (`.github/workflows/release.yml`). **Never bump `package.json` by hand** — `src/version.ts` reads the version from it at runtime, and changesets owns the bump.
 
-**The Git tag is the single source of truth for the version.** Both `version` in `package.json` and `VERSION` in `src/version.ts` are fixed at `0.0.0-development`; the release workflow reads the tag and bakes the value in. **No manual version bump is needed.**
+### How a change becomes a release
 
-### Publishing Steps
+1. **Every user-facing PR includes a changeset.** Run `pnpm changeset` (pick the bump type, describe the change) and commit the generated `.changeset/*.md` with your PR. Internal-only changes (CI, docs, tests) can skip it with an empty changeset (`pnpm changeset --empty`) or none at all.
+2. **On merge to main**, the release workflow opens or updates a **"Version Packages" PR** that applies all pending changesets: it bumps `package.json` and prepends the entries to `CHANGELOG.md`.
+3. **Merging the Version Packages PR is the release.** The workflow then builds, runs `changeset publish` (npm Trusted Publishing / OIDC with provenance — no `NPM_TOKEN` anywhere), and pushes the `vX.Y.Z` git tag.
 
-```bash
-git checkout main && git pull --ff-only
-git tag v1.2.0
-git push origin v1.2.0
-```
+Confirm with `npm view @commoncurriculum/ts-surgeon version`.
 
-Pushing the tag triggers the workflow, which executes the following in order:
+### Recovery from failures
 
-1. Extract VERSION (`1.2.0`) from the tag (`v1.2.0`) (strict SemVer only; pre-releases are not supported)
-2. Run `pnpm test` with the placeholder version still in place
-3. Run `node scripts/release-version.mjs --bake 1.2.0` to rewrite `VERSION` in `src/version.ts` and `version` in `package.json`
-4. Run `pnpm build`
-5. Verify with `grep -F` that `dist/version.js` contains `exports.VERSION = "1.2.0";`
-6. Remove `_version_note` from `package.json`
-7. Publish to npm with `pnpm publish --provenance` (Trusted Publishing / OIDC)
-
-After completion, confirm the release with `npm view @commoncurriculum/ts-surgeon version`.
-
-> npm Trusted Publishing is required. `NPM_TOKEN` has been retired; publishing is done via GitHub Actions OIDC (see `id-token: write` in `release.yml`).
-
-### Why the Tag Is the Source of Truth
-
-Under the old workflow, releasing required three steps — "bump `version` in `package.json`", "bump the reported version in `src/version.ts`", and "push a tag" — and forgetting any one of them resulted in an inconsistent release (this actually happened). Under the new workflow, `0.0.0-development` is kept throughout development and CI reads the tag at release time to update all locations, making it **structurally impossible to forget a bump**.
-
-CI (`.github/workflows/ci.yml`) runs `node scripts/release-version.mjs --check` on every PR and push to main to confirm that both files still have the placeholder value. A PR that manually bumps the version will fail here.
-
-### Recovery from Failures
-
-- If the workflow fails partway through, **do not delete the tag**. Merge a fix into main and create the next patch tag (`vX.Y.(Z+1)`) (fix forward).
-- Re-publishing with the same tag is impossible due to npm's immutability, so overwriting the tag is pointless.
+- If the publish step fails after the Version Packages PR merged, **fix forward**: re-run the failed workflow (the publish is idempotent — `changeset publish` skips versions npm already has), or merge a fix plus a new patch changeset.
+- npm versions are immutable — a bad release is followed by a new patch release, never overwritten.
 
 ## License
 

@@ -8,7 +8,12 @@ import {
 	type StdinReader,
 } from "./cli/params";
 import { installClaudeHook, installOpencodeHook, runHook } from "./cli/hook";
-import { prepareParams } from "./cli/paths";
+import {
+	findNearestTsconfig,
+	prepareParams,
+	solutionReferences,
+} from "./cli/paths";
+import { probeAstGrep } from "./ast-grep/pattern-tools";
 import { AGENT_SNIPPET, GUIDE, INIT_MARKER } from "./guide";
 import {
 	disableProjectCache,
@@ -37,11 +42,15 @@ Usage:
   ts-surgeon call <tool> [params]         Run a tool once and print its result
   ts-surgeon batch [options]              Run several tools in one process
   ts-surgeon guide                        Print the full agent guide
+  ts-surgeon doctor                       Check the install: version, Node,
+                                          resolved tsconfig, tool count, and
+                                          ast-grep native binary status
+                                          (exit 1 when something is broken)
   ts-surgeon init [--file <path>]         Add the agent snippet to AGENTS.md (or <path>);
                                           --claude-hook installs the guard into
                                           .claude/settings.json (Claude Code);
-                                          --opencode-hook installs it as an opencode
-                                          plugin (.opencode/plugin/ts-surgeon.js)
+                                          --opencode-hook registers the guard plugin
+                                          in opencode.json's "plugin" array
   ts-surgeon hook                         PreToolUse guard for agent harnesses: blocks
                                           sed/perl -i on TS/JS sources and recursive
                                           identifier searches (grep -r / rg / native
@@ -62,6 +71,15 @@ Params for call (flags win over JSON; both can be combined):
                          filePaths (non-source and missing paths are skipped),
                          e.g.: git diff --name-only | ts-surgeon call
                          organize_imports --stdin-files
+  --git-changed          Set filePaths to the TS/JS files listed by
+                         git diff --name-only (unstaged changes); no pipe
+                         needed: ts-surgeon call organize_imports --git-changed
+  --git-staged           Same, but for staged changes (git diff --staged)
+  --all-projects         When tsconfigPath is a solution-style config (a
+                         "references" array), run the tool once per referenced
+                         project and merge the results. Read-only tools only
+                         (search_pattern, find_references, find_unused_exports,
+                         get_diagnostics)
 
 Conveniences:
   - Relative paths are resolved against the current working directory.
@@ -208,18 +226,138 @@ function runInit(rest: string[], out: Writer): number {
 	return 0;
 }
 
+/**
+ * Tools --all-projects may fan out: read-only ones. A mutating tool run once
+ * per referenced project would edit files shared between projects once per
+ * project — until that has a dedupe story, aggregation stays read-only.
+ */
+const ALL_PROJECTS_TOOLS = new Set([
+	"search_pattern",
+	"find_references",
+	"find_unused_exports",
+	"get_diagnostics",
+]);
+
+/**
+ * `call <tool> --all-projects` — runs a read-only tool once per referenced
+ * project of a solution-style tsconfig and merges the results (data gains
+ * byProject). Exit 1 if any project's run reported an error.
+ */
+async function runAllProjects(
+	registry: ToolRegistry,
+	toolName: string,
+	prepared: Record<string, unknown>,
+	references: string[],
+	wantsJson: boolean,
+	out: Writer,
+	err: Writer,
+): Promise<number> {
+	if (!ALL_PROJECTS_TOOLS.has(toolName)) {
+		throw new CliUsageError(
+			`--all-projects supports read-only tools only (${[...ALL_PROJECTS_TOOLS].join(", ")}). '${toolName}' mutates files — a file shared between referenced projects would be edited once per project.`,
+		);
+	}
+	if (references.length === 0) {
+		throw new CliUsageError(
+			`--all-projects: ${String(prepared.tsconfigPath)} has no "references" array — it is not a solution-style tsconfig.`,
+		);
+	}
+	const existing = references.filter((ref) => existsSync(ref));
+	const skipped = references.filter((ref) => !existsSync(ref));
+	if (existing.length === 0) {
+		throw new CliUsageError(
+			`--all-projects: none of the referenced tsconfigs exist on disk:\n  ${references.join("\n  ")}`,
+		);
+	}
+	for (const ref of skipped) {
+		err.write(`Warning: skipping missing referenced tsconfig ${ref}\n`);
+	}
+
+	const byProject: Array<{
+		tsconfigPath: string;
+		status: string;
+		data: unknown;
+		message: string;
+	}> = [];
+	let anyError = false;
+	for (const refPath of existing) {
+		const outcome = await callToolOnce(
+			toolName,
+			{ ...prepared, tsconfigPath: refPath },
+			registry,
+		);
+		anyError = anyError || outcome.isError;
+		byProject.push({
+			tsconfigPath: refPath,
+			status: outcome.isError ? "error" : "success",
+			data: outcome.data ?? null,
+			message: outcome.text,
+		});
+	}
+
+	// One message and one { tool, status, data, message } envelope — the same
+	// shape every other `call` emits, with the per-project detail under data.
+	const message = byProject
+		.map((entry) => `## ${entry.tsconfigPath}\n${entry.message}`)
+		.join("\n\n");
+	if (wantsJson) {
+		out.write(
+			`${JSON.stringify(
+				{
+					tool: toolName,
+					status: anyError ? "error" : "success",
+					data: { byProject },
+					message,
+				},
+				null,
+				2,
+			)}\n`,
+		);
+	} else {
+		out.write(`${message}\n`);
+	}
+	return anyError ? 1 : 0;
+}
+
+/**
+ * `ts-surgeon doctor` — prints the environment facts a bug report needs and
+ * exits 1 when part of the install is broken (currently: the ast-grep native
+ * binary, without which search_pattern / rewrite_pattern cannot run).
+ */
+async function runDoctor(out: Writer, cwd: string): Promise<number> {
+	const registry = createToolRegistry();
+	const tsconfig = findNearestTsconfig(cwd);
+	const astGrep = await probeAstGrep();
+	const lines = [
+		`ts-surgeon version: ${VERSION}`,
+		`Node: ${process.version} (${process.platform}-${process.arch})`,
+		`Registered tools: ${registry.list().length}`,
+		`Resolved tsconfig: ${tsconfig ?? "(none found above the current directory)"}`,
+		`ast-grep native binary: ${astGrep.ok ? "ok" : `FAILED — ${astGrep.error}`}`,
+	];
+	out.write(`${lines.join("\n")}\n`);
+	if (!astGrep.ok) {
+		out.write(
+			"\nsearch_pattern / rewrite_pattern are unavailable; the other tools work.\n",
+		);
+		return 1;
+	}
+	return 0;
+}
+
 /** Runs one CLI command and returns the process exit code. */
 export async function runCli(
 	argv: string[],
 	out: Writer = process.stdout,
 	err: Writer = process.stderr,
-	opts: { readStdin?: StdinReader } = {},
+	opts: { readStdin?: StdinReader; cwd?: string } = {},
 ): Promise<number> {
 	const [command, ...rawRest] = argv;
 	// --json is a global output-mode flag, valid in any position of any command.
 	const wantsJson = rawRest.includes("--json");
 	const rest = rawRest.filter((arg) => arg !== "--json");
 	const readStdin = opts.readStdin ?? readStdinDefault;
+	const cwd = opts.cwd ?? process.cwd();
 
 	try {
 		switch (command) {
@@ -238,6 +376,8 @@ export async function runCli(
 			case "guide":
 				out.write(GUIDE);
 				return 0;
+			case "doctor":
+				return runDoctor(out, cwd);
 			case "init":
 				return runInit(rest, out);
 			case "hook":
@@ -272,16 +412,38 @@ export async function runCli(
 				}
 				const registry = createToolRegistry();
 				const tool = registry.get(toolName);
+				const allProjects = rest.includes("--all-projects");
 				const params = readCallParams(
-					rest.slice(1),
+					rest.slice(1).filter((arg) => arg !== "--all-projects"),
 					readStdin,
 					tool.schemaShape,
+					cwd,
 				);
-				const outcome = await callToolOnce(
-					tool.name,
-					prepareParams(params),
-					registry,
-				);
+				const prepared = prepareParams(params, cwd);
+				const references =
+					typeof prepared.tsconfigPath === "string"
+						? solutionReferences(prepared.tsconfigPath)
+						: [];
+				if (allProjects) {
+					// awaited so a CliUsageError rejection lands in this try/catch
+					return await runAllProjects(
+						registry,
+						tool.name,
+						prepared,
+						references,
+						wantsJson,
+						out,
+						err,
+					);
+				}
+				if (references.length > 0) {
+					// A solution-style config often contains no source files itself, so
+					// the tool would silently see a partial (or empty) project.
+					err.write(
+						`Warning: ${String(prepared.tsconfigPath)} is a solution-style tsconfig ("references" with ${references.length} project(s)). Pass a leaf tsconfig (e.g. ${references[0]}) or add --all-projects to run a read-only tool across every referenced project.\n`,
+					);
+				}
+				const outcome = await callToolOnce(tool.name, prepared, registry);
 				out.write(
 					wantsJson
 						? `${JSON.stringify(formatOutcomeJson(tool.name, outcome), null, 2)}\n`
@@ -309,7 +471,7 @@ export async function runCli(
 						const name = registry.resolveName(item.tool);
 						const outcome = await callToolOnce(
 							name,
-							prepareParams(item.params ?? {}),
+							prepareParams(item.params ?? {}, cwd),
 							registry,
 						);
 						results.push(formatOutcomeJson(name, outcome));

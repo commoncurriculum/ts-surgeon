@@ -8,12 +8,14 @@ description: >-
   Triggers: "run ts-surgeon", "run the CLI", "smoke test the CLI", "drive the
   ts-morph tools", "does the CLI work".
 license: MIT
+metadata:
+  internal: true
 ---
 
 # Run: ts-surgeon (refactoring CLI)
 
 `commoncurriculum/ts-surgeon` is a **CLI** (`dist/index.js`, CommonJS) that
-exposes 15 ts-morph refactoring tools as one-shot subcommands. There is no
+exposes 17 refactoring tools (15 ts-morph + 2 ast-grep) as one-shot subcommands. There is no
 server and no GUI: every invocation is a plain process that prints its result
 to stdout and exits (0 = success, 1 = tool error, 2 = usage/params error).
 Logs go to stderr (`LOG_LEVEL` defaults to `warn`).
@@ -37,7 +39,7 @@ build after a fresh clone (or after `pnpm clean`) before driving.
 Three commands prove the CLI is fully drivable:
 
 ```bash
-# 1. All 15 tools registered?
+# 1. All 17 tools registered?
 node dist/index.js list
 
 # 2. Schema introspection works?
@@ -97,6 +99,6 @@ node /abs/path/to/ts-surgeon/dist/index.js list     # local build
 | Symptom | Fix |
 |---|---|
 | `Cannot find module …/dist/index.js` | `pnpm build` |
-| `list` shows fewer than 15 tools | a `register-*.ts` isn't wired into `src/tools/ts-morph-tools.ts` — run `/check-docs` |
+| `list` shows fewer than 17 tools | a `register-*.ts` isn't wired into `src/tools/ts-morph-tools.ts` — run `/check-docs` |
 | A `call` returns `Error: … MUST be absolute` | pass absolute `tsconfigPath` / file paths; positions are 1-based |
 | Exit code 2 with `Invalid parameters for '<tool>'` | params don't match the schema — check `describe <tool>` |

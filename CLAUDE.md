@@ -59,15 +59,15 @@ node dist/index.js describe rename_symbol
 node dist/index.js call <tool> --params '<json>'
 ```
 
-### Release (version bump)
+### Release (changesets)
 
-**The Git tag is the single source of truth. Do not bump manually.**
+**Releases are driven by [changesets](https://changesets.dev). Never bump `package.json` "version" by hand** (`src/version.ts` reads it at runtime).
 
-- Both `version` in `package.json` and `VERSION` in `src/version.ts` are fixed at `0.0.0-development`.
-- To release, run `git tag vX.Y.Z && git push origin vX.Y.Z` only.
-- `.github/workflows/release.yml` extracts the value from the tag, rewrites both files, and runs `pnpm build` → `pnpm test` → dist consistency check → `pnpm publish`.
+- Every user-facing PR adds a `.changeset/*.md` (`pnpm changeset`; pick patch/minor/major and describe the change).
+- On merge to main, `.github/workflows/release.yml` opens/updates the **"Version Packages" PR** (bumps `package.json`, writes `CHANGELOG.md`).
+- **Merging the Version Packages PR is the release**: the workflow builds, publishes to npm via Trusted Publishing (OIDC), and pushes the `vX.Y.Z` tag. No manual tagging.
 - For detailed steps, see `.claude/skills/release/SKILL.md` and the "Release" section of the README.
-- When the user says "release", "tag it", or similar, use the release skill.
+- When the user says "release", "publish", or similar, use the release skill.
 
 ## Project Structure
 
@@ -89,7 +89,14 @@ node dist/index.js call <tool> --params '<json>'
    - Each tool is registered by a `register-*.ts` file
    - All tools are consolidated in `ts-morph-tools.ts`
 
-3. **ts-morph layer** (`src/ts-morph/`)
+3. **ast-grep layer** (`src/ast-grep/`)
+   - `pattern-tools.ts`: structural pattern search/rewrite
+     (`search_pattern` / `rewrite_pattern`) via `@ast-grep/napi`
+     (loaded lazily so a missing native binary only breaks the pattern tools)
+   - `rewrite-where.ts`: type-constrained structural rewrite (`rewrite_where`) —
+     ast-grep matches filtered by a ts-morph type predicate on a capture
+
+4. **ts-morph layer** (`src/ts-morph/`)
    - Implements the actual refactoring logic
    - Each feature is implemented as an independent module:
      - `rename-symbol/`: Symbol renaming
@@ -111,12 +118,26 @@ node dist/index.js call <tool> --params '<json>'
      - `ts-morph-project.ts`: Common project creation logic
    - `_test-utils/`: Test helpers
 
-4. **Utilities** (`src/utils/`)
+5. **Utilities** (`src/utils/`)
    - `logger.ts`: Pino-based logger implementation
    - Other shared utilities
 
-5. **Error handling** (`src/errors/`)
+6. **Error handling** (`src/errors/`)
    - Custom error class definitions
+
+7. **Agent packaging** (how the tools reach coding agents)
+   - `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`: the repo is a
+     Claude Code plugin and its own marketplace (`/plugin marketplace add
+     commoncurriculum/ts-surgeon`), shipping `skills/` and `hooks/hooks.json`
+   - `skills/ts-surgeon/`: the published skill (installed by the plugin and
+     via skills.sh `npx skills add`). Dev-only skills stay in `.claude/skills/` and are
+     marked `metadata.internal: true` so skills.sh does not offer them publicly.
+   - `hooks/hooks.json`: the plugin's PreToolUse guard (wraps `ts-surgeon hook`;
+     `TS_SURGEON_STRICT=1` opts into strict mode, `TS_SURGEON_ALLOW=1` bypasses)
+   - `src/opencode-plugin.ts`: the package's import entry (`main`/`exports`) — an
+     opencode `tool.execute.before` guard plugin, registered by listing the package in
+     opencode.json's `plugin` array. The CLI is reached only via `bin`; never make
+     `dist/index.js` the import target (it runs the CLI on import).
 
 ### Test Structure
 
@@ -197,5 +218,7 @@ Controllable via environment variables:
 - **Adding missing imports**: `src/ts-morph/add-missing-imports/`
 - **Applying code fixes**: `src/ts-morph/apply-code-fix/`
 - **Safe symbol deletion**: `src/ts-morph/safe-delete-symbol/`
+- **Structural pattern search/rewrite**: `src/ast-grep/pattern-tools.ts`
+- **Type-constrained structural rewrite**: `src/ast-grep/rewrite-where.ts`
 
 For detailed specifications of each feature, see README.md.

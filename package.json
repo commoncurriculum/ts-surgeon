@@ -1,9 +1,14 @@
 {
 	"name": "@commoncurriculum/ts-surgeon",
-	"version": "0.0.0-development",
-	"_version_note": "Pinned on purpose. Git tag (vX.Y.Z) is the single source of truth — release.yml bakes the tag value into this field and into src/version.ts before `pnpm publish`. Do NOT bump by hand. See .claude/skills/release/SKILL.md.",
+	"version": "1.1.0",
+	"_version_note": "Managed by changesets — never bump by hand. Feature PRs add a .changeset/*.md; merging the bot's 'Version Packages' PR bumps this field (src/version.ts reads it at runtime) and publishes. See .claude/skills/release/SKILL.md.",
 	"description": "AST-accurate TypeScript/JavaScript refactoring CLI powered by ts-morph",
-	"main": "dist/index.js",
+	"main": "dist/opencode-plugin.js",
+	"_main_note": "The importable entry is the opencode guard plugin (list the package in opencode.json's `plugin` array); the CLI is reached via `bin`, which does not go through `exports`. dist/index.js runs the CLI on import, so it must never be the import target.",
+	"exports": {
+		".": "./dist/opencode-plugin.js",
+		"./package.json": "./package.json"
+	},
 	"bin": {
 		"ts-surgeon": "dist/index.js"
 	},
@@ -27,6 +32,8 @@
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
 		"check-types": "tsc --noEmit",
+		"changeset": "changeset",
+		"release": "pnpm run build && changeset publish",
 		"lint": "biome lint ./",
 		"lint:fix": "biome lint --write ./",
 		"format": "biome check --write ./"
@@ -43,6 +50,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",
+		"@changesets/cli": "^2.31.0",
 		"@types/node": "22.14.0",
 		"@vitest/coverage-v8": "3.1.2",
 		"lefthook": "1.11.11",
@@ -52,6 +60,7 @@
 		"vitest": "3.1.2"
 	},
 	"dependencies": {
+		"@ast-grep/napi": "^0.44.1",
 		"pino": "9.6.0",
 		"ts-morph": "25.0.1",
 		"typescript": "5.8.3",

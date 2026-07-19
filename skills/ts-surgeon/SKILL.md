@@ -1,5 +1,5 @@
 ---
-name: ts-morph-refactoring
+name: ts-surgeon
 description: >-
   Drive the commoncurriculum/ts-surgeon refactoring CLI (via npx) for AST-accurate,
   project-wide TypeScript/JavaScript refactors instead of hand-editing. Use when renaming a
@@ -113,6 +113,8 @@ rhythm:
 
 | I want to… | Tool |
 | --- | --- |
+| Find every occurrence of a code shape (ast-grep pattern) | `search_pattern` |
+| Rewrite a code shape project-wide (safe sed replacement) | `rewrite_pattern` |
 | Rename a symbol everywhere it is used | `rename_symbol` |
 | Rename/move files or folders and fix import paths | `rename_filesystem_entry` |
 | See every definition + usage of a symbol | `find_references` |

@@ -1,20 +1,29 @@
 name: Release Package
 
-# Triggered by a tag push in vX.Y.Z format (no leading zeros, no prerelease, no build metadata).
-# The Git tag is the single source of truth for the version. package.json and src/version.ts
-# are pinned at 0.0.0-development; this workflow bakes the value from the tag.
+# Changesets-driven releases (https://changesets.dev):
+# - Every feature PR includes a .changeset/*.md describing its bump (pnpm changeset).
+# - On each push to main, changesets/action either
+#     (a) opens/updates the "Version Packages" PR that applies pending changesets
+#         (bumps package.json, writes CHANGELOG.md), or
+#     (b) when main has no pending changesets but package.json is ahead of npm
+#         (i.e. the Version Packages PR was just merged), publishes to npm and
+#         pushes the vX.Y.Z git tag.
+# - Merging the Version Packages PR IS the release. No manual tagging.
 #
-# Prerelease tags (e.g. v1.2.0-rc.1) are intentionally unsupported. To add support:
-# (1) update the glob here, (2) update STRICT_SEMVER in scripts/release-version.mjs,
-# (3) update SKILL.md / README together.
+# npm auth is Trusted Publishing (OIDC). The npm trusted publisher config pins
+# this workflow's filename — keep it release.yml.
 on:
   push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+    branches: [main]
+  # Merges performed through GitHub App integrations (e.g. Claude Code
+  # sessions) do not emit workflow-triggering push events, so the release
+  # cycle must also be startable by hand. Safe to dispatch anytime: the
+  # changesets action just re-evaluates pending changesets / publishable state.
+  workflow_dispatch:
 
-# Prevent duplicate runs for the same tag. Newer pushes take priority.
+# One release run at a time; never cancel a publish in flight.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-main
   cancel-in-progress: false
 
 permissions:
@@ -24,8 +33,10 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      # Required for npm Trusted Publishing (OIDC) and provenance.
-      # Replaces NPM_TOKEN with a short-lived OIDC ID Token for publishing; this is the sole authorization asset.
+      # changesets/action pushes the version commit + git tags and opens the
+      # Version Packages PR; OIDC id-token is the sole npm publish credential.
+      contents: write
+      pull-requests: write
       id-token: write
     timeout-minutes: 15
     steps:
@@ -45,7 +56,6 @@ jobs:
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           # Trusted Publishing requires Node 22.14+, so we override on CI only.
-          # The volta field in package.json (Node 20.x) is preserved for local development.
           # registry-url is intentionally omitted: when setup-node interprets registry-url
           # it writes `_authToken=${NODE_AUTH_TOKEN}` to ~/.npmrc, causing an auth attempt
           # via the empty-token path instead of OIDC → 404 (the main cause of failures before the fix).
@@ -54,84 +64,26 @@ jobs:
 
       - name: Upgrade npm to >= 11.5.1 for trusted publishing
         # Trusted Publishing became generally available in npm CLI 11.5.1.
-        # Since pnpm publish uses npm CLI internally, we upgrade npm itself to the latest version.
+        # `changeset publish` shells out to npm publish, which uses the OIDC path.
         run: npm install -g npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Get version from tag
-        id: get_version
-        # Complies with SemVer 2.0.0 §2 (no leading zeros). Prerelease and build metadata are not allowed.
-        # Same pattern as STRICT_SEMVER in scripts/release-version.mjs.
-        run: |
-          set -euo pipefail
-          VERSION=${GITHUB_REF#refs/tags/v}
-          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "Error: Tag version ($VERSION) is not a strict SemVer X.Y.Z (no leading zeros, no prerelease, no build metadata)."
-            exit 1
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      # Why tests run before baking:
-      # - Tests are written assuming the placeholder version (0.0.0-development).
-      # - This prevents every release from failing with the baked value if snapshot tests
-      #   for serverInfo.version are added in the future (protection against the snapshot trap).
-      - name: Test package (before bake — uses placeholder VERSION)
+      - name: Test package
         run: pnpm run test
 
-      # Bake the tag value into src/version.ts and package.json.
-      # See the top-level comment in scripts/release-version.mjs for why this is done via a node script.
-      # Short version: sed / jq are fragile against formatter rules and no-ops tend to be silent.
-      - name: Bake VERSION from tag
+      - name: Create Version Packages PR or publish to npm
+        # changesets/action@v1.9.0
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d
+        with:
+          # `pnpm run release` = pnpm run build && changeset publish.
+          # changeset publish reads access from .changeset/config.json ("public")
+          # and creates + pushes the vX.Y.Z tag on success.
+          publish: pnpm run release
+          title: "chore: version package"
+          commit: "chore: version package"
         env:
-          VERSION: ${{ steps.get_version.outputs.version }}
-        run: |
-          set -euo pipefail
-          node scripts/release-version.mjs --bake "$VERSION"
-          echo "--- src/version.ts ---"
-          cat src/version.ts
-          echo "--- package.json (version) ---"
-          node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync("package.json","utf8")).version + "\n")'
-
-      - name: Build package (with baked VERSION)
-        run: pnpm run build
-
-      # Confirm that the baked version is present in dist with an exact match (drift detection).
-      # grep uses -F (fixed string) with the full assignment line to prevent unrelated substring matches.
-      - name: Verify baked version landed in dist
-        env:
-          VERSION: ${{ steps.get_version.outputs.version }}
-        run: |
-          set -euo pipefail
-          expected="exports.VERSION = \"${VERSION}\";"
-          if ! grep -qF "$expected" dist/version.js; then
-            echo "Error: dist/version.js does not contain the exact line:"
-            echo "  $expected"
-            echo "--- dist/version.js ---"
-            cat dist/version.js
-            exit 1
-          fi
-          echo "dist/version.js contains the expected line: $expected"
-
-      # Remove the internal-only _version_note before publishing (to avoid exposing
-      # internal skill paths on the npm registry). `pnpm pkg` is not yet implemented
-      # in pnpm v11 (ERR_PNPM_NOT_IMPLEMENTED), so we call npm CLI's `npm pkg` directly.
-      # Rewrites package.json in place.
-      - name: Strip internal _version_note before publish
-        run: npm pkg delete _version_note
-
-      - name: Publish to npm (pnpm + Trusted Publishing via OIDC)
-        # Publish via pnpm to unify the supply-chain attack surface.
-        # pnpm 11+'s native publish implementation uses npm CLI 11.5+'s OIDC path internally.
-        # --no-git-checks: skip Git state checks in CI
-        # --provenance: issue provenance attestation via GitHub Actions OIDC + Sigstore
-        # --access public: publish the scoped package publicly
-        #
-        # NOTE: package.json scripts.prepublishOnly reruns `pnpm run build`, which
-        # re-executes tsc and regenerates dist. This re-reads src/version.ts after baking,
-        # so the result is identical, but the build the Verify step inspected and the build
-        # actually published are strictly different artifacts (build #1 vs #2). This is fine
-        # while the bake mechanism is a disk mutation, but if baking is changed to a different
-        # approach (e.g., a transformer) in the future, revisit prepublishOnly behavior as well.
-        run: pnpm publish --no-git-checks --provenance --access public
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Provenance attestation via GitHub Actions OIDC + Sigstore.
+          NPM_CONFIG_PROVENANCE: "true"

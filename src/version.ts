@@ -1,13 +1,13 @@
-// Version is the single source of truth for the version the CLI reports
-// (via `--version`). The literal below
-// is rewritten at release time by .github/workflows/release.yml — see
-// "Bake VERSION from tag" step — and the same value is mirrored into
-// package.json "version" before `pnpm publish`.
-//
-// During local development and tests, the literal stays at
-// "0.0.0-development" so we can tell unreleased builds apart from
-// published ones at a glance.
-//
-// Do NOT bump this by hand. The release flow is: `git tag vX.Y.Z && git push
-// origin vX.Y.Z` — CI handles the rest.
-export const VERSION = "0.0.0-development";
+import { readFileSync } from "node:fs";
+import * as path from "node:path";
+
+// package.json "version" is the single source of truth, managed by changesets
+// (never bump it by hand — merging the "Version Packages" PR does). Reading it
+// at runtime works identically from dist/ (published package) and src/
+// (tsx/vitest): both sit one level below the package root, and package.json is
+// always shipped ("files" includes it).
+export const VERSION: string = (
+	JSON.parse(
+		readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"),
+	) as { version: string }
+).version;

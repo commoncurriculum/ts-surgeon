@@ -1,6 +1,12 @@
 {
 	"name": "ts-surgeon",
-	"description": "Redirects hand-rolled TS/JS text refactors and identifier searches to the AST-accurate ts-surgeon CLI (find_references, rename_symbol, ...). Prefix a command with TS_SURGEON_ALLOW=1 to bypass.",
-	"version": "0.0.0-development",
-	"author": { "name": "Common Curriculum" }
+	"displayName": "ts-surgeon",
+	"description": "AST-accurate TypeScript/JavaScript refactoring: the ts-surgeon skill (drives the ts-surgeon CLI via npx) plus a PreToolUse guard that redirects hand-rolled sed/perl refactors and recursive identifier searches to the AST-accurate tools (TS_SURGEON_ALLOW=1 bypasses).",
+	"author": {
+		"name": "Common Curriculum"
+	},
+	"homepage": "https://github.com/commoncurriculum/ts-surgeon",
+	"repository": "https://github.com/commoncurriculum/ts-surgeon",
+	"license": "MIT",
+	"keywords": ["typescript", "refactoring", "ts-morph", "ast", "codemod"]
 }
