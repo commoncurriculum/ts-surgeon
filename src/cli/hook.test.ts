@@ -311,6 +311,36 @@ describe("installClaudeHook", () => {
 		expect(out2.text).toContain("nothing to do");
 	});
 
+	it("upgrades a pre-existing Bash-only matcher to Bash|Grep", () => {
+		const settingsPath = path.join(tempDir, ".claude", "settings.json");
+		fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+		fs.writeFileSync(
+			settingsPath,
+			JSON.stringify({
+				hooks: {
+					PreToolUse: [
+						{
+							matcher: "Bash",
+							hooks: [
+								{
+									type: "command",
+									command: "npx -y @commoncurriculum/ts-surgeon hook",
+								},
+							],
+						},
+					],
+				},
+			}),
+		);
+
+		const out = createCapture();
+		installClaudeHook(tempDir, out);
+		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+		expect(settings.hooks.PreToolUse).toHaveLength(1);
+		expect(settings.hooks.PreToolUse[0].matcher).toBe("Bash|Grep");
+		expect(out.text).toContain("Upgraded");
+	});
+
 	it("merges into existing settings and is idempotent", () => {
 		const settingsPath = path.join(tempDir, ".claude", "settings.json");
 		fs.mkdirSync(path.dirname(settingsPath), { recursive: true });

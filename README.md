@@ -81,6 +81,8 @@ npx -y @commoncurriculum/ts-surgeon init --opencode-hook   # opencode: .opencode
 
 Claude Code can also load this repository as a plugin: [`hooks/hooks.json`](hooks/hooks.json) registers the same guard on every `Bash` and `Grep` PreToolUse.
 
+**Updating projects that already use the guard:** every install path shells out to `npx -y @commoncurriculum/ts-surgeon hook`, which resolves the latest published version — so new verdict logic reaches all projects automatically after a release, with no per-project action. The one exception is the `.claude/settings.json` entry written by older installs, which matched only `Bash`; re-run `npx -y @commoncurriculum/ts-surgeon init --claude-hook` once per project and the installer upgrades the matcher to `Bash|Grep` in place. Plugin users update like any Claude Code plugin (`claude plugin update ts-surgeon`); projects that copied the skill directory re-copy it.
+
 #### Block policy
 
 There is one mode (the old `--strict` flag is accepted as a deprecated no-op). Before any `Bash` or `Grep` tool call runs, the hook blocks (exit 2) and names the exact replacement invocation when the call is:

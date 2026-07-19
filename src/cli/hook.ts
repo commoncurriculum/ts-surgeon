@@ -614,10 +614,19 @@ export function installClaudeHook(cwd: string, out: Writer): void {
 		matcher?: string;
 		hooks?: Array<{ type?: string; command?: string }>;
 	}>;
-	const alreadyInstalled = preToolUse.some((entry) =>
+	const existing = preToolUse.find((entry) =>
 		entry.hooks?.some((hook) => hook.command?.includes("ts-surgeon hook")),
 	);
-	if (alreadyInstalled) {
+	if (existing) {
+		if (existing.matcher === "Bash") {
+			// Older installs only guarded Bash; extend them to the native Grep tool.
+			existing.matcher = "Bash|Grep";
+			writeFileSync(settingsPath, `${JSON.stringify(settings, null, "\t")}\n`);
+			out.write(
+				`Upgraded the ts-surgeon hook matcher in ${settingsPath} from Bash to Bash|Grep (the guard now also redirects the native Grep tool).\n`,
+			);
+			return;
+		}
 		out.write(
 			`${settingsPath} already runs the ts-surgeon hook — nothing to do.\n`,
 		);
