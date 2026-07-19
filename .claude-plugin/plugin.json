@@ -1,7 +1,7 @@
 {
 	"name": "ts-surgeon",
 	"displayName": "ts-surgeon",
-	"description": "AST-accurate TypeScript/JavaScript refactoring: the ts-surgeon skill (drives the ts-surgeon CLI via npx) plus a PreToolUse guard that redirects hand-rolled sed/perl refactors to the AST-accurate tools.",
+	"description": "AST-accurate TypeScript/JavaScript refactoring: the ts-surgeon skill (drives the ts-surgeon CLI via npx) plus a PreToolUse guard that redirects hand-rolled sed/perl refactors and recursive identifier searches to the AST-accurate tools (TS_SURGEON_ALLOW=1 bypasses).",
 	"author": {
 		"name": "Common Curriculum"
 	},

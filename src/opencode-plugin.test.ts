@@ -32,11 +32,14 @@ describe("TsSurgeonGuard (opencode plugin)", () => {
 		await expect(guard({ tool: "bash" }, {})).resolves.toBeUndefined();
 	});
 
-	it("honors TS_SURGEON_STRICT=1", async () => {
+	it("throws on recursive identifier searches by default (strict split retired)", async () => {
 		const guard = await loadGuard();
 		const search = { args: { command: "grep -rn calculateSum src/" } };
-		await expect(guard({ tool: "bash" }, search)).resolves.toBeUndefined();
-		vi.stubEnv("TS_SURGEON_STRICT", "1");
+		await expect(guard({ tool: "bash" }, search)).rejects.toThrow(
+			/find_references/,
+		);
+		// The old TS_SURGEON_STRICT opt-in is gone; the env var changes nothing.
+		vi.stubEnv("TS_SURGEON_STRICT", "0");
 		await expect(guard({ tool: "bash" }, search)).rejects.toThrow(
 			/find_references/,
 		);

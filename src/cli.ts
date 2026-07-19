@@ -51,11 +51,12 @@ Usage:
                                           .claude/settings.json (Claude Code);
                                           --opencode-hook registers the guard plugin
                                           in opencode.json's "plugin" array
-  ts-surgeon hook [--strict]              PreToolUse guard for agent harnesses: blocks
-                                          sed/perl -i on TS/JS sources (exit 2) and
-                                          tells the agent to use ts-surgeon instead;
-                                          --strict also redirects recursive identifier
-                                          searches (grep -r / rg) to find_references
+  ts-surgeon hook                         PreToolUse guard for agent harnesses: blocks
+                                          sed/perl -i on TS/JS sources and recursive
+                                          identifier searches (grep -r / rg / native
+                                          Grep) with exit 2, telling the agent which
+                                          ts-surgeon tool to use instead (--strict is
+                                          a deprecated no-op; this is the one mode)
   ts-surgeon --help | --version
 
 Params for call (flags win over JSON; both can be combined):

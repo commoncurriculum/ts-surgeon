@@ -12,11 +12,7 @@
 	"bin": {
 		"ts-surgeon": "dist/index.js"
 	},
-	"files": [
-		"dist",
-		"package.json",
-		"README.md"
-	],
+	"files": ["dist", "package.json", "README.md"],
 	"publishConfig": {
 		"access": "public"
 	},
@@ -32,6 +28,7 @@
 		"prepublishOnly": "pnpm run build",
 		"test": "vitest run --pool threads --poolOptions.threads.singleThread",
 		"test:e2e": "vitest run --config vitest.e2e.config.ts",
+		"test:e2e:agent": "TS_SURGEON_E2E_AGENT=1 vitest run --config vitest.e2e.config.ts e2e/agent-hook.e2e.test.ts",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
 		"check-types": "tsc --noEmit",
@@ -41,16 +38,9 @@
 		"lint:fix": "biome lint --write ./",
 		"format": "biome check --write ./"
 	},
-	"keywords": [
-		"cli",
-		"ts-morph",
-		"refactoring",
-		"typescript"
-	],
+	"keywords": ["cli", "ts-morph", "refactoring", "typescript"],
 	"author": "Common Curriculum",
-	"contributors": [
-		"SiroSuzume (original author of mcp-ts-morph)"
-	],
+	"contributors": ["SiroSuzume (original author of mcp-ts-morph)"],
 	"license": "MIT",
 	"engines": {
 		"node": ">=22"

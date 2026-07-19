@@ -122,7 +122,37 @@ Use the ts-morph refactoring CLI:
     npx -y @commoncurriculum/ts-surgeon list    # tool names + summaries
 ```
 
-For Claude Code without the plugin, `npx -y @commoncurriculum/ts-surgeon init --claude-hook` installs just the guard as a `PreToolUse` hook in `.claude/settings.json` (append `--strict` to the command it writes for strict mode).
+### The guard: block policy
+
+For Claude Code without the plugin, `npx -y @commoncurriculum/ts-surgeon init --claude-hook` installs just the guard as a `PreToolUse` hook in `.claude/settings.json` (matcher `Bash|Grep`). The plugin's [`hooks/hooks.json`](hooks/hooks.json) registers the same guard.
+
+**Updating projects that already use the guard:** the Claude Code hook entry shells out to `npx -y @commoncurriculum/ts-surgeon hook`, which resolves the latest published version — new verdict logic reaches those projects automatically after a release. The one exception is the `.claude/settings.json` entry written by older installs, which matched only `Bash`; re-run `npx -y @commoncurriculum/ts-surgeon init --claude-hook` once per project and the installer upgrades the matcher to `Bash|Grep` in place. Plugin users update like any Claude Code plugin (`claude plugin update ts-surgeon`); opencode auto-installs the plugin package at startup.
+
+There is one mode — the old `--strict` flag and `TS_SURGEON_STRICT` env opt-in are retired (`--strict` is accepted as a deprecated no-op). Before any `Bash` or `Grep` tool call runs, the hook blocks (exit 2) and names the exact replacement invocation when the call is:
+
+- **A hand-rolled text edit of TS/JS sources** — `sed -i` / `perl -i` touching `.ts/.tsx/.js/...` → use `rename_symbol` / `change_signature` / `organize_imports` (all support `--dry-run`).
+- **A recursive text search for a code identifier** — `grep -r name`, `rg name`, `git grep name`, or the harness's native Grep tool over source trees → use `find_references` / `search_pattern` (or `find_unused_exports` for dead-export audits). *Every* `grep`/`rg` in a compound command is inspected — pipelines, `;`/`&&` chains, loops, and `$(...)` substitutions — so an export-enumeration loop that greps a shell variable (`grep -rl --include='*.ts' "$name" src/`) is caught, not just the first `grep` in the string.
+
+The hook deliberately allows, in every mode:
+
+- searches scoped to non-source files (`--include='*.md'`, `docs/`, `*.json`, `rg --type md`, ...);
+- non-recursive greps (single files, or filtering piped stdin: `ps aux | grep node`);
+- regex patterns and comment markers (`TODO|FIXME`) — those are not identifier lookups;
+- anything it cannot parse — malformed JSON, non-Bash/Grep payloads, and TTY invocations always exit 0, so the guard can never break the harness.
+
+**Escape hatch:** prefix any command with `TS_SURGEON_ALLOW=1` and it runs untouched; every block message says so. If you find a command that is wrongly blocked (or a search that wrongly slips through), add it to the verdict corpus in [`src/cli/hook.test.ts`](src/cli/hook.test.ts) — every evasion found in a real transcript becomes a fixture there.
+
+#### Proving the hook changes agent behavior
+
+Unit tests prove the verdicts; they do not prove an agent is actually redirected. [`e2e/agent-hook.e2e.test.ts`](e2e/agent-hook.e2e.test.ts) drives a **real** headless `claude -p` against a throwaway repo with the hook installed, on tasks that tempt text search ("find every reference to `calculateSum`", "rename it everywhere", and the exact export-sweep evasion observed in a real transcript). It asserts, over N stochastic runs per scenario, that (a) a search/edit attempt was blocked, (b) the agent then invoked `ts-surgeon call find_references`/`rename_symbol`/`find_unused_exports`, and (c) the task still completed correctly — and prints the observed redirect rate.
+
+```bash
+pnpm test:e2e:agent   # needs the `claude` CLI + credentials; slow and billed
+# Tunables: TS_SURGEON_E2E_AGENT_RUNS (5), TS_SURGEON_E2E_AGENT_THRESHOLD (0.6),
+#           TS_SURGEON_E2E_AGENT_MODEL (sonnet)
+```
+
+Every install path evaluates the same policy (the Claude Code hook via `ts-surgeon hook`, the opencode plugin in-process) — a harness without hook support still gets the advisory `init` snippet.
 
 ## Available Tools
 

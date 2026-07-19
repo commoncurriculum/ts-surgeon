@@ -1,4 +1,4 @@
-import { evaluateBashCommand, strictFromEnv } from "./cli/hook";
+import { evaluateBashCommand } from "./cli/hook";
 
 /**
  * opencode plugin entry: the package's `main`/`exports` point here so that
@@ -23,7 +23,7 @@ export const TsSurgeonGuard = async () => ({
 		if (typeof command !== "string") {
 			return;
 		}
-		const verdict = evaluateBashCommand(command, { strict: strictFromEnv() });
+		const verdict = evaluateBashCommand(command);
 		if (verdict.block) {
 			throw new Error(verdict.reason);
 		}
