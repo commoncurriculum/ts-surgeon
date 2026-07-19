@@ -1,0 +1,6 @@
+{
+	"name": "ts-surgeon",
+	"description": "Redirects hand-rolled TS/JS text refactors and identifier searches to the AST-accurate ts-surgeon CLI (find_references, rename_symbol, ...). Prefix a command with TS_SURGEON_ALLOW=1 to bypass.",
+	"version": "0.0.0-development",
+	"author": { "name": "Common Curriculum" }
+}

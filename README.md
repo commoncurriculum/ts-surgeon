@@ -79,7 +79,35 @@ npx -y @commoncurriculum/ts-surgeon init --claude-hook     # Claude Code: .claud
 npx -y @commoncurriculum/ts-surgeon init --opencode-hook   # opencode: .opencode/plugin/ts-surgeon.js (tool.execute.before)
 ```
 
-Once installed, any Bash command that hand-edits TS/JS sources with `sed -i`/`perl -i` is blocked before it runs, and the agent is told to use the AST-accurate tool instead (with `--dry-run` guidance). A genuine non-refactor use is one prefix away: `TS_SURGEON_ALLOW=1 sed -i …`. Pass `--strict` in the hook command to also redirect recursive identifier searches (`grep -r name` / `rg name`, unless scoped to non-source files) to `find_references`. Both installers wrap the same `ts-surgeon hook` command — a harness without hook support still gets the advisory `init` snippet.
+Claude Code can also load this repository as a plugin: [`hooks/hooks.json`](hooks/hooks.json) registers the same guard on every `Bash` and `Grep` PreToolUse.
+
+#### Block policy
+
+There is one mode (the old `--strict` flag is accepted as a deprecated no-op). Before any `Bash` or `Grep` tool call runs, the hook blocks (exit 2) and names the exact replacement invocation when the call is:
+
+- **A hand-rolled text edit of TS/JS sources** — `sed -i` / `perl -i` touching `.ts/.tsx/.js/...` → use `rename_symbol` / `change_signature` / `organize_imports` (all support `--dry-run`).
+- **A recursive text search for a code identifier** — `grep -r name`, `rg name`, `git grep name`, or the harness's native Grep tool over source trees → use `find_references` (or `find_unused_exports` for dead-export audits). *Every* `grep`/`rg` in a compound command is inspected — pipelines, `;`/`&&` chains, loops, and `$(...)` substitutions — so an export-enumeration loop that greps a shell variable (`grep -rl --include='*.ts' "$name" src/`) is caught, not just the first `grep` in the string.
+
+The hook deliberately allows, in every mode:
+
+- searches scoped to non-source files (`--include='*.md'`, `docs/`, `*.json`, `rg --type md`, ...);
+- non-recursive greps (single files, or filtering piped stdin: `ps aux | grep node`);
+- regex patterns and comment markers (`TODO|FIXME`) — those are not identifier lookups;
+- anything it cannot parse — malformed JSON, non-Bash/Grep payloads, and TTY invocations always exit 0, so the guard can never break the harness.
+
+**Escape hatch:** prefix any command with `TS_SURGEON_ALLOW=1` and it runs untouched; every block message says so. If you find a command that is wrongly blocked (or a search that wrongly slips through), add it to the verdict corpus in [`src/cli/hook.test.ts`](src/cli/hook.test.ts) — every evasion found in a real transcript becomes a fixture there.
+
+#### Proving the hook changes agent behavior
+
+Unit tests prove the verdicts; they do not prove an agent is actually redirected. [`e2e/agent-hook.e2e.test.ts`](e2e/agent-hook.e2e.test.ts) drives a **real** headless `claude -p` against a throwaway repo with the hook installed, on tasks that tempt text search ("find every reference to `calculateSum`", "rename it everywhere", and the exact export-sweep evasion observed in a real transcript). It asserts, over N stochastic runs per scenario, that (a) a search/edit attempt was blocked, (b) the agent then invoked `ts-surgeon call find_references`/`rename_symbol`/`find_unused_exports`, and (c) the task still completed correctly — and prints the observed redirect rate.
+
+```bash
+pnpm test:e2e:agent   # needs the `claude` CLI + credentials; slow and billed
+# Tunables: TS_SURGEON_E2E_AGENT_RUNS (5), TS_SURGEON_E2E_AGENT_THRESHOLD (0.6),
+#           TS_SURGEON_E2E_AGENT_MODEL (sonnet)
+```
+
+Both installers wrap the same `ts-surgeon hook` command — a harness without hook support still gets the advisory `init` snippet.
 
 ## Available Tools
 
