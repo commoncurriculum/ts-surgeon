@@ -118,10 +118,11 @@ function setupConsoleTransport(
 
 	try {
 		require.resolve("pino-pretty");
-		// Not needed in the test environment, so only log in development —
-		// and never when logs are silenced (e.g. the `hook` command, whose
-		// stderr must carry only the block reason).
-		if (nodeEnv === "development" && process.env.LOG_LEVEL !== "silent") {
+		// These lines describe the logger's own setup, which is only of
+		// interest when actively debugging logging — gate them behind
+		// LOG_LEVEL=debug so a normal run (e.g. an `npx` consumer, where
+		// pino-pretty is a devDependency and thus absent) stays quiet.
+		if (nodeEnv === "development" && process.env.LOG_LEVEL === "debug") {
 			console.error("Using pino-pretty for console logging.");
 		}
 		return {
@@ -130,8 +131,10 @@ function setupConsoleTransport(
 			options: { colorize: true, ignore: "pid,hostname", destination: 2 },
 		};
 	} catch (e) {
-		// Not needed in the test environment, so only log in development.
-		if (nodeEnv === "development") {
+		// pino-pretty is a devDependency, so it is expectedly missing in a
+		// published install; the JSON fallback is fine. Only surface this
+		// when explicitly debugging the logger (LOG_LEVEL=debug).
+		if (nodeEnv === "development" && process.env.LOG_LEVEL === "debug") {
 			console.error(
 				"pino-pretty was not found. Falling back to the default JSON console logging.",
 			);

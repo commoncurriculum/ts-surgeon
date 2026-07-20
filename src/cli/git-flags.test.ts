@@ -24,7 +24,14 @@ describe("call --git-changed / --git-staged", () => {
 	let srcDir: string;
 
 	beforeEach(() => {
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsurgeon-gitflags-"));
+		// realpathSync canonicalizes the path: on macOS os.tmpdir() is under
+		// the /var -> /private/var symlink, but `git rev-parse --show-toplevel`
+		// always reports the canonical path. Without this the diff paths (under
+		// /private/var) would not match the project files (under /var) and the
+		// tool would find no source files to process.
+		tempDir = fs.realpathSync(
+			fs.mkdtempSync(path.join(os.tmpdir(), "tsurgeon-gitflags-")),
+		);
 		tsconfigPath = path.join(tempDir, "tsconfig.json");
 		srcDir = path.join(tempDir, "src");
 		fs.mkdirSync(srcDir, { recursive: true });
