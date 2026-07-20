@@ -27,6 +27,13 @@ tools. Two mechanism changes close that loop for good:
   loops. The guard is now a pipeline of independently tested stages under
   `src/cli/guard/` (shell → invocation → pattern intent → scope → policy →
   answer).
+- **Teach after every search.** A companion `PostToolUse` hook
+  (`ts-surgeon hook --post`, installed by the plugin's hooks.json and by
+  `init --claude-hook`; the opencode plugin's `tool.execute.after` does the
+  same) appends a line after each executed search: the exact ts-surgeon
+  equivalent when one exists ("next time, use `… call find_references
+  --symbol-name <name>` for faster, more accurate results"), or a generic
+  pointer when there is no direct translation.
 - **Operator-only escape hatch.** The inline `TS_SURGEON_ALLOW=1` prefix is
   inert (a command carrying it gets an explicit "that does nothing" note);
   the guard is bypassed only when a human sets `TS_SURGEON_ALLOW=1` in the

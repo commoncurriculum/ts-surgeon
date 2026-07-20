@@ -11,6 +11,7 @@ import {
 	installClaudeHook,
 	installOpencodeHook,
 	runHook,
+	runPostHook,
 	type SearchAnswerer,
 } from "./cli/hook";
 import {
@@ -391,6 +392,9 @@ export async function runCli(
 			case "init":
 				return runInit(rest, out);
 			case "hook":
+				if (rest.includes("--post")) {
+					return runPostHook(readStdin, out);
+				}
 				return opts.answerSearch === undefined
 					? runHook(rest, readStdin, err)
 					: runHook(rest, readStdin, err, opts.answerSearch);

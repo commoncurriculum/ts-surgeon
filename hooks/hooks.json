@@ -11,6 +11,18 @@
 					}
 				]
 			}
+		],
+		"PostToolUse": [
+			{
+				"matcher": "Bash|Grep",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "npx -y @commoncurriculum/ts-surgeon hook --post",
+						"timeout": 30
+					}
+				]
+			}
 		]
 	}
 }

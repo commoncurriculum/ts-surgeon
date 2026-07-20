@@ -66,26 +66,19 @@ export type HookEvaluation =
 	| { kind: "block"; reason: string }
 	| { kind: "answer-search"; symbolNames: string[]; searchRoot?: string };
 
+type SignificantSearch =
+	| { kind: "dynamic-source" }
+	| { kind: "identifiers"; symbolNames: string[]; searchRoot?: string }
+	| { kind: "opaque-source" };
+
 /**
- * Evaluates a Bash command: in-place text edits of TS/JS sources (sed/perl
- * -i) and runtime-dynamic search loops are blocked; recursive identifier
- * searches (every grep/rg/git grep in the command is inspected, including
- * inside loops and command substitutions) come back as "answer-search" so
- * the hook can run find_references on the agent's behalf. The old
- * strict/default split (--strict flag, TS_SURGEON_STRICT env) is retired.
+ * Finds the first search in a Bash command the guard has an opinion about:
+ * every grep/rg/git grep is inspected (including inside loops and command
+ * substitutions); non-recursive greps, explicit-file reads, non-source
+ * scopes, dynamic roots, and inverted matches are skipped.
  */
-export function evaluateBashCommand(command: string): HookEvaluation {
-	const block = (reason: string): HookEvaluation => ({
-		kind: "block",
-		// A cargo-culted TS_SURGEON_ALLOW=1 prefix gets an explicit "that does
-		// nothing" preface so the agent stops reaching for it.
-		reason: command.includes("TS_SURGEON_ALLOW")
-			? `${INERT_PREFIX_NOTE}\n${reason}`
-			: reason,
-	});
-	if (isInPlaceSourceEdit(command)) {
-		return block(EDIT_BLOCK_MESSAGE);
-	}
+function findSignificantSearch(command: string): SignificantSearch | undefined {
+	let sawOpaqueSourceSearch = false;
 	for (const tokens of splitSimpleCommands(command)) {
 		const inv = parseSearchInvocation(tokens);
 		if (inv === undefined || inv.patterns.length === 0) {
@@ -126,18 +119,54 @@ export function evaluateBashCommand(command: string): HookEvaluation {
 			// canonical evasion — but only when the search demonstrably targets
 			// sources; a dynamic grep over unknown paths is too common to block.
 			if (scope === "source") {
-				return block(DYNAMIC_SEARCH_BLOCK_MESSAGE);
+				return { kind: "dynamic-source" };
 			}
+			sawOpaqueSourceSearch = true;
 			continue;
 		}
 		if (intent.kind === "identifiers") {
 			return {
-				kind: "answer-search",
+				kind: "identifiers",
 				symbolNames: intent.symbols,
 				searchRoot: inv.paths[0],
 			};
 		}
-		// opaque: free text, true regexes, markers — nothing to answer.
+		// opaque: free text, true regexes, markers — nothing to answer, but
+		// worth a generic pointer after the search runs.
+		sawOpaqueSourceSearch = true;
+	}
+	return sawOpaqueSourceSearch ? { kind: "opaque-source" } : undefined;
+}
+
+/**
+ * Evaluates a Bash command: in-place text edits of TS/JS sources (sed/perl
+ * -i) and runtime-dynamic search loops are blocked; recursive identifier
+ * searches come back as "answer-search" so the hook can run find_references
+ * on the agent's behalf. The old strict/default split (--strict flag,
+ * TS_SURGEON_STRICT env) is retired.
+ */
+export function evaluateBashCommand(command: string): HookEvaluation {
+	const block = (reason: string): HookEvaluation => ({
+		kind: "block",
+		// A cargo-culted TS_SURGEON_ALLOW=1 prefix gets an explicit "that does
+		// nothing" preface so the agent stops reaching for it.
+		reason: command.includes("TS_SURGEON_ALLOW")
+			? `${INERT_PREFIX_NOTE}\n${reason}`
+			: reason,
+	});
+	if (isInPlaceSourceEdit(command)) {
+		return block(EDIT_BLOCK_MESSAGE);
+	}
+	const found = findSignificantSearch(command);
+	if (found?.kind === "dynamic-source") {
+		return block(DYNAMIC_SEARCH_BLOCK_MESSAGE);
+	}
+	if (found?.kind === "identifiers") {
+		return {
+			kind: "answer-search",
+			symbolNames: found.symbolNames,
+			searchRoot: found.searchRoot,
+		};
 	}
 	return { kind: "allow" };
 }
@@ -188,8 +217,108 @@ export function evaluateGrepToolInput(input: {
 	return { kind: "allow" };
 }
 
+// ── Post-run teaching ───────────────────────────────────────────────────────
+
+const NPX_TS_SURGEON = "npx -y @commoncurriculum/ts-surgeon";
+
+function exactTeachingLine(symbolNames: string[]): string {
+	const perSymbol =
+		symbolNames.length > 1
+			? ` Run it once per symbol: ${symbolNames.join(", ")}.`
+			: "";
+	return `ts-surgeon: next time, use \`${NPX_TS_SURGEON} call find_references --symbol-name ${symbolNames[0]}\` for faster, more accurate results (AST-accurate: no comment/string false hits; aliased imports and re-exports included).${perSymbol}`;
+}
+
+const GENERIC_TEACHING_LINE = `ts-surgeon: next time, a ts-surgeon lookup is usually faster and more accurate for code searches — \`${NPX_TS_SURGEON} call search_pattern --pattern '<code shape with $META vars>'\` for structural shapes; \`${NPX_TS_SURGEON} guide\` lists the tools.`;
+
+/**
+ * The line a post-run hook appends after an executed search: the exact
+ * ts-surgeon equivalent when one exists (identifier hunts → find_references
+ * with the symbol filled in), a generic pointer when the search targeted
+ * sources but has no direct translation, undefined when ts-surgeon has no
+ * business in it (non-source scopes, explicit files, pipes, non-searches).
+ */
+export function buildSearchTeaching(
+	toolName: string,
+	toolInput: Record<string, unknown> | undefined,
+): string | undefined {
+	if (toolName === "Bash" && typeof toolInput?.command === "string") {
+		const found = findSignificantSearch(toolInput.command);
+		if (found === undefined) {
+			return undefined;
+		}
+		return found.kind === "identifiers"
+			? exactTeachingLine(found.symbolNames)
+			: GENERIC_TEACHING_LINE;
+	}
+	if (toolName === "Grep" && toolInput) {
+		const verdict = evaluateGrepToolInput(toolInput);
+		if (verdict.kind === "answer-search") {
+			return exactTeachingLine(verdict.symbolNames);
+		}
+		const { pattern, path: searchPath, glob, type } = toolInput;
+		if (typeof pattern !== "string") return undefined;
+		if (typeof glob === "string" && !SOURCE_EXT_RE.test(glob)) return undefined;
+		if (typeof type === "string" && !RG_SOURCE_TYPES.has(type))
+			return undefined;
+		if (
+			typeof searchPath === "string" &&
+			searchPath !== "" &&
+			isNonSourcePath(searchPath)
+		) {
+			return undefined;
+		}
+		if (typeof searchPath === "string" && SOURCE_EXT_RE.test(searchPath)) {
+			return undefined;
+		}
+		return GENERIC_TEACHING_LINE;
+	}
+	return undefined;
+}
+
 interface Writer {
 	write(chunk: string): unknown;
+}
+
+/**
+ * `ts-surgeon hook --post` — reads the harness's PostToolUse JSON payload
+ * from stdin and, when the just-executed command was a source-directed
+ * search, emits `additionalContext` teaching the exact (or generic)
+ * ts-surgeon equivalent. Never blocks; always exits 0.
+ */
+export function runPostHook(readStdin: StdinReader, out: Writer): number {
+	if (isOperatorAllowed()) {
+		return 0;
+	}
+	let payload: unknown;
+	try {
+		payload = JSON.parse(readStdin());
+	} catch {
+		return 0;
+	}
+	if (payload === null || typeof payload !== "object") {
+		return 0;
+	}
+	const { tool_name, tool_input } = payload as {
+		tool_name?: unknown;
+		tool_input?: Record<string, unknown>;
+	};
+	if (typeof tool_name !== "string") {
+		return 0;
+	}
+	const teaching = buildSearchTeaching(tool_name, tool_input);
+	if (teaching === undefined) {
+		return 0;
+	}
+	out.write(
+		`${JSON.stringify({
+			hookSpecificOutput: {
+				hookEventName: "PostToolUse",
+				additionalContext: teaching,
+			},
+		})}\n`,
+	);
+	return 0;
 }
 
 /**
@@ -268,6 +397,7 @@ export function runHook(
 }
 
 const HOOK_COMMAND = "npx -y @commoncurriculum/ts-surgeon hook";
+const POST_HOOK_COMMAND = "npx -y @commoncurriculum/ts-surgeon hook --post";
 
 /** npm package opencode loads as the guard plugin (this package itself). */
 const OPENCODE_PLUGIN_PACKAGE = "@commoncurriculum/ts-surgeon";
@@ -360,10 +490,15 @@ export function installClaudeHook(cwd: string, out: Writer): void {
 	settings.hooks ??= {};
 	const hooks = settings.hooks as Record<string, unknown>;
 	hooks.PreToolUse ??= [];
-	const preToolUse = hooks.PreToolUse as Array<{
+	hooks.PostToolUse ??= [];
+	type HookEntry = {
 		matcher?: string;
 		hooks?: Array<{ type?: string; command?: string; timeout?: number }>;
-	}>;
+	};
+	const preToolUse = hooks.PreToolUse as HookEntry[];
+	const postToolUse = hooks.PostToolUse as HookEntry[];
+	const notes: string[] = [];
+
 	const existing = preToolUse.find((entry) =>
 		entry.hooks?.some((hook) => hook.command?.includes("ts-surgeon hook")),
 	);
@@ -371,27 +506,44 @@ export function installClaudeHook(cwd: string, out: Writer): void {
 		if (existing.matcher === "Bash") {
 			// Older installs only guarded Bash; extend them to the native Grep tool.
 			existing.matcher = "Bash|Grep";
-			writeFileSync(settingsPath, `${JSON.stringify(settings, null, "\t")}\n`);
-			out.write(
+			notes.push(
 				`Upgraded the ts-surgeon hook matcher in ${settingsPath} from Bash to Bash|Grep (the guard now also redirects the native Grep tool).\n`,
 			);
-			return;
 		}
+	} else {
+		preToolUse.push({
+			matcher: "Bash|Grep",
+			// Generous timeout: answering a search runs find_references in-process,
+			// which loads the ts-morph project (bounded by TS_SURGEON_ANSWER_TIMEOUT_MS).
+			hooks: [{ type: "command", command: HOOK_COMMAND, timeout: 120 }],
+		});
+		notes.push(
+			`Installed the ts-surgeon PreToolUse guard in ${settingsPath} (blocks sed/perl -i on TS/JS sources; answers recursive identifier searches with find_references output and fails open when it cannot answer; operators can disable it by launching the agent with ${ALLOW_MARKER} in the environment).\n`,
+		);
+	}
+
+	const existingPost = postToolUse.some((entry) =>
+		entry.hooks?.some((hook) => hook.command?.includes("hook --post")),
+	);
+	if (!existingPost) {
+		postToolUse.push({
+			matcher: "Bash|Grep",
+			hooks: [{ type: "command", command: POST_HOOK_COMMAND, timeout: 30 }],
+		});
+		notes.push(
+			`Added the ts-surgeon PostToolUse teaching hook in ${settingsPath} (after an executed search it suggests the exact ts-surgeon equivalent — e.g. call find_references --symbol-name <name>).\n`,
+		);
+	}
+
+	if (notes.length === 0) {
 		out.write(
-			`${settingsPath} already runs the ts-surgeon hook — nothing to do.\n`,
+			`${settingsPath} already runs the ts-surgeon hooks — nothing to do.\n`,
 		);
 		return;
 	}
-	preToolUse.push({
-		matcher: "Bash|Grep",
-		// Generous timeout: answering a search runs find_references in-process,
-		// which loads the ts-morph project (bounded by TS_SURGEON_ANSWER_TIMEOUT_MS).
-		hooks: [{ type: "command", command: HOOK_COMMAND, timeout: 120 }],
-	});
-
 	mkdirSync(path.dirname(settingsPath), { recursive: true });
 	writeFileSync(settingsPath, `${JSON.stringify(settings, null, "\t")}\n`);
-	out.write(
-		`Installed the ts-surgeon PreToolUse guard in ${settingsPath} (blocks sed/perl -i on TS/JS sources; answers recursive identifier searches with find_references output and fails open when it cannot answer; operators can disable it by launching the agent with ${ALLOW_MARKER} in the environment).\n`,
-	);
+	for (const note of notes) {
+		out.write(note);
+	}
 }

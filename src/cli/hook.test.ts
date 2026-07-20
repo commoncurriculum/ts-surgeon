@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCli } from "../cli";
 import {
 	ALLOW_MARKER,
+	buildSearchTeaching,
 	evaluateBashCommand,
 	installClaudeHook,
 	installOpencodeHook,
@@ -378,6 +379,112 @@ done < /tmp/exports.txt`;
 
 // formatSearchAnswer / mapBatchResults are covered in src/cli/guard/answer.test.ts.
 
+describe("buildSearchTeaching", () => {
+	it("gives the exact find_references command for an identifier hunt", () => {
+		const line = buildSearchTeaching("Bash", {
+			command: "grep -rn calculateSum src/",
+		});
+		expect(line).toContain("next time");
+		expect(line).toContain(
+			"npx -y @commoncurriculum/ts-surgeon call find_references --symbol-name calculateSum",
+		);
+	});
+
+	it("lists every symbol of a multi-symbol hunt", () => {
+		const line = buildSearchTeaching("Bash", {
+			command: "rg 'calculateSum|cartTotal' src/",
+		});
+		expect(line).toContain("--symbol-name calculateSum");
+		expect(line).toContain("cartTotal");
+	});
+
+	it("falls back to a generic pointer when no exact translation exists", () => {
+		const line = buildSearchTeaching("Bash", {
+			command: "rg 'foo.*bar' src/",
+		});
+		expect(line).toContain("ts-surgeon");
+		expect(line).toContain("search_pattern");
+		expect(line).not.toContain("--symbol-name");
+	});
+
+	it("says nothing for searches ts-surgeon has no business in", () => {
+		for (const command of [
+			"grep -rn error logs/",
+			"ps aux | grep node",
+			"grep -n pattern one-file.ts",
+			"grep -rn addKeyboardShortcuts a.ts b.ts",
+			"ls -la",
+		]) {
+			expect(buildSearchTeaching("Bash", { command }), command).toBeUndefined();
+		}
+	});
+
+	it("covers the native Grep tool, exact and generic", () => {
+		expect(
+			buildSearchTeaching("Grep", { pattern: "calculateSum", path: "src" }),
+		).toContain("--symbol-name calculateSum");
+		expect(
+			buildSearchTeaching("Grep", { pattern: "foo.*bar", path: "src" }),
+		).toContain("search_pattern");
+		expect(
+			buildSearchTeaching("Grep", { pattern: "calculateSum", path: "docs" }),
+		).toBeUndefined();
+	});
+
+	it("never teaches a typeable bypass", () => {
+		const line = buildSearchTeaching("Bash", {
+			command: "grep -rn calculateSum src/",
+		});
+		expect(line).not.toMatch(/re-run|prefixed with|prefix a command/);
+	});
+});
+
+describe("hook --post (runCli)", () => {
+	function postPayload(toolName: string, input: Record<string, unknown>) {
+		return JSON.stringify({ tool_name: toolName, tool_input: input });
+	}
+
+	it("emits additionalContext with the exact ts-surgeon equivalent", async () => {
+		const out = createCapture();
+		const code = await runCli(["hook", "--post"], out, createCapture(), {
+			readStdin: () =>
+				postPayload("Bash", { command: "grep -rn calculateSum src/" }),
+		});
+		expect(code).toBe(0);
+		const parsed = JSON.parse(out.text);
+		expect(parsed.hookSpecificOutput.hookEventName).toBe("PostToolUse");
+		expect(parsed.hookSpecificOutput.additionalContext).toContain(
+			"call find_references --symbol-name calculateSum",
+		);
+	});
+
+	it("stays silent for commands with nothing to teach, garbage, and the operator hatch", async () => {
+		for (const stdin of [
+			postPayload("Bash", { command: "ls -la" }),
+			postPayload("Bash", { command: "grep -rn error logs/" }),
+			"{not json",
+		]) {
+			const out = createCapture();
+			const code = await runCli(["hook", "--post"], out, createCapture(), {
+				readStdin: () => stdin,
+			});
+			expect(code, stdin).toBe(0);
+			expect(out.text, stdin).toBe("");
+		}
+		try {
+			vi.stubEnv("TS_SURGEON_ALLOW", "1");
+			const out = createCapture();
+			await runCli(["hook", "--post"], out, createCapture(), {
+				readStdin: () =>
+					postPayload("Bash", { command: "grep -rn calculateSum src/" }),
+			});
+			expect(out.text).toBe("");
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+});
+
 describe("hook command (runCli)", () => {
 	function payload(toolName: string, command?: string, cwd?: string): string {
 		return JSON.stringify({
@@ -596,7 +703,7 @@ describe("installClaudeHook", () => {
 		fs.rmSync(tempDir, { recursive: true, force: true });
 	});
 
-	it("creates .claude/settings.json with the PreToolUse guard", () => {
+	it("creates .claude/settings.json with the guard and the teaching hook", () => {
 		const out = createCapture();
 		installClaudeHook(tempDir, out);
 		const settings = JSON.parse(
@@ -605,7 +712,11 @@ describe("installClaudeHook", () => {
 		const entry = settings.hooks.PreToolUse[0];
 		expect(entry.matcher).toBe("Bash|Grep");
 		expect(entry.hooks[0].command).toContain("ts-surgeon hook");
+		const post = settings.hooks.PostToolUse[0];
+		expect(post.matcher).toBe("Bash|Grep");
+		expect(post.hooks[0].command).toContain("hook --post");
 		expect(out.text).toContain("Installed");
+		expect(out.text).toContain("teaching hook");
 	});
 
 	it("registers the opencode plugin in opencode.json and is idempotent", () => {
@@ -720,7 +831,13 @@ describe("installClaudeHook", () => {
 
 		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
 		expect(settings.env.FOO).toBe("bar");
-		expect(settings.hooks.PostToolUse).toHaveLength(1);
+		// The pre-existing Edit-lint entry survives; the teaching hook is added
+		// alongside it exactly once.
+		expect(settings.hooks.PostToolUse).toHaveLength(2);
+		expect(settings.hooks.PostToolUse[0].matcher).toBe("Edit");
+		expect(settings.hooks.PostToolUse[1].hooks[0].command).toContain(
+			"hook --post",
+		);
 		expect(settings.hooks.PreToolUse).toHaveLength(1);
 	});
 });

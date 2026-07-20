@@ -90,6 +90,21 @@ describe("TsSurgeonGuard (opencode plugin)", () => {
 		).resolves.toBeUndefined();
 	});
 
+	it("teaches the ts-surgeon equivalent after an executed search", async () => {
+		const { answerSearch } = fakeAnswerer(false); // fail open → search runs
+		const hooks = await createTsSurgeonGuard(answerSearch)();
+		await hooks["tool.execute.before"](
+			{ tool: "bash", callID: "c1" },
+			{ args: { command: "grep -rn calculateSum src/" } },
+		);
+		const result = { output: "src/cart.ts:2: calculateSum(1, 2)" };
+		await hooks["tool.execute.after"]({ tool: "bash", callID: "c1" }, result);
+		expect(result.output).toContain("next time");
+		expect(result.output).toContain(
+			"call find_references --symbol-name calculateSum",
+		);
+	});
+
 	it("answers searches regardless of TS_SURGEON_STRICT (strict split retired)", async () => {
 		const { answerSearch } = fakeAnswerer(true);
 		const guard = await loadGuard(answerSearch);
