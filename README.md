@@ -93,7 +93,7 @@ npx skills add commoncurriculum/ts-surgeon --skill ts-surgeon
 
 ### opencode — install the guard plugin
 
-The npm package is itself an [opencode plugin](https://opencode.ai/docs/plugins/): its import entry exports the guard as a `tool.execute.before` hook. Register it in `opencode.json`:
+The npm package is itself an [opencode plugin](https://opencode.ai/docs/plugins/): its import entry exports before/after hooks that guard searches and teach the ts-surgeon equivalent after eligible `bash` and native `grep` calls. Register it in `opencode.json`:
 
 ```json
 { "plugin": ["@commoncurriculum/ts-surgeon"] }
@@ -134,12 +134,12 @@ There is one mode — the old `--strict` flag and `TS_SURGEON_STRICT` env opt-in
 - **Block** — the call is a hand-rolled text edit of TS/JS sources (`sed -i` / `perl -i` touching `.ts/.tsx/.js/...` → use `rename_symbol` / `change_signature` / `rewrite_pattern`, all with `--dry-run`), or a loop that recursively greps a runtime-computed pattern over sources (the export-sweep evasion → one `find_unused_exports` call replaces the whole loop). *Every* `grep`/`rg` in a compound command is inspected — pipelines, `;`/`&&` chains, loops, and `$(...)` substitutions.
 - **Allow** — everything else.
 
-**After an allowed search runs**, a companion `PostToolUse` hook (`ts-surgeon hook --post`) appends a teaching line to the result: the exact ts-surgeon equivalent when one exists (`npx -y @commoncurriculum/ts-surgeon call find_references --symbol-name <the hunted symbol>` with the name filled in), or a generic pointer (`search_pattern` / `guide`) when the search has no direct translation. So even the searches the guard lets through still teach the faster path. It never blocks and stays silent for searches ts-surgeon has no business in (logs, pipes, explicit files, node_modules).
+**After an allowed search runs**, a companion `PostToolUse` hook (`ts-surgeon hook --post`) appends a teaching line whenever ts-surgeon could perform the source search: the exact equivalent when one exists (`npx -y @commoncurriculum/ts-surgeon call find_references --symbol-name <the hunted symbol>` with the name filled in), or a generic `search_pattern` / `guide` pointer otherwise. This includes single-file source greps that are deliberately never intercepted. The OpenCode plugin applies the same rule to both `bash` and its native `grep` tool. It never blocks and stays silent only for searches ts-surgeon cannot replace (logs, pipes, non-source files, node_modules).
 
 The hook deliberately allows:
 
 - searches scoped to non-source files (`--include='*.md'`, `docs/`, `*.json`, `rg --type md`, ...);
-- non-recursive greps (single files, or filtering piped stdin: `ps aux | grep node`), and recursive flags pointed at explicitly named files (`grep -rn -A3 pattern a.ts b.ts` is reading context, not hunting references — globs like `src/**/*.ts` still count as recursive);
+- non-recursive greps (single files, or filtering piped stdin: `ps aux | grep node`), and recursive flags pointed at explicitly named files (`grep -rn -A3 pattern a.ts b.ts` is reading context, not hunting references — globs like `src/**/*.ts` still count as recursive). Source-file searches are allowed to run but receive post-search ts-surgeon guidance;
 - regex patterns and comment markers (`TODO|FIXME`) — those are not identifier lookups;
 - anything it cannot parse — malformed JSON, non-Bash/Grep payloads, and TTY invocations always exit 0, so the guard can never break the harness.
 

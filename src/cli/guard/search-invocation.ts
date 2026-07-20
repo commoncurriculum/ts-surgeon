@@ -33,6 +33,7 @@ export function invocationFromGrepTool(input: {
 	pattern?: unknown;
 	path?: unknown;
 	glob?: unknown;
+	include?: unknown;
 	type?: unknown;
 }): SearchInvocation | undefined {
 	if (typeof input.pattern !== "string") {
@@ -45,7 +46,12 @@ export function invocationFromGrepTool(input: {
 		recursiveFlag: true,
 		viaWrapper: false,
 		invert: false,
-		includeGlobs: typeof input.glob === "string" ? [input.glob] : [],
+		includeGlobs:
+			typeof input.glob === "string"
+				? [input.glob]
+				: typeof input.include === "string"
+					? [input.include]
+					: [],
 		rgTypes: typeof input.type === "string" ? [input.type] : [],
 		paths:
 			typeof input.path === "string" && input.path !== "" ? [input.path] : [],

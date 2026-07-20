@@ -196,6 +196,7 @@ export function evaluateGrepToolInput(input: {
 	pattern?: unknown;
 	path?: unknown;
 	glob?: unknown;
+	include?: unknown;
 	type?: unknown;
 }): HookEvaluation {
 	const inv = invocationFromGrepTool(input);
@@ -226,17 +227,71 @@ function exactTeachingLine(symbolNames: string[]): string {
 		symbolNames.length > 1
 			? ` Run it once per symbol: ${symbolNames.join(", ")}.`
 			: "";
-	return `ts-surgeon: next time, use \`${NPX_TS_SURGEON} call find_references --symbol-name ${symbolNames[0]}\` for faster, more accurate results (AST-accurate: no comment/string false hits; aliased imports and re-exports included).${perSymbol}\n${TOOLSET_TEACHING}`;
+	return `ts-surgeon: next time, use ts-surgeon: \`${NPX_TS_SURGEON} call find_references --symbol-name ${symbolNames[0]}\` for faster, more accurate results (AST-accurate: no comment/string false hits; aliased imports and re-exports included).${perSymbol}\n${TOOLSET_TEACHING}`;
 }
 
-const GENERIC_TEACHING_LINE = `ts-surgeon: next time, a ts-surgeon lookup is usually faster and more accurate for code searches — \`${NPX_TS_SURGEON} call search_pattern --pattern '<code shape with $META vars>'\` for structural shapes.\n${TOOLSET_TEACHING}`;
+const GENERIC_TEACHING_LINE = `ts-surgeon: next time, use ts-surgeon for code searches — \`${NPX_TS_SURGEON} call search_pattern --pattern '<code shape with $META vars>'\` for structural shapes.\n${TOOLSET_TEACHING}`;
+
+/**
+ * Teaching is intentionally broader than interception. A grep over one known
+ * source file is legitimate context reading, so the pre-hook lets it run, but
+ * find_references/search_pattern can still answer that search and should be
+ * advertised afterward.
+ */
+function classifySearchForTeaching(
+	inv: SearchInvocation,
+): SignificantSearch | undefined {
+	if (inv.patterns.length === 0 || inv.invert) {
+		return undefined;
+	}
+	if (resolveSearchScope(inv) === "non-source") {
+		return undefined;
+	}
+	if (inv.paths.some((p) => SHELL_EXPANSION_RE.test(p))) {
+		return undefined;
+	}
+	// Plain grep without a path reads stdin. Unlike rg/git grep or a wrapped
+	// grep, there is no project source search for ts-surgeon to replace.
+	if (
+		inv.tool === "grep" &&
+		!inv.recursiveFlag &&
+		!inv.viaWrapper &&
+		inv.paths.length === 0
+	) {
+		return undefined;
+	}
+	const intent = analyzePatterns(inv.patterns, inv.syntax);
+	if (intent.kind === "dynamic") {
+		return undefined;
+	}
+	if (intent.kind === "identifiers") {
+		return {
+			kind: "identifiers",
+			symbolNames: intent.symbols,
+			searchRoot: inv.paths[0],
+		};
+	}
+	return { kind: "opaque-source" };
+}
+
+function findTeachableSearch(command: string): SignificantSearch | undefined {
+	let sawOpaqueSourceSearch = false;
+	for (const tokens of splitSimpleCommands(command)) {
+		const inv = parseSearchInvocation(tokens);
+		if (inv === undefined) continue;
+		const found = classifySearchForTeaching(inv);
+		if (found?.kind === "identifiers") return found;
+		if (found?.kind === "opaque-source") sawOpaqueSourceSearch = true;
+	}
+	return sawOpaqueSourceSearch ? { kind: "opaque-source" } : undefined;
+}
 
 /**
  * The line a post-run hook appends after an executed search: the exact
  * ts-surgeon equivalent when one exists (identifier hunts → find_references
  * with the symbol filled in), a generic pointer when the search targeted
  * sources but has no direct translation, undefined when ts-surgeon has no
- * business in it (non-source scopes, explicit files, pipes, non-searches).
+ * business in it (non-source scopes, pipes, non-searches).
  */
 export function buildSearchTeaching(
 	toolName: string,
@@ -244,10 +299,10 @@ export function buildSearchTeaching(
 ): string | undefined {
 	let found: SignificantSearch | undefined;
 	if (toolName === "Bash" && typeof toolInput?.command === "string") {
-		found = findSignificantSearch(toolInput.command);
+		found = findTeachableSearch(toolInput.command);
 	} else if (toolName === "Grep" && toolInput) {
 		const inv = invocationFromGrepTool(toolInput);
-		found = inv === undefined ? undefined : classifySearch(inv);
+		found = inv === undefined ? undefined : classifySearchForTeaching(inv);
 	}
 	if (found === undefined) {
 		return undefined;
