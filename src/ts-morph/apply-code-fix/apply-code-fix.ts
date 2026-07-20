@@ -1,16 +1,16 @@
 import type { Project } from "ts-morph";
-import logger from "../../utils/logger";
-import { resolveTargetFiles } from "../_utils/resolve-target-files";
+import logger from "../../utils/logger.js";
+import { resolveTargetFiles } from "../_utils/resolve-target-files.js";
 import {
 	getChangedFiles,
 	initializeProject,
 	saveProjectChanges,
-} from "../_utils/ts-morph-project";
+} from "../_utils/ts-morph-project.js";
 import type {
 	ApplyCodeFixParams,
 	ApplyCodeFixResult,
 	CodeFixName,
-} from "./types";
+} from "./types.js";
 
 /**
  * Friendly fix name → the TypeScript "fix all in file" combined-code-fix ids it

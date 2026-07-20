@@ -1,8 +1,8 @@
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
-import { removePathAlias } from "../ts-morph/remove-path-alias/remove-path-alias";
-import { formatChangedFiles, runTool } from "./_tool-runner";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project.js";
+import { removePathAlias } from "../ts-morph/remove-path-alias/remove-path-alias.js";
+import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 export function registerRemovePathAliasTool(registry: ToolRegistry): void {
 	registry.tool(

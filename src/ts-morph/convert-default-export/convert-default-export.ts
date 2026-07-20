@@ -8,18 +8,18 @@ import {
 	type Project,
 	type SourceFile,
 } from "ts-morph";
-import logger from "../../utils/logger";
-import { forEachReferenceTo } from "../_utils/for-each-reference";
-import { assertValidIdentifier } from "../_utils/identifier";
+import logger from "../../utils/logger.js";
+import { forEachReferenceTo } from "../_utils/for-each-reference.js";
+import { assertValidIdentifier } from "../_utils/identifier.js";
 import {
 	getChangedFiles,
 	initializeProject,
 	saveProjectChanges,
-} from "../_utils/ts-morph-project";
+} from "../_utils/ts-morph-project.js";
 import type {
 	ConvertDefaultExportToNamedParams,
 	ConvertDefaultExportToNamedResult,
-} from "./types";
+} from "./types.js";
 
 /**
  * Throws when the target file already exports a symbol named `name`, which would

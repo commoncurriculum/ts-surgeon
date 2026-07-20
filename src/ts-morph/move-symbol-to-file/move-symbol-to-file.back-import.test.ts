@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { SyntaxKind } from "ts-morph";
-import { createInMemoryProjectWithDoubleQuotes } from "../_test-utils/create-in-memory-project";
-import { getFileText } from "../_test-utils/get-file-text";
-import { moveSymbolToFile } from "./move-symbol-to-file";
+import { createInMemoryProjectWithDoubleQuotes } from "../_test-utils/create-in-memory-project.js";
+import { getFileText } from "../_test-utils/get-file-text.js";
+import { moveSymbolToFile } from "./move-symbol-to-file.js";
 
 describe("moveSymbolToFile back-import (regression)", () => {
 	// When symbols remaining in the source file reference the moved symbol, a back-import

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { createInMemoryProject } from "../../_test-utils/create-in-memory-project";
-import { withSkippedTsMorphReferenceUpdates } from "./skip-ts-morph-ref-update";
+import { createInMemoryProject } from "../../_test-utils/create-in-memory-project.js";
+import { withSkippedTsMorphReferenceUpdates } from "./skip-ts-morph-ref-update.js";
 
 vi.mock("../../../utils/logger");
 

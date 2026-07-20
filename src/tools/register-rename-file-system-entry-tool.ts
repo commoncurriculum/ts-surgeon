@@ -1,10 +1,10 @@
 import * as path from "node:path";
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { TimeoutError } from "../errors/timeout-error";
-import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
-import { renameFileSystemEntry } from "../ts-morph/rename-file-system/rename-file-system-entry";
-import { formatChangedFiles, runTool } from "./_tool-runner";
+import { TimeoutError } from "../errors/timeout-error.js";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project.js";
+import { renameFileSystemEntry } from "../ts-morph/rename-file-system/rename-file-system-entry.js";
+import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 const renameSchema = z.object({
 	tsconfigPath: z

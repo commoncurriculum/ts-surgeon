@@ -1,8 +1,8 @@
 import type { ExportDeclaration, ImportDeclaration } from "ts-morph";
-import logger from "../../../utils/logger";
-import type { RenameOperation } from "../../types";
-import { findReferencingDeclarationsForIdentifier } from "./find-referencing-declarations-for-identifier";
-import { getIdentifierNodeFromDeclaration } from "./get-identifier-node-from-declaration";
+import logger from "../../../utils/logger.js";
+import type { RenameOperation } from "../../types.js";
+import { findReferencingDeclarationsForIdentifier } from "./find-referencing-declarations-for-identifier.js";
+import { getIdentifierNodeFromDeclaration } from "./get-identifier-node-from-declaration.js";
 
 export function findDeclarationsForRenameOperation(
 	renameOperation: RenameOperation,

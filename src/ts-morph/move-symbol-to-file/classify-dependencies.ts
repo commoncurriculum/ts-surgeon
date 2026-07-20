@@ -1,7 +1,7 @@
 import { type Statement, Node, type Identifier } from "ts-morph";
-import type { DependencyClassification } from "../types";
-import logger from "../../utils/logger";
-import { getDeclarationIdentifier } from "./get-declaration-identifier";
+import type { DependencyClassification } from "../types.js";
+import logger from "../../utils/logger.js";
+import { getDeclarationIdentifier } from "./get-declaration-identifier.js";
 
 /**
  * Searches for references to the specified Identifier node and checks whether it is

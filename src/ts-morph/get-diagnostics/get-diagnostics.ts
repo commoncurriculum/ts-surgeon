@@ -4,13 +4,13 @@ import {
 	type DiagnosticMessageChain,
 	type Project,
 } from "ts-morph";
-import { initializeProject } from "../_utils/ts-morph-project";
+import { initializeProject } from "../_utils/ts-morph-project.js";
 import type {
 	DiagnosticCategoryLabel,
 	DiagnosticInfo,
 	GetDiagnosticsParams,
 	GetDiagnosticsResult,
-} from "./types";
+} from "./types.js";
 
 /**
  * Returns the TypeScript pre-emit diagnostics (syntactic + semantic type errors,

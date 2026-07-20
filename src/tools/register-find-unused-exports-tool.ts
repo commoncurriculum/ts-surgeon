@@ -1,16 +1,16 @@
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project.js";
 import {
 	findUnusedExports,
 	type UnusedExport,
-} from "../ts-morph/find-unused-exports/find-unused-exports";
-import type { PackageExportWarning } from "../ts-morph/find-unused-exports/package-export-warnings";
+} from "../ts-morph/find-unused-exports/find-unused-exports.js";
+import type { PackageExportWarning } from "../ts-morph/find-unused-exports/package-export-warnings.js";
 import {
 	summarizeUnusedExports,
 	type UnusedExportsSummary,
-} from "../ts-morph/find-unused-exports/summarize-unused-exports";
-import { runTool } from "./_tool-runner";
+} from "../ts-morph/find-unused-exports/summarize-unused-exports.js";
+import { runTool } from "./_tool-runner.js";
 
 /** Scan cap for summary mode to get a full picture (distinct from the default 100 used in list mode). */
 const SUMMARY_SCAN_CAP = 100_000;

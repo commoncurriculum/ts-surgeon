@@ -1,8 +1,8 @@
 import type { SourceFile } from "ts-morph";
-import type { DeclarationToUpdate } from "../types";
-import { isPathAlias } from "./path-alias";
-import { getTsConfigAliasKeys } from "./ts-morph-project";
-import logger from "../../utils/logger";
+import type { DeclarationToUpdate } from "../types.js";
+import { isPathAlias } from "./path-alias.js";
+import { getTsConfigAliasKeys } from "./ts-morph-project.js";
+import logger from "../../utils/logger.js";
 
 /**
  * Searches for all Import/Export declarations that reference the target file.

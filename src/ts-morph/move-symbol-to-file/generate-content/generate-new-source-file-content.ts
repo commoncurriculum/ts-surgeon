@@ -1,14 +1,14 @@
 import type { Statement } from "ts-morph";
 import { Node } from "ts-morph";
-import logger from "../../../utils/logger";
+import logger from "../../../utils/logger.js";
 import type {
 	DependencyClassification,
 	NeededExternalImports,
-} from "../../types";
+} from "../../types.js";
 import {
 	buildImportSectionStringFromMap,
 	calculateRequiredImportMap,
-} from "./build-new-file-import-section";
+} from "./build-new-file-import-section.js";
 
 // --- Type definitions ---
 // --- Internal helper functions ---

@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runCli } from "../cli";
+import { runCli } from "../cli.js";
 import {
 	ALLOW_MARKER,
 	buildSearchTeaching,
@@ -11,7 +11,7 @@ import {
 	installOpencodeHook,
 	type SearchAnswerRequest,
 	type SearchAnswerer,
-} from "./hook";
+} from "./hook.js";
 
 function createCapture() {
 	let buffer = "";
@@ -429,6 +429,19 @@ describe("buildSearchTeaching", () => {
 		expect(
 			buildSearchTeaching("Grep", { pattern: "calculateSum", path: "docs" }),
 		).toBeUndefined();
+	});
+
+	it("advertises the wider toolset and the skill on every teaching line", () => {
+		for (const command of [
+			"grep -rn calculateSum src/", // exact
+			"rg 'foo.*bar' src/", // generic
+		]) {
+			const line = buildSearchTeaching("Bash", { command });
+			expect(line, command).toContain("full refactoring toolkit");
+			expect(line, command).toContain("ts-surgeon skill");
+			expect(line, command).toContain("guide");
+			expect(line, command).toContain("rename_symbol");
+		}
 	});
 
 	it("never teaches a typeable bypass", () => {

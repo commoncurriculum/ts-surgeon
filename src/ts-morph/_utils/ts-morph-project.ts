@@ -1,7 +1,7 @@
 import { Project, type SourceFile } from "ts-morph";
 import * as path from "node:path";
 import { NewLineKind } from "typescript";
-import logger from "../../utils/logger";
+import logger from "../../utils/logger.js";
 
 /**
  * When set, initializeProject reuses one Project per tsconfig instead of

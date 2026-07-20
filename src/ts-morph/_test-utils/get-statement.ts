@@ -1,5 +1,5 @@
 import type { KindToNodeMappings, SourceFile, SyntaxKind } from "ts-morph";
-import { findTopLevelDeclarationByName } from "../move-symbol-to-file/find-declaration";
+import { findTopLevelDeclarationByName } from "../move-symbol-to-file/find-declaration.js";
 
 export function getStatement<K extends SyntaxKind>(
 	sourceFile: SourceFile,

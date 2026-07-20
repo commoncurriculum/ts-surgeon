@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseSearchInvocation } from "./search-invocation";
-import { splitSimpleCommands } from "./shell";
+import { parseSearchInvocation } from "./search-invocation.js";
+import { splitSimpleCommands } from "./shell.js";
 
 /** Parses the FIRST simple command of a shell string as a search invocation. */
 function parse(command: string) {

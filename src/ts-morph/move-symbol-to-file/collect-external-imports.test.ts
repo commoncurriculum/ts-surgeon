@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { type Statement, SyntaxKind } from "ts-morph";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { getStatement } from "../_test-utils/get-statement";
-import { collectNeededExternalImports } from "./collect-external-imports";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import { getStatement } from "../_test-utils/get-statement.js";
+import { collectNeededExternalImports } from "./collect-external-imports.js";
 
 const setupTest = (
 	code: string,

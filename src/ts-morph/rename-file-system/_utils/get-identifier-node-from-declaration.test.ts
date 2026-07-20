@@ -1,6 +1,6 @@
 import { Project, Node } from "ts-morph";
 import { describe, it, expect } from "vitest";
-import { getIdentifierNodeFromDeclaration } from "./get-identifier-node-from-declaration";
+import { getIdentifierNodeFromDeclaration } from "./get-identifier-node-from-declaration.js";
 
 describe("getIdentifierNodeFromDeclaration", () => {
 	const project = new Project({ useInMemoryFileSystem: true });

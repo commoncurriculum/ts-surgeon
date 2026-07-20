@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
-import { CliUsageError } from "../params";
-import { ALLOW_MARKER } from "./messages";
+import { CliUsageError } from "../params.js";
+import { ALLOW_MARKER } from "./messages.js";
 
 /**
  * Installers that register the guard with a harness: Claude Code hook

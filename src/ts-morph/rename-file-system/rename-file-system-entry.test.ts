@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { renameFileSystemEntry } from "./rename-file-system-entry";
-import { initializeProject } from "../_utils/ts-morph-project";
+import { renameFileSystemEntry } from "./rename-file-system-entry.js";
+import { initializeProject } from "../_utils/ts-morph-project.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";

@@ -1,7 +1,7 @@
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { organizeImports } from "../ts-morph/organize-imports/organize-imports";
-import { formatChangedFiles, runTool } from "./_tool-runner";
+import { organizeImports } from "../ts-morph/organize-imports/organize-imports.js";
+import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 export function registerOrganizeImportsTool(registry: ToolRegistry): void {
 	registry.tool(

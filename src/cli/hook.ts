@@ -1,20 +1,20 @@
-import { answerSearchViaCli, type SearchAnswerer } from "./guard/answer";
-import { isInPlaceSourceEdit } from "./guard/edits";
+import { answerSearchViaCli, type SearchAnswerer } from "./guard/answer.js";
+import { isInPlaceSourceEdit } from "./guard/edits.js";
 import {
 	DYNAMIC_SEARCH_BLOCK_MESSAGE,
 	EDIT_BLOCK_MESSAGE,
 	isOperatorAllowed,
 	withInertPrefixNote,
-} from "./guard/messages";
-import { analyzePatterns, SHELL_EXPANSION_RE } from "./guard/pattern-intent";
-import { isExplicitFile, resolveSearchScope } from "./guard/scope";
+} from "./guard/messages.js";
+import { analyzePatterns, SHELL_EXPANSION_RE } from "./guard/pattern-intent.js";
+import { isExplicitFile, resolveSearchScope } from "./guard/scope.js";
 import {
 	invocationFromGrepTool,
 	parseSearchInvocation,
 	type SearchInvocation,
-} from "./guard/search-invocation";
-import { splitSimpleCommands } from "./guard/shell";
-import { CliUsageError, type StdinReader } from "./params";
+} from "./guard/search-invocation.js";
+import { splitSimpleCommands } from "./guard/shell.js";
+import { CliUsageError, type StdinReader } from "./params.js";
 
 /**
  * PreToolUse guard for coding-agent harnesses (Claude Code hooks and
@@ -48,7 +48,7 @@ export {
 	ALLOW_MARKER,
 	INERT_PREFIX_NOTE,
 	isOperatorAllowed,
-} from "./guard/messages";
+} from "./guard/messages.js";
 export {
 	answerSearchViaCli,
 	formatSearchAnswer,
@@ -57,8 +57,8 @@ export {
 	type SearchAnswer,
 	type SearchAnswerer,
 	type SearchAnswerRequest,
-} from "./guard/answer";
-export { installClaudeHook, installOpencodeHook } from "./guard/install";
+} from "./guard/answer.js";
+export { installClaudeHook, installOpencodeHook } from "./guard/install.js";
 
 export type HookEvaluation =
 	| { kind: "allow" }
@@ -214,15 +214,22 @@ export function evaluateGrepToolInput(input: {
 
 const NPX_TS_SURGEON = "npx -y @commoncurriculum/ts-surgeon";
 
+/**
+ * Appended to every teaching line: agents reach for grep/sed because they do
+ * not know the toolset exists, so each nudge also advertises the breadth —
+ * search is one tool of many.
+ */
+const TOOLSET_TEACHING = `ts-surgeon is a full refactoring toolkit, not just search: rename_symbol, rename_file_system_entry, move_symbol_to_file, change_signature, safe_delete_symbol, organize_imports, search_pattern/rewrite_pattern (structural), get_diagnostics, and more. Use the ts-surgeon skill if it is installed, or run \`${NPX_TS_SURGEON} guide\` for the full list.`;
+
 function exactTeachingLine(symbolNames: string[]): string {
 	const perSymbol =
 		symbolNames.length > 1
 			? ` Run it once per symbol: ${symbolNames.join(", ")}.`
 			: "";
-	return `ts-surgeon: next time, use \`${NPX_TS_SURGEON} call find_references --symbol-name ${symbolNames[0]}\` for faster, more accurate results (AST-accurate: no comment/string false hits; aliased imports and re-exports included).${perSymbol}`;
+	return `ts-surgeon: next time, use \`${NPX_TS_SURGEON} call find_references --symbol-name ${symbolNames[0]}\` for faster, more accurate results (AST-accurate: no comment/string false hits; aliased imports and re-exports included).${perSymbol}\n${TOOLSET_TEACHING}`;
 }
 
-const GENERIC_TEACHING_LINE = `ts-surgeon: next time, a ts-surgeon lookup is usually faster and more accurate for code searches — \`${NPX_TS_SURGEON} call search_pattern --pattern '<code shape with $META vars>'\` for structural shapes; \`${NPX_TS_SURGEON} guide\` lists the tools.`;
+const GENERIC_TEACHING_LINE = `ts-surgeon: next time, a ts-surgeon lookup is usually faster and more accurate for code searches — \`${NPX_TS_SURGEON} call search_pattern --pattern '<code shape with $META vars>'\` for structural shapes.\n${TOOLSET_TEACHING}`;
 
 /**
  * The line a post-run hook appends after an executed search: the exact

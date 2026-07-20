@@ -1,5 +1,5 @@
 import type { Project, SourceFile } from "ts-morph";
-import logger from "../../../utils/logger";
+import logger from "../../../utils/logger.js";
 
 /**
  * In ts-morph (v25.x), `SourceFile.move()` / `Directory.move()` internally calls

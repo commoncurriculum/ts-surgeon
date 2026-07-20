@@ -1,4 +1,4 @@
-import { SOURCE_EXT_RE } from "./scope";
+import { SOURCE_EXT_RE } from "./scope.js";
 
 /**
  * In-place text edits of TS/JS sources — the one thing the guard always hard

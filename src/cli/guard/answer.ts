@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import * as path from "node:path";
-import { findNearestTsconfig } from "../paths";
-import { hasFileExtension } from "./scope";
+import { fileURLToPath } from "node:url";
+import { findNearestTsconfig } from "../paths.js";
+import { hasFileExtension } from "./scope.js";
 
 /**
  * Stage 5 of the guard pipeline: instead of arguing with an identifier hunt,
@@ -160,6 +161,23 @@ const ANSWER_TIMEOUT_MS = Number(
 );
 
 /**
+ * The JS runtime that runs the CLI child process. Under Node, process.execPath
+ * is the node binary. Under Bun that is not reliable: inside a compiled
+ * executable (opencode ships as one) process.execPath is the host app's own
+ * binary, which ignores script arguments — spawning it would print the app's
+ * banner instead of running the CLI. Resolve a real runtime from PATH via
+ * Bun.which instead (node first: the CLI targets node). undefined → fail open.
+ */
+export function resolveCliRuntime(): string | undefined {
+	if (typeof process.versions.bun !== "string") {
+		return process.execPath;
+	}
+	const which = (globalThis as { Bun?: { which?(bin: string): string | null } })
+		.Bun?.which;
+	return which?.("node") ?? which?.("bun") ?? undefined;
+}
+
+/**
  * The real answerer: locate the nearest tsconfig above the searched path,
  * then run this package's own CLI (`batch` of find_references calls — one
  * parsed project serves every symbol) in a child process with a time budget.
@@ -192,8 +210,12 @@ export const answerSearchViaCli: SearchAnswerer = (req) => {
 	if (tsconfigPath === undefined) {
 		return { ok: false };
 	}
-	const cliEntry = path.join(__dirname, "..", "..", "index.js");
+	const cliEntry = fileURLToPath(new URL("../../index.js", import.meta.url));
 	if (!existsSync(cliEntry)) {
+		return { ok: false };
+	}
+	const runtime = resolveCliRuntime();
+	if (runtime === undefined) {
 		return { ok: false };
 	}
 	const ops = req.symbolNames.map((symbolName) => ({
@@ -203,7 +225,7 @@ export const answerSearchViaCli: SearchAnswerer = (req) => {
 	let stdout: string;
 	try {
 		stdout = execFileSync(
-			process.execPath,
+			runtime,
 			[
 				cliEntry,
 				"batch",

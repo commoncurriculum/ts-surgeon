@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calculateRelativePath } from "./calculate-relative-path";
+import { calculateRelativePath } from "./calculate-relative-path.js";
 
 describe("calculateRelativePath", () => {
 	it("returns '.' when referencing index.ts in the same directory", () => {

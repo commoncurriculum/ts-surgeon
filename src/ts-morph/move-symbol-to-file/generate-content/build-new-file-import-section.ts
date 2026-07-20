@@ -1,9 +1,9 @@
-import logger from "../../../utils/logger";
-import { calculateRelativePath } from "../../_utils/calculate-relative-path";
+import logger from "../../../utils/logger.js";
+import { calculateRelativePath } from "../../_utils/calculate-relative-path.js";
 import type {
 	DependencyClassification,
 	NeededExternalImports,
-} from "../../types";
+} from "../../types.js";
 
 type ExtendedImportInfo = {
 	defaultName?: string;

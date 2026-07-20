@@ -1,7 +1,7 @@
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { renameSymbol } from "../ts-morph/rename-symbol/rename-symbol";
-import { formatChangedFiles, runTool } from "./_tool-runner";
+import { renameSymbol } from "../ts-morph/rename-symbol/rename-symbol.js";
+import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 export function registerRenameSymbolTool(registry: ToolRegistry): void {
 	registry.tool(

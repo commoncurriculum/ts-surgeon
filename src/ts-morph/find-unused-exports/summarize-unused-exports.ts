@@ -1,4 +1,4 @@
-import type { UnusedExport } from "./find-unused-exports";
+import type { UnusedExport } from "./find-unused-exports.js";
 
 export interface KindCount {
 	kind: string;

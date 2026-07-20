@@ -1,13 +1,13 @@
 import * as path from "node:path";
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { SyntaxKind } from "ts-morph";
 import { z } from "zod";
 import {
 	getChangedFiles,
 	initializeProject,
-} from "../ts-morph/_utils/ts-morph-project";
-import { moveSymbolToFile } from "../ts-morph/move-symbol-to-file/move-symbol-to-file";
-import { formatChangedFiles, runTool } from "./_tool-runner";
+} from "../ts-morph/_utils/ts-morph-project.js";
+import { moveSymbolToFile } from "../ts-morph/move-symbol-to-file/move-symbol-to-file.js";
+import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 const declarationKindNames = [
 	"FunctionDeclaration",

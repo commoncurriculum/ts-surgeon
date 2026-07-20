@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createToolRegistry } from "../tools/registry";
-import { isPathKey } from "./paths";
+import { createToolRegistry } from "../tools/registry.js";
+import { isPathKey } from "./paths.js";
 
 describe("isPathKey", () => {
 	it("matches the path-field convention", () => {

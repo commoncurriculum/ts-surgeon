@@ -1,24 +1,27 @@
 import type { Project, SourceFile, Statement, SyntaxKind } from "ts-morph";
 import { Node } from "ts-morph";
-import logger from "../../utils/logger";
-import type { DependencyClassification, NeededExternalImports } from "../types";
-import { classifyDependencies } from "./classify-dependencies";
-import { collectNeededExternalImports } from "./collect-external-imports";
-import { ensureExportsInOriginalFile } from "./ensure-exports-in-original-file";
-import { findTopLevelDeclarationByName } from "./find-declaration";
+import logger from "../../utils/logger.js";
+import type {
+	DependencyClassification,
+	NeededExternalImports,
+} from "../types.js";
+import { classifyDependencies } from "./classify-dependencies.js";
+import { collectNeededExternalImports } from "./collect-external-imports.js";
+import { ensureExportsInOriginalFile } from "./ensure-exports-in-original-file.js";
+import { findTopLevelDeclarationByName } from "./find-declaration.js";
 import {
 	generateNewSourceFileContent,
 	prepareDeclarationStrings,
-} from "./generate-content/generate-new-source-file-content";
-import { getInternalDependencies } from "./internal-dependencies";
+} from "./generate-content/generate-new-source-file-content.js";
+import { getInternalDependencies } from "./internal-dependencies.js";
 import {
 	addBackImportsToOriginalFile,
 	collectSymbolsNeedingBackImport,
-} from "./add-back-imports-to-original-file";
-import { removeOriginalSymbol } from "./remove-original-symbol";
-import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files";
-import { updateTargetFile } from "./update-target-file";
-import { calculateRequiredImportMap } from "./generate-content/build-new-file-import-section";
+} from "./add-back-imports-to-original-file.js";
+import { removeOriginalSymbol } from "./remove-original-symbol.js";
+import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files.js";
+import { updateTargetFile } from "./update-target-file.js";
+import { calculateRequiredImportMap } from "./generate-content/build-new-file-import-section.js";
 
 /**
  * Collects the information required to move a symbol.

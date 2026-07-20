@@ -1,7 +1,7 @@
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { changeSignature } from "../ts-morph/change-signature/change-signature";
-import { formatChangedFiles, runTool } from "./_tool-runner";
+import { changeSignature } from "../ts-morph/change-signature/change-signature.js";
+import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 const addOpSchema = z.object({
 	kind: z.literal("add"),

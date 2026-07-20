@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import type { ImportDeclaration } from "ts-morph";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import type { DeclarationToUpdate, RenameOperation } from "../types";
-import { updateModuleSpecifiers } from "./update-module-specifiers";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import type { DeclarationToUpdate, RenameOperation } from "../types.js";
+import { updateModuleSpecifiers } from "./update-module-specifiers.js";
 
 vi.mock("../../utils/logger");
 

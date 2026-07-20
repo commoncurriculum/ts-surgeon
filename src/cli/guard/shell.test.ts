@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitSimpleCommands } from "./shell";
+import { splitSimpleCommands } from "./shell.js";
 
 describe("splitSimpleCommands", () => {
 	it("splits on pipes, chains, and newlines", () => {

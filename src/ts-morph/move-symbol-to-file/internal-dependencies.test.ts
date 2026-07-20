@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { type SourceFile, SyntaxKind } from "ts-morph";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { getStatement } from "../_test-utils/get-statement";
-import { getInternalDependencies } from "./internal-dependencies";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import { getStatement } from "../_test-utils/get-statement.js";
+import { getInternalDependencies } from "./internal-dependencies.js";
 
 const fnDecl = (sourceFile: SourceFile, name: string) =>
 	getStatement(sourceFile, name, SyntaxKind.FunctionDeclaration);

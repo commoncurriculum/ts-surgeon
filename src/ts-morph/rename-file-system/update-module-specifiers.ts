@@ -1,6 +1,6 @@
-import logger from "../../utils/logger";
-import { calculateRelativePath } from "../_utils/calculate-relative-path";
-import type { DeclarationToUpdate, RenameOperation } from "../types";
+import logger from "../../utils/logger.js";
+import { calculateRelativePath } from "../_utils/calculate-relative-path.js";
+import type { DeclarationToUpdate, RenameOperation } from "../types.js";
 import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 

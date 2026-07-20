@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { cleanupEmptyOldDirectories } from "./cleanup-empty-old-directories";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import { cleanupEmptyOldDirectories } from "./cleanup-empty-old-directories.js";
 
 vi.mock("../../utils/logger");
 

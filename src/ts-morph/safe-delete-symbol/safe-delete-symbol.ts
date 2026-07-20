@@ -4,21 +4,21 @@ import {
 	type Statement,
 	type VariableDeclaration,
 } from "ts-morph";
-import logger from "../../utils/logger";
+import logger from "../../utils/logger.js";
 import {
 	findTopLevelDeclarationByName,
 	getIdentifierFromDeclaration,
-} from "../move-symbol-to-file/find-declaration";
+} from "../move-symbol-to-file/find-declaration.js";
 import {
 	getChangedFiles,
 	initializeProject,
 	saveProjectChanges,
-} from "../_utils/ts-morph-project";
+} from "../_utils/ts-morph-project.js";
 import type {
 	BlockingReference,
 	SafeDeleteSymbolParams,
 	SafeDeleteSymbolResult,
-} from "./types";
+} from "./types.js";
 
 /** A node that will be removed: a whole statement, or one declarator of a multi-variable statement. */
 type RemovalTarget = Statement | VariableDeclaration;

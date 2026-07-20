@@ -6,8 +6,8 @@ import type {
 	ImportDeclaration,
 } from "ts-morph";
 import { SyntaxKind, Node } from "ts-morph";
-import type { NeededExternalImports } from "../types";
-import logger from "../../utils/logger";
+import type { NeededExternalImports } from "../types.js";
+import logger from "../../utils/logger.js";
 
 interface ImportSourceInfo {
 	moduleSpecifier: string;

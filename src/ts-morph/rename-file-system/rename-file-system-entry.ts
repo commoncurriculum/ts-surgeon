@@ -1,23 +1,23 @@
 import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 import type { Project } from "ts-morph";
-import logger from "../../utils/logger";
+import logger from "../../utils/logger.js";
 import {
 	getChangedFiles,
 	getTsConfigAliasKeys,
 	saveProjectChanges,
-} from "../_utils/ts-morph-project";
+} from "../_utils/ts-morph-project.js";
 import type {
 	DeclarationToUpdate,
 	PathMapping,
 	RenameOperation,
-} from "../types";
-import { isPathAlias } from "../_utils/path-alias";
-import { cleanupEmptyOldDirectories } from "./cleanup-empty-old-directories";
-import { findDeclarationsForRenameOperation } from "./_utils/find-declarations-for-rename-operation";
-import { moveFileSystemEntries } from "./move-file-system-entries";
-import { prepareRenames } from "./prepare-renames";
-import { updateModuleSpecifiers } from "./update-module-specifiers";
+} from "../types.js";
+import { isPathAlias } from "../_utils/path-alias.js";
+import { cleanupEmptyOldDirectories } from "./cleanup-empty-old-directories.js";
+import { findDeclarationsForRenameOperation } from "./_utils/find-declarations-for-rename-operation.js";
+import { moveFileSystemEntries } from "./move-file-system-entries.js";
+import { prepareRenames } from "./prepare-renames.js";
+import { updateModuleSpecifiers } from "./update-module-specifiers.js";
 
 /**
  * [Experimental] Identifies all declarations that reference exported symbols of the files

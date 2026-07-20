@@ -1,6 +1,6 @@
 import { Node } from "ts-morph";
-import type { DependencyClassification } from "../types";
-import logger from "../../utils/logger";
+import type { DependencyClassification } from "../types.js";
+import logger from "../../utils/logger.js";
 
 /**
  * For `addExport`-type dependencies in classifiedDependencies,

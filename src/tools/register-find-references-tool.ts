@@ -1,7 +1,7 @@
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { findSymbolReferences } from "../ts-morph/find-references";
-import { runTool } from "./_tool-runner";
+import { findSymbolReferences } from "../ts-morph/find-references.js";
+import { runTool } from "./_tool-runner.js";
 
 export function registerFindReferencesTool(registry: ToolRegistry): void {
 	registry.tool(

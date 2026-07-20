@@ -1,5 +1,5 @@
-import logger from "../../utils/logger";
-import type { PathMapping, RenameOperation } from "../types";
+import logger from "../../utils/logger.js";
+import type { PathMapping, RenameOperation } from "../types.js";
 import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 import type { Project } from "ts-morph";

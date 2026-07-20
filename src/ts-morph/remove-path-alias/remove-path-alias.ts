@@ -4,8 +4,8 @@ import type {
 	ImportDeclaration,
 	ExportDeclaration,
 } from "ts-morph";
-import { calculateRelativePath } from "../_utils/calculate-relative-path";
-import { isPathAlias } from "../_utils/path-alias";
+import { calculateRelativePath } from "../_utils/calculate-relative-path.js";
+import { isPathAlias } from "../_utils/path-alias.js";
 
 /**
  * Replaces path aliases in a single source file with relative paths

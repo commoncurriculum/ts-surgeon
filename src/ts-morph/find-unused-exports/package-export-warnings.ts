@@ -1,5 +1,5 @@
 import type { FileSystemHost, Project } from "ts-morph";
-import logger from "../../utils/logger";
+import logger from "../../utils/logger.js";
 
 export interface PackageExportWarning {
 	/** Absolute path to the package.json of the warned package */

@@ -1,7 +1,7 @@
 import { Project } from "ts-morph";
 import { describe, it, expect } from "vitest";
 import * as path from "node:path";
-import { removePathAlias } from "./remove-path-alias";
+import { removePathAlias } from "./remove-path-alias.js";
 
 const TEST_TSCONFIG_PATH = "/tsconfig.json";
 const TEST_BASE_URL = "/src";

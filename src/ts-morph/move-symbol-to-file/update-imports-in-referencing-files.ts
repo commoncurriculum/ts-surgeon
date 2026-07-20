@@ -8,9 +8,9 @@ import {
 	type ExportDeclaration,
 } from "ts-morph";
 import * as path from "node:path";
-import { calculateRelativePath } from "../_utils/calculate-relative-path";
-import logger from "../../utils/logger";
-import { findDeclarationsReferencingFile } from "../_utils/find-declarations-to-update";
+import { calculateRelativePath } from "../_utils/calculate-relative-path.js";
+import logger from "../../utils/logger.js";
+import { findDeclarationsReferencingFile } from "../_utils/find-declarations-to-update.js";
 
 // Interface for helper function
 interface TargetSpecifierInfo {

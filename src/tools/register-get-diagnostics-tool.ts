@@ -1,8 +1,8 @@
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { getDiagnostics } from "../ts-morph/get-diagnostics/get-diagnostics";
-import type { DiagnosticInfo } from "../ts-morph/get-diagnostics/types";
-import { runTool } from "./_tool-runner";
+import { getDiagnostics } from "../ts-morph/get-diagnostics/get-diagnostics.js";
+import type { DiagnosticInfo } from "../ts-morph/get-diagnostics/types.js";
+import { runTool } from "./_tool-runner.js";
 
 function formatLocation(d: DiagnosticInfo): string {
 	if (d.filePath === undefined) return "(global)";

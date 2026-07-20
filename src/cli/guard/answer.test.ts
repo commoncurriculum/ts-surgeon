@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { formatSearchAnswer, mapBatchResults } from "./answer";
+import {
+	formatSearchAnswer,
+	mapBatchResults,
+	resolveCliRuntime,
+} from "./answer.js";
+
+describe("resolveCliRuntime", () => {
+	it("uses process.execPath under Node (Bun's execPath can be a compiled host app that cannot run scripts)", () => {
+		// The test suite runs under Node, so the Node branch is what's provable
+		// here; the Bun branch resolves node/bun from PATH via Bun.which.
+		expect(typeof process.versions.bun).not.toBe("string");
+		expect(resolveCliRuntime()).toBe(process.execPath);
+	});
+});
 
 const ref = (n: number, file = "file") => ({
 	filePath: `/repo/src/${file}${n}.ts`,

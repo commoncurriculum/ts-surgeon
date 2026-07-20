@@ -4,8 +4,8 @@ import {
 	type OptionalKind,
 	type ParameterDeclarationStructure,
 } from "ts-morph";
-import type { FunctionLikeWithParameters } from "./find-function-declaration";
-import type { ChangeSignatureOperation } from "./types";
+import type { FunctionLikeWithParameters } from "./find-function-declaration.js";
+import type { ChangeSignatureOperation } from "./types.js";
 
 /**
  * Applies a sequence of operations to the argument text array of an existing call site,
