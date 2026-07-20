@@ -6,7 +6,6 @@ import { runCli } from "../cli";
 import {
 	ALLOW_MARKER,
 	evaluateBashCommand,
-	formatSearchAnswer,
 	installClaudeHook,
 	installOpencodeHook,
 	type SearchAnswerRequest,
@@ -127,51 +126,60 @@ done < /tmp/exports.txt`;
 
 	// Identifier hunts are no longer argued with: the hook runs find_references
 	// itself and returns real references (or lets the grep through when it
-	// cannot answer). The classifier must extract the symbol being hunted.
+	// cannot answer). The classifier must extract every symbol being hunted —
+	// including alternations, whose meaning depends on the regex syntax.
 	const MUST_ANSWER: Array<{
 		command: string;
-		symbol: string;
+		symbols: string[];
 		root?: string;
 	}> = [
 		{
 			command: TRANSCRIPT_ALLOW_PREFIX_SWEEP,
-			symbol: "runDeleteStandard",
+			symbols: ["runDeleteStandard"],
 			root: "shared/src/unified-tiptap/extensions/standard/",
 		},
 		{
 			command: TRANSCRIPT_DECLARATION_HUNT,
-			symbol: "renderStringAsData",
+			symbols: ["renderStringAsData"],
 			root: "shared/src/unified-tiptap/",
 		},
 		// Declaration hunts are identifier lookups wearing a two-word coat.
 		{
 			command: 'grep -rn "function renderStringAsData" src/',
-			symbol: "renderStringAsData",
+			symbols: ["renderStringAsData"],
 			root: "src/",
 		},
 		{
 			command: "rg 'export const cartTotal' shared/src/",
-			symbol: "cartTotal",
+			symbols: ["cartTotal"],
 			root: "shared/src/",
 		},
 		// The inline prefix neither bypasses nor changes the answer.
 		{
 			command: `${ALLOW_MARKER} grep -rn calculateSum src/`,
-			symbol: "calculateSum",
+			symbols: ["calculateSum"],
 			root: "src/",
 		},
 		// Recursive identifier searches over (potential) sources.
-		{ command: "grep -r fooBar src/", symbol: "fooBar", root: "src/" },
-		{ command: "grep -rn calculateSum .", symbol: "calculateSum", root: "." },
-		{ command: "rg fooBar", symbol: "fooBar" },
-		{ command: "rg calculateSum src/", symbol: "calculateSum", root: "src/" },
-		{ command: "git grep -n calculateSum", symbol: "calculateSum" },
-		{ command: "grep -rn calculateSum src/**/*.ts", symbol: "calculateSum" },
+		{ command: "grep -r fooBar src/", symbols: ["fooBar"], root: "src/" },
+		{
+			command: "grep -rn calculateSum .",
+			symbols: ["calculateSum"],
+			root: ".",
+		},
+		{ command: "rg fooBar", symbols: ["fooBar"] },
+		{
+			command: "rg calculateSum src/",
+			symbols: ["calculateSum"],
+			root: "src/",
+		},
+		{ command: "git grep -n calculateSum", symbols: ["calculateSum"] },
+		{ command: "grep -rn calculateSum src/**/*.ts", symbols: ["calculateSum"] },
 		// The offending grep is NOT the first search in the command.
 		{
 			command:
 				"grep -oE '^export (function|const) [A-Za-z_]+' src/index.ts | head && grep -rn calculateSum src/",
-			symbol: "calculateSum",
+			symbols: ["calculateSum"],
 			root: "src/",
 		},
 		// Live agent validation, 2026-07-19: a wildcard --include glob is not a
@@ -179,12 +187,52 @@ done < /tmp/exports.txt`;
 		{
 			command:
 				'grep -rn "calculateSum" --include="*.*" -l . 2>/dev/null | grep -v -E "node_modules|\\.git/"',
-			symbol: "calculateSum",
+			symbols: ["calculateSum"],
 		},
 		// Multi-file search via find/xargs wrappers.
 		{
 			command: "find src -name '*.ts' | xargs grep -n useThing",
-			symbol: "useThing",
+			symbols: ["useThing"],
+		},
+		// Alternations answer every hunted symbol at once — the exact shape of
+		// the 2026-07-19 transcript's third grep, made recursive (BRE \|).
+		{
+			command:
+				'grep -rn "standardNode\\|export function cardNode\\|googleClassroomCardNode" shared/src/',
+			symbols: ["standardNode", "cardNode", "googleClassroomCardNode"],
+			root: "shared/src/",
+		},
+		{
+			command: "rg 'runDeleteStandard|renderStringAsData' shared/src/",
+			symbols: ["runDeleteStandard", "renderStringAsData"],
+			root: "shared/src/",
+		},
+		{
+			command: "grep -rnE '(cartTotal|calculateSum)' src/",
+			symbols: ["cartTotal", "calculateSum"],
+			root: "src/",
+		},
+		{
+			command: "grep -rn -e calculateSum -e cartTotal src/",
+			symbols: ["calculateSum", "cartTotal"],
+			root: "src/",
+		},
+		// Decorated identifiers: word boundaries and call-site parens.
+		{
+			command: "rg '\\bcalculateSum\\b' src/",
+			symbols: ["calculateSum"],
+			root: "src/",
+		},
+		{
+			command: "rg 'calculateSum\\(' src/",
+			symbols: ["calculateSum"],
+			root: "src/",
+		},
+		// Fixed-string search for an identifier is still an identifier hunt.
+		{
+			command: "grep -rnF calculateSum src/",
+			symbols: ["calculateSum"],
+			root: "src/",
 		},
 	];
 
@@ -218,6 +266,16 @@ done < /tmp/exports.txt`;
 		'cd /repo && TS_SURGEON_ALLOW=1 grep -n "ObjectId" shared/src/unified-tiptap/extensions/card-normal/card-normal-extension.ts shared/src/unified-tiptap/extensions/image-node/image-node-extension.ts | head -4; TS_SURGEON_ALLOW=1 grep -rn -A3 "addKeyboardShortcuts" shared/src/unified-tiptap/extensions/card-google-classroom/card-google-classroom-extension.ts shared/src/unified-tiptap/extensions/standard/standard-extension.ts | head',
 		"grep -rn addKeyboardShortcuts a.ts b.ts",
 		'grep -rn -A 6 "id:" shared/src/unified-tiptap/extensions/card-normal/card-normal-extension.ts | head -22',
+		// Syntax matters: a plain | is a literal pipe in BRE and in fixed
+		// strings — these hunt the literal text "a|b", not two identifiers.
+		'grep -rn "a|b" src/',
+		"grep -rnF 'foo|bar' src/",
+		// Inverted searches hunt the ABSENCE of the pattern.
+		"grep -rv calculateSum src/",
+		"grep -rL calculateSum src/",
+		// True regexes are not identifier lookups.
+		"rg 'foo.+bar' src/",
+		"grep -rnE 'export (function|const) [A-Za-z_]+' src/",
 		// Everyday non-search commands.
 		"ls -la",
 		"git status && git diff",
@@ -239,12 +297,12 @@ done < /tmp/exports.txt`;
 		}
 	});
 
-	it("classifies every identifier hunt as answerable, with the hunted symbol", () => {
-		for (const { command, symbol, root } of MUST_ANSWER) {
+	it("classifies every identifier hunt as answerable, with every hunted symbol", () => {
+		for (const { command, symbols, root } of MUST_ANSWER) {
 			const verdict = evaluateBashCommand(command);
 			expect(verdict.kind, command).toBe("answer-search");
 			if (verdict.kind !== "answer-search") continue;
-			expect(verdict.symbolName, command).toBe(symbol);
+			expect(verdict.symbolNames, command).toEqual(symbols);
 			if (root !== undefined) {
 				expect(verdict.searchRoot, command).toBe(root);
 			}
@@ -258,54 +316,7 @@ done < /tmp/exports.txt`;
 	});
 });
 
-describe("formatSearchAnswer", () => {
-	const ref = (n: number) => ({
-		filePath: `/repo/src/file${n}.ts`,
-		line: n,
-		column: 1,
-		text: `calculateSum(${n})`,
-	});
-	const definition = {
-		filePath: "/repo/src/math.ts",
-		line: 1,
-		column: 17,
-		text: "export function calculateSum(a: number, b: number) {",
-	};
-
-	it("returns the definition and every reference with a rerun command", () => {
-		const text = formatSearchAnswer("calculateSum", "/repo/tsconfig.json", {
-			definition,
-			references: [ref(1), ref(2)],
-		});
-		expect(text).toContain("ran find_references");
-		expect(text).toContain("/repo/src/math.ts:1:17");
-		expect(text).toContain("/repo/src/file1.ts:1:1");
-		expect(text).toContain("/repo/src/file2.ts:2:1");
-		expect(text).toContain("--symbol-name calculateSum");
-		expect(text).toContain("--tsconfig-path /repo/tsconfig.json");
-		// The answer must not teach a typeable bypass either.
-		expect(text).not.toMatch(/re-run|prefixed with|prefix a command/);
-	});
-
-	it("says so explicitly when nothing references the symbol", () => {
-		const text = formatSearchAnswer("calculateSum", "/repo/tsconfig.json", {
-			definition,
-			references: [],
-		});
-		expect(text).toMatch(/no references|nothing else/i);
-	});
-
-	it("caps long reference lists and reports the omitted count", () => {
-		const refs = Array.from({ length: 55 }, (_, i) => ref(i + 1));
-		const text = formatSearchAnswer("calculateSum", "/repo/tsconfig.json", {
-			definition,
-			references: refs,
-		});
-		expect(text).toContain("/repo/src/file40.ts");
-		expect(text).not.toContain("/repo/src/file41.ts");
-		expect(text).toContain("15 more");
-	});
-});
+// formatSearchAnswer / mapBatchResults are covered in src/cli/guard/answer.test.ts.
 
 describe("hook command (runCli)", () => {
 	function payload(toolName: string, command?: string, cwd?: string): string {
@@ -322,7 +333,7 @@ describe("hook command (runCli)", () => {
 		const answerSearch: SearchAnswerer = (req) => {
 			calls.push(req);
 			return ok
-				? { ok: true, text: `ANSWERED ${req.symbolName}` }
+				? { ok: true, text: `ANSWERED ${req.symbolNames.join(", ")}` }
 				: { ok: false };
 		};
 		return { calls, answerSearch };
@@ -362,7 +373,7 @@ describe("hook command (runCli)", () => {
 		expect(code).toBe(2);
 		expect(err.text).toContain("ANSWERED calculateSum");
 		expect(calls).toEqual([
-			{ symbolName: "calculateSum", searchRoot: "src/", cwd: "/repo" },
+			{ symbolNames: ["calculateSum"], searchRoot: "src/", cwd: "/repo" },
 		]);
 	});
 
@@ -452,7 +463,7 @@ describe("hook command (runCli)", () => {
 		expect(code).toBe(2);
 		expect(err.text).toContain("ANSWERED calculateSum");
 		expect(calls).toEqual([
-			{ symbolName: "calculateSum", searchRoot: "src", cwd: "/repo" },
+			{ symbolNames: ["calculateSum"], searchRoot: "src", cwd: "/repo" },
 		]);
 	});
 

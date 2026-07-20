@@ -8,7 +8,7 @@ function fakeAnswerer(ok: boolean) {
 	const answerSearch: SearchAnswerer = (req) => {
 		calls.push(req);
 		return ok
-			? { ok: true, text: `ANSWERED ${req.symbolName}` }
+			? { ok: true, text: `ANSWERED ${req.symbolNames.join(", ")}` }
 			: { ok: false };
 	};
 	return { calls, answerSearch };
@@ -56,7 +56,7 @@ describe("TsSurgeonGuard (opencode plugin)", () => {
 				{ args: { command: "grep -rn calculateSum src/" } },
 			),
 		).rejects.toThrow(/ANSWERED calculateSum/);
-		expect(calls[0]?.symbolName).toBe("calculateSum");
+		expect(calls[0]?.symbolNames).toEqual(["calculateSum"]);
 		expect(calls[0]?.searchRoot).toBe("src/");
 	});
 
