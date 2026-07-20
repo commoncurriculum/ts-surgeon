@@ -1,5 +1,11 @@
 # @commoncurriculum/ts-surgeon
 
+## 1.3.4
+
+### Patch Changes
+
+- 7451471: Teach the ts-surgeon equivalent after every eligible source grep, including single-file searches and OpenCode's native grep tool.
+
 ## 1.3.3
 
 ### Patch Changes
