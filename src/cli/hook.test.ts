@@ -403,16 +403,28 @@ describe("buildSearchTeaching", () => {
 			command: "rg 'foo.*bar' src/",
 		});
 		expect(line).toContain("ts-surgeon");
+		expect(line).toContain("use ts-surgeon");
 		expect(line).toContain("search_pattern");
 		expect(line).not.toContain("--symbol-name");
 	});
 
-	it("says nothing for searches ts-surgeon has no business in", () => {
+	it("teaches after explicit source-file greps that the pre-hook allows", () => {
+		for (const command of [
+			"grep -n calculateSum one-file.ts",
+			"grep -rn addKeyboardShortcuts a.ts b.ts",
+			"rg 'foo.*bar' src/one-file.ts",
+		]) {
+			const line = buildSearchTeaching("Bash", { command });
+			expect(line, command).toContain("use ts-surgeon");
+		}
+	});
+
+	it("says nothing only for searches ts-surgeon cannot replace", () => {
 		for (const command of [
 			"grep -rn error logs/",
 			"ps aux | grep node",
-			"grep -n pattern one-file.ts",
-			"grep -rn addKeyboardShortcuts a.ts b.ts",
+			"cat notes.txt | grep foo",
+			"grep -rn calculateSum docs/*.md",
 			"ls -la",
 		]) {
 			expect(buildSearchTeaching("Bash", { command }), command).toBeUndefined();
@@ -429,6 +441,12 @@ describe("buildSearchTeaching", () => {
 		expect(
 			buildSearchTeaching("Grep", { pattern: "calculateSum", path: "docs" }),
 		).toBeUndefined();
+		expect(
+			buildSearchTeaching("Grep", {
+				pattern: "calculateSum",
+				include: "*.ts",
+			}),
+		).toContain("--symbol-name calculateSum");
 	});
 
 	it("advertises the wider toolset and the skill on every teaching line", () => {

@@ -9,8 +9,8 @@ import { createTsSurgeonGuard } from "./opencode-guard.js";
  * through `exports`.
  *
  * Typed structurally instead of against `@opencode-ai/plugin` to keep the
- * package dependency-free for CLI users; the shapes below mirror that
- * package's `tool.execute.before` hook contract (throwing blocks the call).
+ * package dependency-free for CLI users; createTsSurgeonGuard mirrors that
+ * package's before/after hook contracts (throwing from before blocks a call).
  */
 const TsSurgeonGuard = createTsSurgeonGuard(answerSearchViaCli);
 

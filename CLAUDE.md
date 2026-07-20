@@ -135,8 +135,8 @@ node dist/index.js call <tool> --params '<json>'
    - `hooks/hooks.json`: the plugin's PreToolUse guard (wraps `ts-surgeon hook`;
      `TS_SURGEON_STRICT=1` opts into strict mode, `TS_SURGEON_ALLOW=1` bypasses)
    - `src/opencode-plugin.ts`: the package's import entry (`main`/`exports`) — an
-     opencode `tool.execute.before` guard plugin, registered by listing the package in
-     opencode.json's `plugin` array. The CLI is reached only via `bin`; never make
+     opencode before/after guard and teaching plugin, registered by listing the package
+     in opencode.json's `plugin` array. The CLI is reached only via `bin`; never make
      `dist/index.js` the import target (it runs the CLI on import).
 
 ### Test Structure

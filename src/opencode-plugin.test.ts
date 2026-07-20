@@ -67,6 +67,19 @@ describe("TsSurgeonGuard (opencode plugin)", () => {
 		expect(calls[0]?.searchRoot).toBe("src/");
 	});
 
+	it("answers identifier searches from OpenCode's native grep tool", async () => {
+		const { calls, answerSearch } = fakeAnswerer(true);
+		const guard = await loadGuard(answerSearch);
+		await expect(
+			guard(
+				{ tool: "grep" },
+				{ args: { pattern: "calculateSum", path: "src", include: "*.ts" } },
+			),
+		).rejects.toThrow(/ANSWERED calculateSum/);
+		expect(calls[0]?.symbolNames).toEqual(["calculateSum"]);
+		expect(calls[0]?.searchRoot).toBe("src");
+	});
+
 	it("fails open when the search cannot be answered", async () => {
 		const { calls, answerSearch } = fakeAnswerer(false);
 		const guard = await loadGuard(answerSearch);
@@ -110,6 +123,33 @@ describe("TsSurgeonGuard (opencode plugin)", () => {
 		expect(result.output).toContain(
 			"call find_references --symbol-name calculateSum",
 		);
+	});
+
+	it("always teaches after a source grep that ts-surgeon could perform", async () => {
+		const { answerSearch } = fakeAnswerer(false);
+		const hooks = await createTsSurgeonGuard(answerSearch)();
+		await hooks["tool.execute.before"](
+			{ tool: "grep", callID: "native-grep" },
+			{ args: { pattern: "calculateSum", path: "src/math.ts" } },
+		);
+		const grepResult = { output: "src/math.ts:1: calculateSum" };
+		await hooks["tool.execute.after"](
+			{ tool: "grep", callID: "native-grep" },
+			grepResult,
+		);
+		expect(grepResult.output).toContain("use ts-surgeon");
+		expect(grepResult.output).toContain("--symbol-name calculateSum");
+
+		await hooks["tool.execute.before"](
+			{ tool: "bash", callID: "single-file-bash" },
+			{ args: { command: "grep -n calculateSum src/math.ts" } },
+		);
+		const bashResult = { output: "1:calculateSum" };
+		await hooks["tool.execute.after"](
+			{ tool: "bash", callID: "single-file-bash" },
+			bashResult,
+		);
+		expect(bashResult.output).toContain("use ts-surgeon");
 	});
 
 	it("answers searches regardless of TS_SURGEON_STRICT (strict split retired)", async () => {
