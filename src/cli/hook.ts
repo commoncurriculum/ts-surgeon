@@ -12,8 +12,19 @@ import { CliUsageError, type StdinReader } from "./params";
  * must never break the harness.
  */
 
-/** Escape hatch: prefix a command with this to bypass the guard. */
+/**
+ * Operator-only escape hatch: the guard is bypassed when TS_SURGEON_ALLOW=1 is
+ * set in the hook process's own environment (i.e. by the human who launched
+ * the agent session). It used to also work as an inline command prefix, but a
+ * real transcript (2026-07-19) showed agents cargo-culting the prefix onto
+ * every search, so the inline form is now deliberately inert.
+ */
 export const ALLOW_MARKER = "TS_SURGEON_ALLOW=1";
+
+/** True when a human enabled the escape hatch in the hook's environment. */
+export function isOperatorAllowed(env: NodeJS.ProcessEnv = process.env) {
+	return env.TS_SURGEON_ALLOW === "1";
+}
 
 const SOURCE_EXT_RE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)\b/;
 const IN_PLACE_SED_RE = /\bsed\s+(-[a-zA-Z]*i[a-zA-Z]*\b|--in-place\b)/;
@@ -124,13 +135,28 @@ const RG_ARG_FLAGS = new Set([
 
 const RG_SOURCE_TYPES = new Set(["ts", "typescript", "js", "javascript"]);
 
+/**
+ * Appended to every block message. Deliberately names no typeable bypass: a
+ * real transcript (2026-07-19) showed that advertising the prefix trains
+ * agents to cargo-cult it instead of using the tools. Reading the identifier
+ * out of specific files stays open (non-recursive greps on named files are
+ * always allowed), so a blocked agent is never stuck.
+ */
+const NO_BYPASS_FOOTER =
+	"This guard has no in-session bypass; do not try to work around it. If this exact search is truly required (e.g. the ts-surgeon CLI itself fails in this project), grep the specific files by name — that is always allowed — or ask the user; the operator escape hatch is documented in the ts-surgeon README.";
+
+/**
+ * Prepended when a blocked command carries the old inline escape-hatch prefix.
+ */
+const INERT_PREFIX_NOTE = `ts-surgeon: the ${ALLOW_MARKER} command prefix is ignored — the escape hatch is operator-only, read from the hook's own environment, which your commands cannot set.`;
+
 const EDIT_BLOCK_MESSAGE = `ts-surgeon: this command hand-edits TypeScript/JavaScript sources with text replacement (sed/perl -i).
 Text replacement misses imports, re-exports, and same-name collisions. Use the AST-accurate CLI instead:
   npx -y @commoncurriculum/ts-surgeon guide     # when to use which tool
   e.g. call rename_symbol / change_signature for symbol changes, or
   call rewrite_pattern --pattern 'console.log($$$A)' --rewrite 'logger.debug($$$A)'
   for sed-style codemods (all support --dry-run)
-If this is genuinely not a refactor, re-run the command prefixed with ${ALLOW_MARKER}.`;
+${NO_BYPASS_FOOTER}`;
 
 const SEARCH_BLOCK_MESSAGE = `ts-surgeon: this command recursively text-searches TS/JS sources for a code identifier.
 Text search misses aliased imports/re-exports and matches unrelated same-name tokens. Use the AST-aware lookups instead:
@@ -138,15 +164,14 @@ Text search misses aliased imports/re-exports and matches unrelated same-name to
   npx -y @commoncurriculum/ts-surgeon call search_pattern --pattern '<code shape with $META vars>'
 Auditing which exports are unused? Use:
   npx -y @commoncurriculum/ts-surgeon call find_unused_exports --tsconfig-path <path/to/tsconfig.json>
-If you really need a text search (strings, comments, non-code), re-run the command prefixed with ${ALLOW_MARKER}.`;
+${NO_BYPASS_FOOTER}`;
 
 const GREP_TOOL_BLOCK_MESSAGE = `ts-surgeon: this Grep call looks up a code identifier across TS/JS sources.
 Text search misses aliased imports/re-exports and matches unrelated same-name tokens. Use the type-aware lookup instead (via Bash):
   npx -y @commoncurriculum/ts-surgeon call find_references --target-file-path <file-that-declares-it> --symbol-name <name>
 Auditing which exports are unused? Use:
   npx -y @commoncurriculum/ts-surgeon call find_unused_exports --tsconfig-path <path/to/tsconfig.json>
-If you really need a text match (strings, comments, non-code), run it via Bash prefixed with ${ALLOW_MARKER}, e.g.:
-  ${ALLOW_MARKER} grep -rn <pattern> <path>`;
+${NO_BYPASS_FOOTER}`;
 
 /**
  * Splits a shell command string into simple commands (token lists), cutting at
@@ -266,8 +291,28 @@ function splitSimpleCommands(command: string): string[][] {
 }
 
 const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/**
+ * A hunt for a declaration site ("function renderStringAsData", "export const
+ * cartTotal") is an identifier lookup wearing a two-word coat — observed in a
+ * real transcript, 2026-07-19. Regex-y patterns (`function\s+\w+`) don't match.
+ */
+const DECLARATION_PATTERN_RE =
+	/^(export +)?(async +)?(function|const|let|var|class|interface|type|enum) +[A-Za-z_$][A-Za-z0-9_$]*$/;
 /** `$name` / `${name}` / `$(cmd)` anywhere in the pattern → runtime-dynamic. */
 const DYNAMIC_PATTERN_RE = /\$[A-Za-z_{(]/;
+
+/** A path token that names one concrete file (an extension, no glob chars). */
+function isExplicitFile(p: string): boolean {
+	return !/[*?[]/.test(p) && hasFileExtension(p);
+}
+
+function isIdentifierLookup(pattern: string): boolean {
+	return (
+		(IDENTIFIER_RE.test(pattern) &&
+			!COMMENT_MARKER_WORDS.has(pattern.toUpperCase())) ||
+		DECLARATION_PATTERN_RE.test(pattern)
+	);
+}
 
 function baseName(token: string): string {
 	return token.split("/").pop() ?? token;
@@ -371,12 +416,13 @@ function classifySearchCommand(
 		}
 	}
 
-	// Non-recursive greps read stdin or named files — always fine.
+	// Non-recursive greps read stdin or named files — always fine. So are
+	// recursive flags pointed at explicitly named files (agents reflexively add
+	// -rn even when reading context out of two known files; observed 2026-07-19)
+	// — but not at globs like src/**/*.ts, which are project-wide hunts.
+	const explicitFilesOnly = paths.length > 0 && paths.every(isExplicitFile);
 	const multiFile =
-		isGitGrep ||
-		viaWrapper ||
-		recursiveFlag ||
-		(isRg && !(paths.length > 0 && paths.every(hasFileExtension)));
+		isGitGrep || viaWrapper || ((recursiveFlag || isRg) && !explicitFilesOnly);
 	if (!multiFile || pattern === undefined) {
 		return undefined;
 	}
@@ -417,10 +463,7 @@ function classifySearchCommand(
 		// sources; a dynamic grep over unknown paths is too common to block.
 		return scope === "source" ? "dynamic" : undefined;
 	}
-	if (
-		IDENTIFIER_RE.test(pattern) &&
-		!COMMENT_MARKER_WORDS.has(pattern.toUpperCase())
-	) {
+	if (isIdentifierLookup(pattern)) {
 		return "identifier";
 	}
 	return undefined;
@@ -439,19 +482,24 @@ export interface HookVerdict {
  * TS_SURGEON_STRICT env) is retired — this is the one shipped mode.
  */
 export function evaluateBashCommand(command: string): HookVerdict {
-	if (command.includes(ALLOW_MARKER)) {
-		return { block: false };
-	}
+	const block = (reason: string): HookVerdict => ({
+		block: true,
+		// A cargo-culted TS_SURGEON_ALLOW=1 prefix gets an explicit "that does
+		// nothing" preface so the agent stops reaching for it.
+		reason: command.includes("TS_SURGEON_ALLOW")
+			? `${INERT_PREFIX_NOTE}\n${reason}`
+			: reason,
+	});
 	const touchesSources = SOURCE_EXT_RE.test(command);
 	if (
 		touchesSources &&
 		(IN_PLACE_SED_RE.test(command) || IN_PLACE_PERL_RE.test(command))
 	) {
-		return { block: true, reason: EDIT_BLOCK_MESSAGE };
+		return block(EDIT_BLOCK_MESSAGE);
 	}
 	for (const tokens of splitSimpleCommands(command)) {
 		if (classifySearchCommand(tokens) !== undefined) {
-			return { block: true, reason: SEARCH_BLOCK_MESSAGE };
+			return block(SEARCH_BLOCK_MESSAGE);
 		}
 	}
 	return { block: false };
@@ -485,10 +533,7 @@ export function evaluateGrepToolInput(input: {
 		// A single-file lookup is not a project-wide reference hunt.
 		return { block: false };
 	}
-	if (
-		IDENTIFIER_RE.test(pattern) &&
-		!COMMENT_MARKER_WORDS.has(pattern.toUpperCase())
-	) {
+	if (isIdentifierLookup(pattern)) {
 		return { block: true, reason: GREP_TOOL_BLOCK_MESSAGE };
 	}
 	return { block: false };
@@ -514,6 +559,10 @@ export function runHook(
 		if (arg !== "--strict") {
 			throw new CliUsageError(`Unknown option for hook: '${arg}'`);
 		}
+	}
+	if (isOperatorAllowed()) {
+		// The operator disabled the guard for this session.
+		return 0;
 	}
 	if (process.stdin.isTTY) {
 		// Not being driven by a harness; nothing to check.
@@ -602,7 +651,7 @@ export function installOpencodeHook(cwd: string, out: Writer): void {
 	plugins.push(OPENCODE_PLUGIN_PACKAGE);
 	writeFileSync(configPath, `${JSON.stringify(config, null, "\t")}\n`);
 	out.write(
-		`Registered the ${OPENCODE_PLUGIN_PACKAGE} guard plugin in ${configPath} (blocks sed/perl -i on TS/JS sources and recursive identifier searches; prefix a command with ${ALLOW_MARKER} to bypass).\n`,
+		`Registered the ${OPENCODE_PLUGIN_PACKAGE} guard plugin in ${configPath} (blocks sed/perl -i on TS/JS sources and recursive identifier searches; operators can disable it by launching the agent with ${ALLOW_MARKER} in the environment).\n`,
 	);
 
 	// Older versions of this installer copied a standalone plugin file instead.
@@ -668,6 +717,6 @@ export function installClaudeHook(cwd: string, out: Writer): void {
 	mkdirSync(path.dirname(settingsPath), { recursive: true });
 	writeFileSync(settingsPath, `${JSON.stringify(settings, null, "\t")}\n`);
 	out.write(
-		`Installed the ts-surgeon PreToolUse guard in ${settingsPath} (blocks sed/perl -i on TS/JS sources and recursive identifier searches; prefix a command with ${ALLOW_MARKER} to bypass).\n`,
+		`Installed the ts-surgeon PreToolUse guard in ${settingsPath} (blocks sed/perl -i on TS/JS sources and recursive identifier searches; operators can disable it by launching the agent with ${ALLOW_MARKER} in the environment).\n`,
 	);
 }

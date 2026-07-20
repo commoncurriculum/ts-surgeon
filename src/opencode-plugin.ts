@@ -1,4 +1,4 @@
-import { evaluateBashCommand } from "./cli/hook";
+import { evaluateBashCommand, isOperatorAllowed } from "./cli/hook";
 
 /**
  * opencode plugin entry: the package's `main`/`exports` point here so that
@@ -20,7 +20,7 @@ export const TsSurgeonGuard = async () => ({
 			return;
 		}
 		const command = output.args?.command;
-		if (typeof command !== "string") {
+		if (typeof command !== "string" || isOperatorAllowed()) {
 			return;
 		}
 		const verdict = evaluateBashCommand(command);

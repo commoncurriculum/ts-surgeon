@@ -55,7 +55,7 @@ To customize logging, see [Logging Configuration](#logging-configuration). To ru
 The CLI itself needs no install — every command above runs via `npx`. What you install is the *wiring* that makes an agent reach for it. There are two pieces, packaged per harness below:
 
 - **The skill** ([`skills/ts-surgeon/`](skills/ts-surgeon/)) — teaches the agent when to use which tool, the survey→change→verify loop, and the anti-patterns.
-- **The guard hook** (`ts-surgeon hook`) — blocks Bash commands that hand-edit TS/JS sources with `sed -i`/`perl -i` before they run and points the agent at the AST-accurate tool instead. A genuine non-refactor use is one prefix away: `TS_SURGEON_ALLOW=1 sed -i …`. Setting `TS_SURGEON_STRICT=1` (or passing `--strict` where you control the command line) also redirects recursive identifier searches (`grep -r name` / `rg name`, unless scoped to non-source files) to `find_references`.
+- **The guard hook** (`ts-surgeon hook`) — blocks Bash commands that hand-edit TS/JS sources with `sed -i`/`perl -i` and recursive identifier searches (`grep -r name` / `rg name`, unless scoped to non-source files) before they run, pointing the agent at the AST-accurate tool instead. The escape hatch is operator-only: launch the agent with `TS_SURGEON_ALLOW=1` in the environment (see [block policy](#the-guard-block-policy)).
 
 ### Claude Code — install the plugin
 
@@ -131,16 +131,16 @@ For Claude Code without the plugin, `npx -y @commoncurriculum/ts-surgeon init --
 There is one mode — the old `--strict` flag and `TS_SURGEON_STRICT` env opt-in are retired (`--strict` is accepted as a deprecated no-op). Before any `Bash` or `Grep` tool call runs, the hook blocks (exit 2) and names the exact replacement invocation when the call is:
 
 - **A hand-rolled text edit of TS/JS sources** — `sed -i` / `perl -i` touching `.ts/.tsx/.js/...` → use `rename_symbol` / `change_signature` / `organize_imports` (all support `--dry-run`).
-- **A recursive text search for a code identifier** — `grep -r name`, `rg name`, `git grep name`, or the harness's native Grep tool over source trees → use `find_references` / `search_pattern` (or `find_unused_exports` for dead-export audits). *Every* `grep`/`rg` in a compound command is inspected — pipelines, `;`/`&&` chains, loops, and `$(...)` substitutions — so an export-enumeration loop that greps a shell variable (`grep -rl --include='*.ts' "$name" src/`) is caught, not just the first `grep` in the string.
+- **A recursive text search for a code identifier** — `grep -r name`, `rg name`, `git grep name`, or the harness's native Grep tool over source trees → use `find_references` / `search_pattern` (or `find_unused_exports` for dead-export audits). Declaration hunts count too: `grep -r "function renderStringAsData"` / `"export const cartTotal"` is an identifier lookup wearing a two-word coat. *Every* `grep`/`rg` in a compound command is inspected — pipelines, `;`/`&&` chains, loops, and `$(...)` substitutions — so an export-enumeration loop that greps a shell variable (`grep -rl --include='*.ts' "$name" src/`) is caught, not just the first `grep` in the string.
 
 The hook deliberately allows, in every mode:
 
 - searches scoped to non-source files (`--include='*.md'`, `docs/`, `*.json`, `rg --type md`, ...);
-- non-recursive greps (single files, or filtering piped stdin: `ps aux | grep node`);
+- non-recursive greps (single files, or filtering piped stdin: `ps aux | grep node`), and recursive flags pointed at explicitly named files (`grep -rn -A3 pattern a.ts b.ts` is reading context, not hunting references — globs like `src/**/*.ts` still count as recursive);
 - regex patterns and comment markers (`TODO|FIXME`) — those are not identifier lookups;
 - anything it cannot parse — malformed JSON, non-Bash/Grep payloads, and TTY invocations always exit 0, so the guard can never break the harness.
 
-**Escape hatch:** prefix any command with `TS_SURGEON_ALLOW=1` and it runs untouched; every block message says so. If you find a command that is wrongly blocked (or a search that wrongly slips through), add it to the verdict corpus in [`src/cli/hook.test.ts`](src/cli/hook.test.ts) — every evasion found in a real transcript becomes a fixture there.
+**Escape hatch (operator-only):** set `TS_SURGEON_ALLOW=1` in the environment the hook runs in — e.g. launch the session with `TS_SURGEON_ALLOW=1 claude`, or add it to the `"env"` block of `.claude/settings.json` — and the guard allows everything. The old inline form (`TS_SURGEON_ALLOW=1 grep …` as a command prefix) is deliberately **inert**: a real transcript (2026-07-19) showed agents cargo-culting the advertised prefix onto every search instead of learning the tools, so block messages no longer name any typeable bypass and a prefixed command gets an explicit "that does nothing" note. Agents are never hard-stuck: non-recursive greps over explicitly named files are always allowed, so any genuinely necessary text match remains reachable without the hatch. If you find a command that is wrongly blocked (or a search that wrongly slips through), add it to the verdict corpus in [`src/cli/hook.test.ts`](src/cli/hook.test.ts) — every evasion found in a real transcript becomes a fixture there.
 
 #### Proving the hook changes agent behavior
 

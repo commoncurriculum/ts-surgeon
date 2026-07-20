@@ -32,6 +32,23 @@ describe("TsSurgeonGuard (opencode plugin)", () => {
 		await expect(guard({ tool: "bash" }, {})).resolves.toBeUndefined();
 	});
 
+	it("ignores inline TS_SURGEON_ALLOW prefixes but honors the operator env hatch", async () => {
+		const guard = await loadGuard();
+		await expect(
+			guard(
+				{ tool: "bash" },
+				{ args: { command: "TS_SURGEON_ALLOW=1 grep -rn calculateSum src/" } },
+			),
+		).rejects.toThrow(/operator-only/);
+		vi.stubEnv("TS_SURGEON_ALLOW", "1");
+		await expect(
+			guard(
+				{ tool: "bash" },
+				{ args: { command: "grep -rn calculateSum src/" } },
+			),
+		).resolves.toBeUndefined();
+	});
+
 	it("throws on recursive identifier searches by default (strict split retired)", async () => {
 		const guard = await loadGuard();
 		const search = { args: { command: "grep -rn calculateSum src/" } };

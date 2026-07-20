@@ -48,19 +48,20 @@ describe("evaluateBashCommand", () => {
 		}
 	});
 
-	it("honors the escape hatch", () => {
-		expect(
-			evaluateBashCommand(
-				`${ALLOW_MARKER} sed -i 's/oldName/newName/g' src/utils.ts`,
-			).block,
-		).toBe(false);
+	it("ignores the inline TS_SURGEON_ALLOW prefix (escape hatch is operator-only)", () => {
+		const verdict = evaluateBashCommand(
+			`${ALLOW_MARKER} sed -i 's/oldName/newName/g' src/utils.ts`,
+		);
+		expect(verdict.block).toBe(true);
+		expect(verdict.reason).toContain("operator-only");
+		expect(verdict.reason).toContain("ignored");
 	});
 
 	// ── Verdict corpus ────────────────────────────────────────────────────────
 	// Every evasion observed in a real transcript gets added here as a fixture,
 	// with a comment citing the date, so regressions are caught by `pnpm test`.
 	// Keep must-allow cases as aggressively as must-block ones: an over-blocking
-	// hook gets TS_SURGEON_ALLOW-prefixed reflexively and stops teaching anything.
+	// hook trains agents to fight the guard instead of learning the tools.
 
 	// Real transcript, 2026-07-19: export-enumeration + consumer-count loop.
 	// The first grep is a regex over single files (fine); the offender is the
@@ -73,10 +74,46 @@ while IFS=: read -r file name; do
   [ "$hits" = "0" ] && echo "UNUSED-OUTSIDE-FILE: $file:$name"
 done < /tmp/exports.txt`;
 
+	// Real transcript, 2026-07-19 (evening): the block messages advertised the
+	// TS_SURGEON_ALLOW=1 prefix, so the agent cargo-culted it onto every search
+	// — including recursive identifier hunts — and never touched the tools. The
+	// prefix is now inert; only an operator-set env var bypasses the guard.
+	const TRANSCRIPT_ALLOW_PREFIX_SWEEP = `TS_SURGEON_ALLOW=1 grep -rn -B3 -A 10 "runDeleteStandard" shared/src/unified-tiptap/extensions/standard/ | head -40; echo ----; sed -n 165,205p shared/src/unified-tiptap/analytics/instrumented-commands.ts; echo ----; TS_SURGEON_ALLOW=1 grep -n "standardNode\\|export function cardNode\\|googleClassroomCardNode" shared/test/fixtures/lesson.ts | head`;
+
+	// Same transcript: a recursive hunt for a declaration site ("function name")
+	// is an identifier lookup wearing a two-word coat — find_references territory.
+	const TRANSCRIPT_DECLARATION_HUNT = `TS_SURGEON_ALLOW=1 grep -rn -B2 -A 10 "function renderStringAsData" shared/src/unified-tiptap/ | head -25; echo ----; sed -n 56,100p shared/src/unified-tiptap/extensions/card-normal/card-normal-extension.ts`;
+
 	const MUST_BLOCK: Array<{ command: string; expectInReason: string }> = [
 		{
 			command: TRANSCRIPT_UNUSED_EXPORT_SWEEP,
 			expectInReason: "find_references",
+		},
+		{
+			command: TRANSCRIPT_ALLOW_PREFIX_SWEEP,
+			expectInReason: "operator-only",
+		},
+		{
+			command: TRANSCRIPT_DECLARATION_HUNT,
+			expectInReason: "find_references",
+		},
+		// Declaration hunts without the prefix block too.
+		{
+			command: 'grep -rn "function renderStringAsData" src/',
+			expectInReason: "find_references",
+		},
+		{
+			command: "rg 'export const cartTotal' shared/src/",
+			expectInReason: "find_references",
+		},
+		// The inline prefix no longer bypasses anything.
+		{
+			command: `${ALLOW_MARKER} grep -rn calculateSum src/`,
+			expectInReason: "operator-only",
+		},
+		{
+			command: `${ALLOW_MARKER} sed -i 's/a/b/' src/x.ts`,
+			expectInReason: "rename_symbol",
 		},
 		// Recursive identifier searches over (potential) sources.
 		{ command: "grep -r fooBar src/", expectInReason: "find_references" },
@@ -151,9 +188,13 @@ done < /tmp/exports.txt`;
 		"grep -rn TODO src/",
 		// Non-source directory trees.
 		"grep -rn error logs/",
-		// The escape hatch always wins.
-		`${ALLOW_MARKER} grep -rn calculateSum src/`,
-		`${ALLOW_MARKER} sed -i 's/a/b/' src/x.ts`,
+		// Real transcript, 2026-07-19 (evening): reading context out of explicitly
+		// named files is legitimate even with a reflexive -rn — recursion is inert
+		// when every path is a concrete file. (The agent's inert TS_SURGEON_ALLOW=1
+		// prefixes are kept verbatim; they must not flip an allowed command.)
+		'cd /repo && TS_SURGEON_ALLOW=1 grep -n "ObjectId" shared/src/unified-tiptap/extensions/card-normal/card-normal-extension.ts shared/src/unified-tiptap/extensions/image-node/image-node-extension.ts | head -4; TS_SURGEON_ALLOW=1 grep -rn -A3 "addKeyboardShortcuts" shared/src/unified-tiptap/extensions/card-google-classroom/card-google-classroom-extension.ts shared/src/unified-tiptap/extensions/standard/standard-extension.ts | head',
+		"grep -rn addKeyboardShortcuts a.ts b.ts",
+		'grep -rn -A 6 "id:" shared/src/unified-tiptap/extensions/card-normal/card-normal-extension.ts | head -22',
 		// Everyday non-search commands.
 		"ls -la",
 		"git status && git diff",
@@ -166,7 +207,11 @@ done < /tmp/exports.txt`;
 			expect(verdict.block, command).toBe(true);
 			expect(verdict.reason, command).toContain("ts-surgeon");
 			expect(verdict.reason, command).toContain(expectInReason);
-			expect(verdict.reason, command).toContain(ALLOW_MARKER);
+			// No block message may teach the agent a typeable bypass (that is how
+			// the prefix got cargo-culted in the first place).
+			expect(verdict.reason, command).not.toMatch(
+				/re-run|prefixed with|prefix a command/,
+			);
 		}
 	});
 
@@ -192,7 +237,7 @@ describe("hook command (runCli)", () => {
 		});
 		expect(code).toBe(2);
 		expect(err.text).toContain("ts-surgeon");
-		expect(err.text).toContain(ALLOW_MARKER);
+		expect(err.text).not.toMatch(/re-run|prefixed with/);
 	});
 
 	it("exits 0 for non-Bash tools, harmless commands, and garbage payloads", async () => {
@@ -216,7 +261,31 @@ describe("hook command (runCli)", () => {
 		});
 		expect(code).toBe(2);
 		expect(err.text).toContain("find_references");
-		expect(err.text).toContain(ALLOW_MARKER);
+	});
+
+	it("honors TS_SURGEON_ALLOW=1 only from the hook's own environment", async () => {
+		const search = payload("Bash", "grep -rn calculateSum src/");
+		try {
+			vi.stubEnv("TS_SURGEON_ALLOW", "1");
+			const code = await runCli(["hook"], createCapture(), createCapture(), {
+				readStdin: () => search,
+			});
+			expect(code).toBe(0);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+		// Any other value (or unset) does not bypass.
+		try {
+			vi.stubEnv("TS_SURGEON_ALLOW", "0");
+			const err = createCapture();
+			const code = await runCli(["hook"], createCapture(), err, {
+				readStdin: () => search,
+			});
+			expect(code).toBe(2);
+			expect(err.text).toContain("find_references");
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it("accepts --strict as a deprecated no-op", async () => {
