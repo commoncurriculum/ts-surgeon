@@ -44,6 +44,79 @@ const COMMENT_MARKER_WORDS = new Set([
 ]);
 
 /**
+ * TS/JS reserved words and primitive type names. A pattern like `^export` or
+ * `import` is a structure sweep (mined from real transcripts, 2026-07-20),
+ * not a symbol lookup — find_references has nothing to say about it.
+ */
+const RESERVED_WORDS = new Set([
+	"export",
+	"import",
+	"function",
+	"const",
+	"let",
+	"var",
+	"class",
+	"interface",
+	"type",
+	"enum",
+	"return",
+	"async",
+	"await",
+	"default",
+	"from",
+	"extends",
+	"implements",
+	"new",
+	"this",
+	"super",
+	"void",
+	"typeof",
+	"delete",
+	"in",
+	"of",
+	"if",
+	"else",
+	"for",
+	"while",
+	"do",
+	"switch",
+	"case",
+	"break",
+	"continue",
+	"try",
+	"catch",
+	"finally",
+	"throw",
+	"yield",
+	"static",
+	"public",
+	"private",
+	"protected",
+	"readonly",
+	"abstract",
+	"as",
+	"is",
+	"keyof",
+	"infer",
+	"namespace",
+	"module",
+	"declare",
+	"require",
+	"null",
+	"undefined",
+	"true",
+	"false",
+	"string",
+	"number",
+	"boolean",
+	"object",
+	"symbol",
+	"any",
+	"unknown",
+	"never",
+]);
+
+/**
  * Zero-width / punctuation atoms that decorate an identifier without changing
  * which symbol is hunted. A trailing paren is included when the syntax makes
  * it (or its escaped form) a literal — `calculateSum\(` in ERE, or
@@ -51,14 +124,30 @@ const COMMENT_MARKER_WORDS = new Set([
  * anyway (a dangling `(` in ERE).
  */
 const PREFIX_ATOMS: Record<PatternSyntax, string[]> = {
-	bre: ["^", "\\b", "\\<", "\\s*", "\\s+", "\\."],
-	ere: ["^", "\\b", "\\<", "\\s*", "\\s+", "\\."],
-	fixed: ["."],
+	// "new " covers constructor-site hunts (`grep -rn "new SurfaceArbiter"` —
+	// mined from a real transcript, 2026-07-20).
+	bre: ["^", "\\b", "\\<", "\\s*", "\\s+", "\\.", "new "],
+	ere: ["^", "\\b", "\\<", "\\s*", "\\s+", "\\.", "new "],
+	fixed: [".", "new "],
 };
 const SUFFIX_ATOMS: Record<PatternSyntax, string[]> = {
-	bre: ["$", "\\b", "\\>", "\\s*", "\\s+", "()", "("],
-	ere: ["$", "\\b", "\\>", "\\s*", "\\s+", "\\(\\)", "\\(", "()", "("],
-	fixed: ["()", "("],
+	// "=" (with optional space) covers assignment-site hunts
+	// (`grep -rn "CardColorType ="` — mined from a real transcript, 2026-07-20).
+	bre: ["$", "\\b", "\\>", "\\s*", "\\s+", "()", "(", "=", " "],
+	ere: [
+		"$",
+		"\\b",
+		"\\>",
+		"\\s*",
+		"\\s+",
+		"\\(\\)",
+		"\\(",
+		"()",
+		"(",
+		"=",
+		" ",
+	],
+	fixed: ["()", "(", "=", " "],
 };
 
 function stripDecorations(pattern: string, syntax: PatternSyntax): string {
@@ -209,7 +298,10 @@ function collectBranchSymbols(
 		return undefined;
 	}
 	if (IDENTIFIER_RE.test(core)) {
-		return COMMENT_MARKER_WORDS.has(core.toUpperCase()) ? undefined : [core];
+		return COMMENT_MARKER_WORDS.has(core.toUpperCase()) ||
+			RESERVED_WORDS.has(core)
+			? undefined
+			: [core];
 	}
 	if (DECLARATION_PATTERN_RE.test(core)) {
 		const name = core.split(/\s+/).pop();

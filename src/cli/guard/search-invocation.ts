@@ -82,6 +82,7 @@ const RG_ARG_FLAGS = new Set([
 	"--iglob",
 	"--type",
 	"--type-not",
+	"--type-add",
 	"--max-depth",
 	"--threads",
 	"--encoding",

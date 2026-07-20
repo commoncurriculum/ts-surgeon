@@ -234,6 +234,50 @@ done < /tmp/exports.txt`;
 			symbols: ["calculateSum"],
 			root: "src/",
 		},
+		// ── Mined from real transcripts on this machine, 2026-07-20 ──────────
+		// Declaration + call-site branches of ONE symbol dedupe to it.
+		{
+			command:
+				'git grep -n "export async function resolveRouteDocument\\|export function resolveRouteDocument\\|resolveRouteDocument(" -- packages/marketing/src/lib/routes',
+			symbols: ["resolveRouteDocument"],
+		},
+		// Four-way BRE alternation over two trees, piped through a filter.
+		{
+			command:
+				"grep -rn \"reportMenuOpenChange\\|reportAnchoredMenuOpenChange\\|reportCardMenuOpenChange\\|emitMenuOpened\" shared/src frontend --include='*.ts*' | grep -v instrumented-commands.ts",
+			symbols: [
+				"reportMenuOpenChange",
+				"reportAnchoredMenuOpenChange",
+				"reportCardMenuOpenChange",
+				"emitMenuOpened",
+			],
+			root: "shared/src",
+		},
+		// rg with --type-add (value flag) and multiple -t types.
+		{
+			command:
+				"rg -n \"MarkButton|MarkMenuItem|markInfo|InstrumentedMark\" shared/src --type-add 'tsx:*.tsx' -t ts -t tsx | grep -v instrumented-commands.ts",
+			symbols: ["MarkButton", "MarkMenuItem", "markInfo", "InstrumentedMark"],
+			root: "shared/src",
+		},
+		// Call-site hunt: BRE literal paren.
+		{
+			command:
+				'grep -rn "insertBlockContent(" shared frontend | grep -v "export function\\|util/insert-block"',
+			symbols: ["insertBlockContent"],
+			root: "shared",
+		},
+		// Assignment-site and constructor-site hunts.
+		{
+			command: 'grep -rn "CardColorType =" shared/src --include="*.ts"',
+			symbols: ["CardColorType"],
+			root: "shared/src",
+		},
+		{
+			command: 'grep -rn "new SurfaceArbiter" shared/src frontend',
+			symbols: ["SurfaceArbiter"],
+			root: "shared/src",
+		},
 	];
 
 	const MUST_ALLOW: string[] = [
@@ -276,6 +320,22 @@ done < /tmp/exports.txt`;
 		// True regexes are not identifier lookups.
 		"rg 'foo.+bar' src/",
 		"grep -rnE 'export (function|const) [A-Za-z_]+' src/",
+		// ── Mined from real transcripts on this machine, 2026-07-20 ──────────
+		// Reserved-word structure sweeps, and git grep over explicit pathspec
+		// files (context reading, like grep -rn over named files).
+		'git grep -n "^export" -- packages/test-sanity/src/fake-sanity-client.ts packages/test-sanity/src/seeded-test-client.ts 2>&1',
+		'git grep -n "^import" -- packages/marketing/src/lib/sanity-queries.ts packages/marketing/src/lib/route-queries.ts | head -20',
+		'grep -rn "^import" src/',
+		// Library spelunking: node_modules anywhere in the path is not project
+		// source — the agent is reading vendored code, not hunting references.
+		'grep -rn "dragstart" node_modules/@tiptap/core/src --include="*.ts"',
+		'grep -rln "hasDragButton" node_modules/.pnpm/react-aria@3.48.0/node_modules/react-aria/dist/',
+		'grep -rn "handleDOMEvents" /Users/dev/app/shared/node_modules/@tiptap/core/src --include="*.ts" -l',
+		// Quoted string-literal hunts are text searches, not identifier lookups.
+		"grep -rn '\"keyboard\"\\|\"markdown\"\\|\"input-rule\"' shared/src --include='*.ts' --include='*.tsx' | grep -v registry.ts",
+		// A runtime-computed search root cannot be scoped — this one resolves
+		// into node_modules (library spelunking via $(...)).
+		'grep -rn "cancelDrag" $(grep -rln "dragIntercepted" node_modules/playwright-core/lib/ 2>/dev/null | head -1) | head -5',
 		// Everyday non-search commands.
 		"ls -la",
 		"git status && git diff",

@@ -139,6 +139,27 @@ const CASES: Array<{
 		why: "a giant alternation is a sweep, not a lookup",
 	},
 
+	// ── Mined from real transcripts (2026-07-20) ────────────────────────────
+	// Reserved words are structure sweeps, not symbol hunts.
+	{ patterns: ["^export"], syntax: "bre", expected: "opaque" },
+	{ patterns: ["^import"], syntax: "bre", expected: "opaque" },
+	{ patterns: ["import"], syntax: "ere", expected: "opaque" },
+	{ patterns: ["QrCode|import"], syntax: "ere", expected: "opaque" },
+	{ patterns: ["string"], syntax: "ere", expected: "opaque" },
+	// Constructor-site and assignment-site hunts resolve to the symbol.
+	{
+		patterns: ["new SurfaceArbiter"],
+		syntax: "bre",
+		expected: ["SurfaceArbiter"],
+	},
+	{ patterns: ["CardColorType ="], syntax: "ere", expected: ["CardColorType"] },
+	// Quoted string literals are text hunts, not identifier lookups.
+	{
+		patterns: ['"keyboard"\\|"markdown"\\|"input-rule"'],
+		syntax: "bre",
+		expected: "opaque",
+	},
+
 	// ── Dynamic (runtime-computed) ──────────────────────────────────────────
 	{ patterns: ["$name"], syntax: "bre", expected: "dynamic" },
 	{ patterns: ["${name}"], syntax: "ere", expected: "dynamic" },

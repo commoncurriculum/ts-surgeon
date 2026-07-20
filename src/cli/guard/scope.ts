@@ -43,6 +43,13 @@ export function hasFileExtension(p: string): boolean {
 }
 
 export function isNonSourcePath(p: string): boolean {
+	// Vendored code anywhere in the path wins, even for .ts files: greps into
+	// node_modules are library spelunking (mined from real transcripts,
+	// 2026-07-20) — the project's AST tools have nothing to say there.
+	const segments = p.split("/");
+	if (segments.includes("node_modules") || segments.includes(".git")) {
+		return true;
+	}
 	if (SOURCE_EXT_RE.test(p)) {
 		return false;
 	}
@@ -70,6 +77,12 @@ export function resolveSearchScope(inv: {
 	const filterNeutral = inv.includeGlobs.some(
 		(g) => !SOURCE_EXT_RE.test(g) && !/\.[A-Za-z0-9]{1,8}$/.test(g),
 	);
+	// Every searched path being non-source beats an --include='*.ts' filter:
+	// a source-extension glob inside node_modules is still library spelunking
+	// (mined from a real transcript, 2026-07-20).
+	if (inv.paths.length > 0 && inv.paths.every(isNonSourcePath)) {
+		return "non-source";
+	}
 	if (filterSource) {
 		return "source";
 	}
@@ -81,9 +94,6 @@ export function resolveSearchScope(inv: {
 	}
 	if (inv.paths.some((p) => SOURCE_EXT_RE.test(p))) {
 		return "source";
-	}
-	if (inv.paths.length > 0 && inv.paths.every(isNonSourcePath)) {
-		return "non-source";
 	}
 	return "unknown";
 }

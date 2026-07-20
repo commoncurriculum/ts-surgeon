@@ -62,6 +62,15 @@ describe("parseSearchInvocation", () => {
 		expect(parse("rg -t md foo")?.rgTypes).toEqual(["md"]);
 	});
 
+	it("consumes rg's --type-add value instead of reading it as a path", () => {
+		// Mined from a real transcript, 2026-07-20.
+		const inv = parse(
+			"rg -n 'MarkButton|markInfo' shared/src --type-add 'tsx:*.tsx' -t ts -t tsx",
+		);
+		expect(inv?.paths).toEqual(["shared/src"]);
+		expect(inv?.rgTypes).toEqual(["ts", "tsx"]);
+	});
+
 	it("returns undefined for non-search commands and grep-as-argument", () => {
 		expect(parse("ls -la")).toBeUndefined();
 		expect(parse("echo grep foo")).toBeUndefined();

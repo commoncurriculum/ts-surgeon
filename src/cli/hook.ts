@@ -92,20 +92,28 @@ export function evaluateBashCommand(command: string): HookEvaluation {
 			continue;
 		}
 		// Non-recursive greps read stdin or named files — always fine. So are
-		// recursive flags pointed at explicitly named files (agents reflexively
-		// add -rn even when reading context out of two known files; observed
-		// 2026-07-19) — but not globs like src/**/*.ts, which are project-wide.
+		// recursive tools pointed at explicitly named files (agents reflexively
+		// add -rn even when reading context out of two known files, and run
+		// `git grep -- a.ts b.ts`; observed 2026-07-19/20) — but not globs like
+		// src/**/*.ts, which are project-wide.
 		const explicitFilesOnly =
 			inv.paths.length > 0 && inv.paths.every(isExplicitFile);
 		const multiFile =
-			inv.tool === "git-grep" ||
 			inv.viaWrapper ||
-			((inv.recursiveFlag || inv.tool === "rg") && !explicitFilesOnly);
+			((inv.recursiveFlag || inv.tool === "rg" || inv.tool === "git-grep") &&
+				!explicitFilesOnly);
 		if (!multiFile) {
 			continue;
 		}
 		const scope = resolveSearchScope(inv);
 		if (scope === "non-source") {
+			continue;
+		}
+		if (inv.paths.some((p) => /\$[A-Za-z_{(]/.test(p))) {
+			// A runtime-computed search root (`grep name $(...)`, `grep name
+			// $DIR`) cannot be scoped — answering from the wrong project would be
+			// worse than letting the search run (mined 2026-07-20: a $() root
+			// that resolved into node_modules).
 			continue;
 		}
 		if (inv.invert) {
