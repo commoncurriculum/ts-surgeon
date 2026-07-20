@@ -1,6 +1,6 @@
 {
 	"name": "@commoncurriculum/ts-surgeon",
-	"version": "1.3.0",
+	"version": "1.3.1",
 	"_version_note": "Managed by changesets — never bump by hand. Feature PRs add a .changeset/*.md; merging the bot's 'Version Packages' PR bumps this field (src/version.ts reads it at runtime) and publishes. See .claude/skills/release/SKILL.md.",
 	"description": "AST-accurate TypeScript/JavaScript refactoring CLI powered by ts-morph",
 	"main": "dist/opencode-plugin.js",
