@@ -15,7 +15,7 @@ tools. Two mechanism changes close that loop for good:
   itself and returns the real definition and reference list in the block
   message — the agent gets AST-accurate data in the same turn. If the lookup
   cannot answer (no tsconfig, not a project symbol, error, or the
-  `TS_SURGEON_ANSWER_TIMEOUT_MS` budget — default 45s — expires), the search
+  `TS_SURGEON_ANSWER_TIMEOUT_MS` budget — default 10s — expires), the search
   is **allowed through**: fail-open on reads, so legitimate greps are never
   stranded. Hard blocks remain only for `sed -i`/`perl -i` on sources and
   runtime-dynamic recursive search loops.

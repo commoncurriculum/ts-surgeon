@@ -653,12 +653,14 @@ function formatAmbiguityAnswer(
 }
 
 /**
- * Hard ceiling for the in-hook find_references child process. Kept under the
- * harness's own hook timeout so a slow project fails open (grep runs) instead
- * of tripping a harness-level error.
+ * Hard ceiling for the in-hook find_references child process. The grep being
+ * intercepted would return in about a second, so an answer is only worth a
+ * few seconds' wait — beyond that, stalling the agent and then failing open
+ * is strictly worse than letting the grep run. Projects that load slowly but
+ * are worth answering can raise TS_SURGEON_ANSWER_TIMEOUT_MS.
  */
 const ANSWER_TIMEOUT_MS = Number(
-	process.env.TS_SURGEON_ANSWER_TIMEOUT_MS ?? "45000",
+	process.env.TS_SURGEON_ANSWER_TIMEOUT_MS ?? "10000",
 );
 
 /**
