@@ -1,5 +1,12 @@
 # @commoncurriculum/ts-surgeon
 
+## 1.3.3
+
+### Patch Changes
+
+- 8000dcf: Fix the search answerer inside Bun-compiled hosts (OpenCode): `process.execPath` there is the host app's own binary, so the in-hook `find_references` child process printed the host's banner and the guard silently failed open. The runtime is now resolved via `Bun.which("node")`/`Bun.which("bun")` under Bun. Post-run teaching lines now also advertise the full toolset and the ts-surgeon skill, not just the one equivalent command.
+- 8000dcf: Expose the OpenCode guard as a single named function export so OpenCode's plugin loader accepts it.
+
 ## 1.3.2
 
 ### Patch Changes
