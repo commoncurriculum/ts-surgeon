@@ -1,6 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type pino from "pino";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 import { z } from "zod";
 
 // The CLI reserves stdout for tool results only.

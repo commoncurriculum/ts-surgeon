@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import type { DependencyClassification } from "../types";
-import { ensureExportsInOriginalFile } from "./ensure-exports-in-original-file";
-import logger from "../../utils/logger";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import type { DependencyClassification } from "../types.js";
+import { ensureExportsInOriginalFile } from "./ensure-exports-in-original-file.js";
+import logger from "../../utils/logger.js";
 
 vi.mock("../../utils/logger");
 

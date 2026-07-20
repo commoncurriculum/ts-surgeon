@@ -1,6 +1,6 @@
 import type { Project } from "ts-morph";
-import logger from "../../utils/logger";
-import type { PathMapping } from "../types";
+import logger from "../../utils/logger.js";
+import type { PathMapping } from "../types.js";
 
 /**
  * After a directory rename, clean up the old directory hierarchy that remains

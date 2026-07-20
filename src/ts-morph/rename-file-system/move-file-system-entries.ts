@@ -1,8 +1,8 @@
 import { performance } from "node:perf_hooks";
 import type { Project } from "ts-morph";
-import logger from "../../utils/logger";
-import type { PathMapping, RenameOperation } from "../types";
-import { withSkippedTsMorphReferenceUpdates } from "./_utils/skip-ts-morph-ref-update";
+import logger from "../../utils/logger.js";
+import type { PathMapping, RenameOperation } from "../types.js";
+import { withSkippedTsMorphReferenceUpdates } from "./_utils/skip-ts-morph-ref-update.js";
 
 /**
  * The old implementation expanded all renames into per-file `sourceFile.move()` calls, but

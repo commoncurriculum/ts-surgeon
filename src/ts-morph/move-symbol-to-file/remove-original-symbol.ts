@@ -1,6 +1,6 @@
 import type { SourceFile, Statement } from "ts-morph";
-import logger from "../../utils/logger";
-import { getDeclarationIdentifier } from "./get-declaration-identifier";
+import logger from "../../utils/logger.js";
+import { getDeclarationIdentifier } from "./get-declaration-identifier.js";
 
 /**
  * Removes the specified declaration nodes (Statements) from the source file.

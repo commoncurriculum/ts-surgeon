@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { renameFileSystemEntry } from "./rename-file-system-entry";
-import { getFileText } from "../_test-utils/get-file-text";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import { renameFileSystemEntry } from "./rename-file-system-entry.js";
+import { getFileText } from "../_test-utils/get-file-text.js";
 
 function setupProjectWithExistingDir() {
 	const project = createInMemoryProject();

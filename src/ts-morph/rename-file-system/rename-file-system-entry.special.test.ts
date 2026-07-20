@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { expectFileMoved } from "../_test-utils/expect-file-moved";
-import { renameFileSystemEntry } from "./rename-file-system-entry";
-import { getFileText } from "../_test-utils/get-file-text";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import { expectFileMoved } from "../_test-utils/expect-file-moved.js";
+import { renameFileSystemEntry } from "./rename-file-system-entry.js";
+import { getFileText } from "../_test-utils/get-file-text.js";
 
 describe("renameFileSystemEntry Special Cases", () => {
 	it("dryRun: true does not modify the file system (in-memory) and returns the list of planned changes", async () => {

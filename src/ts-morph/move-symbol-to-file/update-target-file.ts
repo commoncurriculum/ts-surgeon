@@ -1,8 +1,8 @@
 import type { SourceFile, ImportDeclarationStructure } from "ts-morph";
 import { StructureKind } from "ts-morph";
 import * as path from "node:path";
-import logger from "../../utils/logger";
-import type { ImportMap } from "./generate-content/build-new-file-import-section";
+import logger from "../../utils/logger.js";
+import type { ImportMap } from "./generate-content/build-new-file-import-section.js";
 
 /**
  * Adds (merges) pre-computed import information and declaration strings into an existing SourceFile.

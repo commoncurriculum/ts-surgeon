@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPathAlias } from "./path-alias";
+import { isPathAlias } from "./path-alias.js";
 
 describe("isPathAlias", () => {
 	it("returns true when the specifier starts with the wildcard alias prefix", () => {

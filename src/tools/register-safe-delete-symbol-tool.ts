@@ -1,8 +1,8 @@
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { safeDeleteSymbol } from "../ts-morph/safe-delete-symbol/safe-delete-symbol";
-import type { BlockingReference } from "../ts-morph/safe-delete-symbol/types";
-import { formatChangedFiles, runTool } from "./_tool-runner";
+import { safeDeleteSymbol } from "../ts-morph/safe-delete-symbol/safe-delete-symbol.js";
+import type { BlockingReference } from "../ts-morph/safe-delete-symbol/types.js";
+import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 function formatBlockers(blockers: BlockingReference[]): string {
 	return blockers

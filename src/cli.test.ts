@@ -10,7 +10,7 @@ import {
 	prepareParams,
 	resolvePathParams,
 	runCli,
-} from "./cli";
+} from "./cli.js";
 
 function createTempDir(): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), "tsmorph-cli-test-"));

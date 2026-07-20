@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import * as path from "node:path";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { expectFileMoved } from "../_test-utils/expect-file-moved";
-import { renameFileSystemEntry } from "./rename-file-system-entry";
-import { getFileText } from "../_test-utils/get-file-text";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import { expectFileMoved } from "../_test-utils/expect-file-moved.js";
+import { renameFileSystemEntry } from "./rename-file-system-entry.js";
+import { getFileText } from "../_test-utils/get-file-text.js";
 
 describe("renameFileSystemEntry Base Cases", () => {
 	it("correctly updates relative and alias import statements when a file is renamed", async () => {

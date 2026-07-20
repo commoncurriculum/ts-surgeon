@@ -5,11 +5,11 @@ import {
 	type Project,
 	type SourceFile,
 } from "ts-morph";
-import logger from "../../utils/logger";
+import logger from "../../utils/logger.js";
 import {
 	collectPackageExportWarnings,
 	type PackageExportWarning,
-} from "./package-export-warnings";
+} from "./package-export-warnings.js";
 
 export interface UnusedExport {
 	/** Absolute path of the file that declares the export */

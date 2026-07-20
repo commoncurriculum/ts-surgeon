@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { IndentationText, QuoteKind } from "ts-morph";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files.js";
 
 describe("updateImportsInReferencingFiles", () => {
 	const oldDirPath = "/src/moduleA";

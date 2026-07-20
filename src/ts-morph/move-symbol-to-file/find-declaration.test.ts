@@ -9,11 +9,11 @@ import {
 	type VariableStatement,
 	type Statement,
 } from "ts-morph";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
 import {
 	findTopLevelDeclarationByName,
 	getIdentifierFromDeclaration,
-} from "./find-declaration";
+} from "./find-declaration.js";
 
 // --- Test Data ---
 const commonTestSource = `

@@ -1,10 +1,10 @@
 import type { Lang, SgNode } from "@ast-grep/napi";
 import type { Project, SourceFile } from "ts-morph";
-import { addMissingImportsOnProject } from "../ts-morph/add-missing-imports/add-missing-imports";
+import { addMissingImportsOnProject } from "../ts-morph/add-missing-imports/add-missing-imports.js";
 import {
 	getChangedFiles,
 	saveProjectChanges,
-} from "../ts-morph/_utils/ts-morph-project";
+} from "../ts-morph/_utils/ts-morph-project.js";
 
 /**
  * Structural pattern search and rewrite, powered by ast-grep (tree-sitter).

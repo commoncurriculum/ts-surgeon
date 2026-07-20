@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { type Statement, SyntaxKind } from "ts-morph";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { getStatement } from "../_test-utils/get-statement";
-import { getInternalDependencies } from "./internal-dependencies";
-import type { DependencyClassification } from "../types";
-import { classifyDependencies } from "./classify-dependencies";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import { getStatement } from "../_test-utils/get-statement.js";
+import { getInternalDependencies } from "./internal-dependencies.js";
+import type { DependencyClassification } from "../types.js";
+import { classifyDependencies } from "./classify-dependencies.js";
 
 const setupTest = (
 	code: string,

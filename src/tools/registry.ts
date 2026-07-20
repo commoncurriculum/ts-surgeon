@@ -1,6 +1,6 @@
 import { z, type ZodRawShape } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { registerTsMorphTools } from "./ts-morph-tools";
+import { registerTsMorphTools } from "./ts-morph-tools.js";
 
 /** Result shape every tool handler returns (via runTool). */
 export interface ToolResult {

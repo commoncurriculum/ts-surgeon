@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { rewriteWhere } from "../ast-grep/rewrite-where";
-import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
-import { formatChangedFiles, runTool } from "./_tool-runner";
-import type { ToolRegistry } from "./registry";
+import { rewriteWhere } from "../ast-grep/rewrite-where.js";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project.js";
+import { formatChangedFiles, runTool } from "./_tool-runner.js";
+import type { ToolRegistry } from "./registry.js";
 
 export function registerRewriteWhereTool(registry: ToolRegistry): void {
 	registry.tool(

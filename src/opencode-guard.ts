@@ -4,7 +4,7 @@ import {
 	INERT_PREFIX_NOTE,
 	isOperatorAllowed,
 	type SearchAnswerer,
-} from "./cli/hook";
+} from "./cli/hook.js";
 
 export const createTsSurgeonGuard =
 	(answerSearch: SearchAnswerer) => async () => {

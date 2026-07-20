@@ -1,15 +1,15 @@
 import { Node, type Project, type SourceFile } from "ts-morph";
-import logger from "../../utils/logger";
-import { forEachReferenceTo } from "../_utils/for-each-reference";
+import logger from "../../utils/logger.js";
+import { forEachReferenceTo } from "../_utils/for-each-reference.js";
 import {
 	getChangedFiles,
 	initializeProject,
 	saveProjectChanges,
-} from "../_utils/ts-morph-project";
+} from "../_utils/ts-morph-project.js";
 import type {
 	ConvertNamedExportToDefaultParams,
 	ConvertNamedExportToDefaultResult,
-} from "./types";
+} from "./types.js";
 
 /**
  * Converts a file's named export into its default export and rewrites every

@@ -1,5 +1,5 @@
-import { answerSearchViaCli } from "./cli/hook";
-import { createTsSurgeonGuard } from "./opencode-guard";
+import { answerSearchViaCli } from "./cli/hook.js";
+import { createTsSurgeonGuard } from "./opencode-guard.js";
 
 /**
  * opencode plugin entry: the package's `main`/`exports` point here so that
@@ -14,4 +14,4 @@ import { createTsSurgeonGuard } from "./opencode-guard";
  */
 const TsSurgeonGuard = createTsSurgeonGuard(answerSearchViaCli);
 
-export = TsSurgeonGuard;
+export { TsSurgeonGuard };

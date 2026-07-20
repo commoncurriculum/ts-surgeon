@@ -1,7 +1,7 @@
 import { Project } from "ts-morph";
 import { describe, expect, it } from "vitest";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { getDiagnosticsOnProject } from "./get-diagnostics";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import { getDiagnosticsOnProject } from "./get-diagnostics.js";
 
 function setup(files: Record<string, string>): Project {
 	const project = createInMemoryProject();

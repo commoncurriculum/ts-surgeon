@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, afterEach, describe, it, expect, vi } from "vitest";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
 import {
 	disableProjectCache,
 	enableProjectCache,
@@ -10,7 +10,7 @@ import {
 	getTsConfigBaseUrl,
 	getTsConfigPaths,
 	initializeProject,
-} from "./ts-morph-project";
+} from "./ts-morph-project.js";
 
 // Real tsconfig on disk for the cache tests (initializeProject reads the filesystem)
 const cacheFixtureDir = fs.mkdtempSync(

@@ -1,10 +1,10 @@
 import type { Identifier, Node } from "ts-morph";
-import { resolveTargetIdentifier } from "../_utils/resolve-identifier";
+import { resolveTargetIdentifier } from "../_utils/resolve-identifier.js";
 import {
 	initializeProject,
 	getChangedFiles,
 	saveProjectChanges,
-} from "../_utils/ts-morph-project";
+} from "../_utils/ts-morph-project.js";
 
 /**
  * Returns all reference locations for the given Identifier node

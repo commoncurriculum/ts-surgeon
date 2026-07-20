@@ -1,8 +1,8 @@
 import type { Project } from "ts-morph";
 import { describe, expect, it } from "vitest";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { findUnusedExports } from "./find-unused-exports";
-import { collectPackageExportWarnings } from "./package-export-warnings";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import { findUnusedExports } from "./find-unused-exports.js";
+import { collectPackageExportWarnings } from "./package-export-warnings.js";
 
 /**
  * Minimal monorepo fixture:

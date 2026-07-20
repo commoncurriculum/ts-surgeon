@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { SyntaxKind } from "ts-morph";
 import type { Statement } from "ts-morph";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { removeOriginalSymbol } from "./remove-original-symbol";
-import { findTopLevelDeclarationByName } from "./find-declaration";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import { removeOriginalSymbol } from "./remove-original-symbol.js";
+import { findTopLevelDeclarationByName } from "./find-declaration.js";
 
 describe("removeOriginalSymbol", () => {
 	// Test data for each declaration type

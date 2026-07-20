@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import * as path from "node:path";
 
 // package.json "version" is the single source of truth, managed by changesets
 // (never bump it by hand — merging the "Version Packages" PR does). Reading it
@@ -8,6 +7,6 @@ import * as path from "node:path";
 // always shipped ("files" includes it).
 export const VERSION: string = (
 	JSON.parse(
-		readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"),
+		readFileSync(new URL("../package.json", import.meta.url), "utf-8"),
 	) as { version: string }
 ).version;

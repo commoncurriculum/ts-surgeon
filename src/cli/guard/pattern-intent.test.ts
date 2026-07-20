@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { analyzePatterns, MAX_ANSWERABLE_SYMBOLS } from "./pattern-intent";
-import type { PatternSyntax } from "./search-invocation";
+import { analyzePatterns, MAX_ANSWERABLE_SYMBOLS } from "./pattern-intent.js";
+import type { PatternSyntax } from "./search-invocation.js";
 
 /**
  * Table-driven coverage of pattern semantics per regex syntax. Each row is a

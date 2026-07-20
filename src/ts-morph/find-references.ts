@@ -1,9 +1,9 @@
 import type { Identifier, Node, SourceFile } from "ts-morph";
-import { initializeProject } from "./_utils/ts-morph-project";
+import { initializeProject } from "./_utils/ts-morph-project.js";
 import {
 	resolveProjectWideDeclaration,
 	resolveTargetIdentifier,
-} from "./_utils/resolve-identifier";
+} from "./_utils/resolve-identifier.js";
 
 // --- Data Structure for Result ---
 

@@ -6,39 +6,39 @@ import {
 	readCallParams,
 	readStdinDefault,
 	type StdinReader,
-} from "./cli/params";
+} from "./cli/params.js";
 import {
 	installClaudeHook,
 	installOpencodeHook,
 	runHook,
 	runPostHook,
 	type SearchAnswerer,
-} from "./cli/hook";
+} from "./cli/hook.js";
 import {
 	findNearestTsconfig,
 	prepareParams,
 	solutionReferences,
-} from "./cli/paths";
-import { probeAstGrep } from "./ast-grep/pattern-tools";
-import { AGENT_SNIPPET, GUIDE, INIT_MARKER } from "./guide";
+} from "./cli/paths.js";
+import { probeAstGrep } from "./ast-grep/pattern-tools.js";
+import { AGENT_SNIPPET, GUIDE, INIT_MARKER } from "./guide.js";
 import {
 	disableProjectCache,
 	enableProjectCache,
-} from "./ts-morph/_utils/ts-morph-project";
+} from "./ts-morph/_utils/ts-morph-project.js";
 import {
 	ToolParamsError,
 	type ToolRegistry,
 	UnknownToolError,
 	createToolRegistry,
-} from "./tools/registry";
-import { VERSION } from "./version";
+} from "./tools/registry.js";
+import { VERSION } from "./version.js";
 
-export { CliUsageError, parseStdinFileList } from "./cli/params";
+export { CliUsageError, parseStdinFileList } from "./cli/params.js";
 export {
 	findNearestTsconfig,
 	prepareParams,
 	resolvePathParams,
-} from "./cli/paths";
+} from "./cli/paths.js";
 
 const USAGE = `ts-surgeon — AST-accurate TypeScript/JavaScript refactoring CLI (ts-morph)
 

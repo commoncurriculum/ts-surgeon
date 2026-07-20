@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runCli } from "../cli";
+import { runCli } from "../cli.js";
 
 // Simulates a platform without a prebuilt @ast-grep/napi binary: the module
 // throws at load time. Because the pattern tools load it lazily, only they

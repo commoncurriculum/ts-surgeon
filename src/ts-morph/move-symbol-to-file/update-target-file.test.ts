@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { updateTargetFile } from "./update-target-file";
-import type { ImportMap } from "./generate-content/build-new-file-import-section";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import { updateTargetFile } from "./update-target-file.js";
+import type { ImportMap } from "./generate-content/build-new-file-import-section.js";
 
 describe("updateTargetFile", () => {
 	it("can add and merge new declarations and their required named imports into an existing file", () => {

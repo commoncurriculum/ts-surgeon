@@ -1,7 +1,7 @@
 import type { SourceFile, Statement } from "ts-morph";
-import { calculateRelativePath } from "../_utils/calculate-relative-path";
-import logger from "../../utils/logger";
-import { getDeclarationIdentifier } from "./get-declaration-identifier";
+import { calculateRelativePath } from "../_utils/calculate-relative-path.js";
+import logger from "../../utils/logger.js";
+import { getDeclarationIdentifier } from "./get-declaration-identifier.js";
 
 /**
  * Among the declarations being removed as move targets, collects the names of symbols

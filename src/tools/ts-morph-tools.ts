@@ -1,23 +1,23 @@
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 
-import { registerAddMissingImportsTool } from "./register-add-missing-imports-tool";
-import { registerApplyCodeFixTool } from "./register-apply-code-fix-tool";
-import { registerChangeSignatureTool } from "./register-change-signature-tool";
-import { registerConvertDefaultExportTool } from "./register-convert-default-export-tool";
-import { registerConvertNamedToDefaultTool } from "./register-convert-named-to-default-tool";
-import { registerFindReferencesTool } from "./register-find-references-tool";
-import { registerFindUnusedExportsTool } from "./register-find-unused-exports-tool";
-import { registerGetDiagnosticsTool } from "./register-get-diagnostics-tool";
-import { registerGetTypeAtPositionTool } from "./register-get-type-at-position-tool";
-import { registerMoveSymbolToFileTool } from "./register-move-symbol-to-file-tool";
-import { registerOrganizeImportsTool } from "./register-organize-imports-tool";
-import { registerRemovePathAliasTool } from "./register-remove-path-alias-tool";
-import { registerRenameFileSystemEntryTool } from "./register-rename-file-system-entry-tool";
-import { registerRenameSymbolTool } from "./register-rename-symbol-tool";
-import { registerRewritePatternTool } from "./register-rewrite-pattern-tool";
-import { registerRewriteWhereTool } from "./register-rewrite-where-tool";
-import { registerSearchPatternTool } from "./register-search-pattern-tool";
-import { registerSafeDeleteSymbolTool } from "./register-safe-delete-symbol-tool";
+import { registerAddMissingImportsTool } from "./register-add-missing-imports-tool.js";
+import { registerApplyCodeFixTool } from "./register-apply-code-fix-tool.js";
+import { registerChangeSignatureTool } from "./register-change-signature-tool.js";
+import { registerConvertDefaultExportTool } from "./register-convert-default-export-tool.js";
+import { registerConvertNamedToDefaultTool } from "./register-convert-named-to-default-tool.js";
+import { registerFindReferencesTool } from "./register-find-references-tool.js";
+import { registerFindUnusedExportsTool } from "./register-find-unused-exports-tool.js";
+import { registerGetDiagnosticsTool } from "./register-get-diagnostics-tool.js";
+import { registerGetTypeAtPositionTool } from "./register-get-type-at-position-tool.js";
+import { registerMoveSymbolToFileTool } from "./register-move-symbol-to-file-tool.js";
+import { registerOrganizeImportsTool } from "./register-organize-imports-tool.js";
+import { registerRemovePathAliasTool } from "./register-remove-path-alias-tool.js";
+import { registerRenameFileSystemEntryTool } from "./register-rename-file-system-entry-tool.js";
+import { registerRenameSymbolTool } from "./register-rename-symbol-tool.js";
+import { registerRewritePatternTool } from "./register-rewrite-pattern-tool.js";
+import { registerRewriteWhereTool } from "./register-rewrite-where-tool.js";
+import { registerSearchPatternTool } from "./register-search-pattern-tool.js";
+import { registerSafeDeleteSymbolTool } from "./register-safe-delete-symbol-tool.js";
 
 /**
  * Registers the ts-morph refactoring tool suite with the tool registry

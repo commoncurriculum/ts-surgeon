@@ -1,7 +1,7 @@
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { addMissingImports } from "../ts-morph/add-missing-imports/add-missing-imports";
-import { formatChangedFiles, runTool } from "./_tool-runner";
+import { addMissingImports } from "../ts-morph/add-missing-imports/add-missing-imports.js";
+import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 export function registerAddMissingImportsTool(registry: ToolRegistry): void {
 	registry.tool(

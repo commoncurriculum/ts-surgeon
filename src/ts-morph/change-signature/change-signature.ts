@@ -4,31 +4,31 @@ import type {
 	ParameterDeclarationStructure,
 	Project,
 } from "ts-morph";
-import logger from "../../utils/logger";
+import logger from "../../utils/logger.js";
 import {
 	getChangedFiles,
 	initializeProject,
 	saveProjectChanges,
-} from "../_utils/ts-morph-project";
-import { resolveTargetIdentifier } from "../_utils/resolve-identifier";
+} from "../_utils/ts-morph-project.js";
+import { resolveTargetIdentifier } from "../_utils/resolve-identifier.js";
 import {
 	callHasSpreadArgument,
 	computeNewArgumentTexts,
 	computeNewParameterStructures,
 	rewriteCallArguments,
 	rewriteParameters,
-} from "./apply-changes";
-import { filterCallSites } from "./find-call-sites";
+} from "./apply-changes.js";
+import { filterCallSites } from "./find-call-sites.js";
 import {
 	findFunctionLikeDeclaration,
 	type FunctionLikeWithParameters,
 	getAllRelatedFunctionDeclarations,
-} from "./find-function-declaration";
+} from "./find-function-declaration.js";
 import type {
 	ChangeSignatureOperation,
 	ChangeSignatureParams,
 	ChangeSignatureResult,
-} from "./types";
+} from "./types.js";
 
 interface CallSitePlan {
 	call: CallExpression;

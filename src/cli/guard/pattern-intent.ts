@@ -1,4 +1,4 @@
-import type { PatternSyntax } from "./search-invocation";
+import type { PatternSyntax } from "./search-invocation.js";
 
 /**
  * Stage 3 of the guard pipeline: what is this pattern actually hunting?

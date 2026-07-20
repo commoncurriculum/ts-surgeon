@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { type Project, SyntaxKind, ts } from "ts-morph";
-import { createInMemoryProject } from "../../_test-utils/create-in-memory-project";
-import { findTopLevelDeclarationByName } from "../find-declaration";
-import { generateNewSourceFileContent } from "./generate-new-source-file-content";
+import { createInMemoryProject } from "../../_test-utils/create-in-memory-project.js";
+import { findTopLevelDeclarationByName } from "../find-declaration.js";
+import { generateNewSourceFileContent } from "./generate-new-source-file-content.js";
 import type {
 	DependencyClassification,
 	NeededExternalImports,
-} from "../../types";
+} from "../../types.js";
 
 const setupProjectWithCode = (
 	code: string,

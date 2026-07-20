@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { UnusedExport } from "./find-unused-exports";
-import { summarizeUnusedExports } from "./summarize-unused-exports";
+import type { UnusedExport } from "./find-unused-exports.js";
+import { summarizeUnusedExports } from "./summarize-unused-exports.js";
 
 function entry(partial: Partial<UnusedExport>): UnusedExport {
 	return {

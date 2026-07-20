@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Project, IndentationText, QuoteKind } from "ts-morph";
-import { findDeclarationsReferencingFile } from "./find-declarations-to-update";
+import { findDeclarationsReferencingFile } from "./find-declarations-to-update.js";
 
 // --- Setup Helper Function ---
 const setupTestProject = () => {

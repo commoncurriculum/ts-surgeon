@@ -3,7 +3,7 @@ import type { Node, Project, SourceFile, Type } from "ts-morph";
 import {
 	applyPatternRewrite,
 	type PatternRewriteResult,
-} from "./pattern-tools";
+} from "./pattern-tools.js";
 
 /**
  * Type-constrained structural rewrite: the rewrite_pattern engine plus a type

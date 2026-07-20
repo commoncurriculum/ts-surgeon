@@ -1,6 +1,6 @@
 import { SyntaxKind, type Statement, type Node } from "ts-morph";
-import { getDeclarationIdentifier } from "./get-declaration-identifier";
-import logger from "../../utils/logger";
+import { getDeclarationIdentifier } from "./get-declaration-identifier.js";
+import logger from "../../utils/logger.js";
 
 /**
  * Finds the top-level Statement that contains the given node.

@@ -1,8 +1,8 @@
 import type { Project } from "ts-morph";
 import { describe, expect, it } from "vitest";
-import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
-import { getFileText } from "../_test-utils/get-file-text";
-import { convertNamedExportToDefaultOnProject } from "./convert-named-to-default";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project.js";
+import { getFileText } from "../_test-utils/get-file-text.js";
+import { convertNamedExportToDefaultOnProject } from "./convert-named-to-default.js";
 
 function setup(files: Record<string, string>): Project {
 	const project = createInMemoryProject();

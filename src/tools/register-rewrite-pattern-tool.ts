@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { rewritePattern } from "../ast-grep/pattern-tools";
-import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
-import { formatChangedFiles, runTool } from "./_tool-runner";
-import type { ToolRegistry } from "./registry";
+import { rewritePattern } from "../ast-grep/pattern-tools.js";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project.js";
+import { formatChangedFiles, runTool } from "./_tool-runner.js";
+import type { ToolRegistry } from "./registry.js";
 
 export function registerRewritePatternTool(registry: ToolRegistry): void {
 	registry.tool(

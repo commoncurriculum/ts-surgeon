@@ -1,7 +1,7 @@
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { applyCodeFix } from "../ts-morph/apply-code-fix/apply-code-fix";
-import { formatChangedFiles, runTool } from "./_tool-runner";
+import { applyCodeFix } from "../ts-morph/apply-code-fix/apply-code-fix.js";
+import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 export function registerApplyCodeFixTool(registry: ToolRegistry): void {
 	registry.tool(

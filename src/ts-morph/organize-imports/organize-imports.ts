@@ -1,12 +1,12 @@
 import type { Project } from "ts-morph";
-import logger from "../../utils/logger";
-import { resolveTargetFiles } from "../_utils/resolve-target-files";
+import logger from "../../utils/logger.js";
+import { resolveTargetFiles } from "../_utils/resolve-target-files.js";
 import {
 	getChangedFiles,
 	initializeProject,
 	saveProjectChanges,
-} from "../_utils/ts-morph-project";
-import type { OrganizeImportsParams, OrganizeImportsResult } from "./types";
+} from "../_utils/ts-morph-project.js";
+import type { OrganizeImportsParams, OrganizeImportsResult } from "./types.js";
 
 /**
  * Runs the "Organize Imports" action (remove unused imports, sort, and coalesce

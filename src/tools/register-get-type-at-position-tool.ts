@@ -1,12 +1,12 @@
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
-import { getTypeAtPosition } from "../ts-morph/get-type-at-position/get-type-at-position";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project.js";
+import { getTypeAtPosition } from "../ts-morph/get-type-at-position/get-type-at-position.js";
 import {
 	getIdentifierPosition,
 	resolveTargetIdentifier,
-} from "../ts-morph/_utils/resolve-identifier";
-import { runTool } from "./_tool-runner";
+} from "../ts-morph/_utils/resolve-identifier.js";
+import { runTool } from "./_tool-runner.js";
 
 export function registerGetTypeAtPositionTool(registry: ToolRegistry): void {
 	registry.tool(

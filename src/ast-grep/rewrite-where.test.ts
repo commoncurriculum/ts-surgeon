@@ -2,8 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { initializeProject } from "../ts-morph/_utils/ts-morph-project";
-import { rewriteWhere } from "./rewrite-where";
+import { initializeProject } from "../ts-morph/_utils/ts-morph-project.js";
+import { rewriteWhere } from "./rewrite-where.js";
 
 describe("rewriteWhere", () => {
 	let tempDir: string;

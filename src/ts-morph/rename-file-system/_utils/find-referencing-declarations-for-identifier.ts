@@ -4,7 +4,7 @@ import {
 	type ImportDeclaration,
 	SyntaxKind,
 } from "ts-morph";
-import logger from "../../../utils/logger";
+import logger from "../../../utils/logger.js";
 
 export function findReferencingDeclarationsForIdentifier(
 	identifierNode: Identifier,

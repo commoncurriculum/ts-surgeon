@@ -1,7 +1,7 @@
-import type { ToolRegistry } from "./registry";
+import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { convertDefaultExportToNamed } from "../ts-morph/convert-default-export/convert-default-export";
-import { formatChangedFiles, runTool } from "./_tool-runner";
+import { convertDefaultExportToNamed } from "../ts-morph/convert-default-export/convert-default-export.js";
+import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 export function registerConvertDefaultExportTool(registry: ToolRegistry): void {
 	registry.tool(

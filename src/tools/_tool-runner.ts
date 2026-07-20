@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
-import type { ToolResult } from "./registry";
-import logger from "../utils/logger";
+import type { ToolResult } from "./registry.js";
+import logger from "../utils/logger.js";
 
 export interface ToolRunOutcome {
 	/** Human-readable message describing the result (success wording is tool-specific). */
