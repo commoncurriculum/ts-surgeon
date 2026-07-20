@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SearchAnswerRequest, SearchAnswerer } from "./cli/hook";
-import { createTsSurgeonGuard, TsSurgeonGuard } from "./opencode-plugin";
+import { createTsSurgeonGuard } from "./opencode-guard";
+import TsSurgeonGuard from "./opencode-plugin";
 
 /** Fake answerer: records requests, returns a canned answer (or refuses). */
 function fakeAnswerer(ok: boolean) {
@@ -24,6 +25,10 @@ async function loadGuard(answerSearch?: SearchAnswerer) {
 describe("TsSurgeonGuard (opencode plugin)", () => {
 	afterEach(() => {
 		vi.unstubAllEnvs();
+	});
+
+	it("exports the callable plugin directly", () => {
+		expect(typeof TsSurgeonGuard).toBe("function");
 	});
 
 	it("throws on bash commands that hand-edit TS/JS sources", async () => {
