@@ -97,6 +97,83 @@ export function findDeclarationIdentifiersByName(
 		.filter((id) => id.getText() === symbolName && isDeclarationName(id));
 }
 
+/**
+ * Declaration-name parents that are not what a project-wide lookup means:
+ * parameters are purely local, and import/export specifiers re-declare a
+ * symbol that is really declared elsewhere.
+ */
+const NON_PRIMARY_DECLARATION_PARENTS = new Set<SyntaxKind>([
+	SyntaxKind.Parameter,
+	SyntaxKind.ImportSpecifier,
+	SyntaxKind.ImportClause,
+	SyntaxKind.NamespaceImport,
+	SyntaxKind.ImportEqualsDeclaration,
+	SyntaxKind.ExportSpecifier,
+]);
+
+/**
+ * Resolves a declaration by name across the whole project — no file needed.
+ * Parameter names and import/export bindings are skipped, and multiple
+ * declaration identifiers of one symbol (overloads, merged declarations)
+ * count once. Throws when nothing is found or when several distinct symbols
+ * share the name; the ambiguity error lists every candidate's
+ * file:line:column.
+ */
+export function resolveProjectWideDeclaration(
+	project: Project,
+	symbolName: string,
+): Identifier {
+	const matches: Identifier[] = [];
+	for (const sourceFile of project.getSourceFiles()) {
+		if (sourceFile.isDeclarationFile() || sourceFile.isInNodeModules()) {
+			continue;
+		}
+		if (!sourceFile.getFullText().includes(symbolName)) {
+			continue;
+		}
+		for (const id of sourceFile.getDescendantsOfKind(SyntaxKind.Identifier)) {
+			const parentKind = id.getParent()?.getKind();
+			if (
+				id.getText() === symbolName &&
+				isDeclarationName(id) &&
+				parentKind !== undefined &&
+				!NON_PRIMARY_DECLARATION_PARENTS.has(parentKind)
+			) {
+				matches.push(id);
+			}
+		}
+	}
+	const seenSymbols = new Set<unknown>();
+	const unique: Identifier[] = [];
+	for (const match of matches) {
+		const symbol = match.getSymbol();
+		if (symbol !== undefined) {
+			if (seenSymbols.has(symbol)) {
+				continue;
+			}
+			seenSymbols.add(symbol);
+		}
+		unique.push(match);
+	}
+	if (unique.length === 1) {
+		return unique[0];
+	}
+	if (unique.length === 0) {
+		throw new Error(
+			`No declaration named '${symbolName}' found in the project. Pass targetFilePath (and position if needed) to target a symbol this lookup cannot see.`,
+		);
+	}
+	const locations = unique
+		.map((match) => {
+			const { line, column } = getIdentifierPosition(match);
+			return `  - ${match.getSourceFile().getFilePath()}:${line}:${column}`;
+		})
+		.join("\n");
+	throw new Error(
+		`'${symbolName}' has ${unique.length} declarations in the project; pass targetFilePath (and position if needed) to disambiguate:\n${locations}`,
+	);
+}
+
 /** The 1-based {line, column} of an identifier's start. */
 export function getIdentifierPosition(identifier: Identifier): {
 	line: number;

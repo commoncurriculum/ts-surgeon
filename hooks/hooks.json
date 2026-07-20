@@ -6,7 +6,20 @@
 				"hooks": [
 					{
 						"type": "command",
-						"command": "npx -y @commoncurriculum/ts-surgeon hook"
+						"command": "npx -y @commoncurriculum/ts-surgeon hook",
+						"timeout": 120
+					}
+				]
+			}
+		],
+		"PostToolUse": [
+			{
+				"matcher": "Bash|Grep",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "npx -y @commoncurriculum/ts-surgeon hook --post",
+						"timeout": 30
 					}
 				]
 			}

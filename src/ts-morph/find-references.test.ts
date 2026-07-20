@@ -564,3 +564,104 @@ processUser(adminData);
 		expect(typeAnnotationRefs.length).toBeGreaterThanOrEqual(2); // function parameter and variable declaration
 	});
 });
+
+describe("findSymbolReferences with symbolName only (project-wide)", () => {
+	let tempDir: string;
+	let tsconfigPath: string;
+
+	function write(rel: string, content: string): string {
+		const abs = path.join(tempDir, rel);
+		fs.mkdirSync(path.dirname(abs), { recursive: true });
+		fs.writeFileSync(abs, content);
+		return abs;
+	}
+
+	beforeEach(() => {
+		tempDir = createTempDir();
+		tsconfigPath = write(
+			"tsconfig.json",
+			JSON.stringify({
+				compilerOptions: { module: "commonjs", target: "es2020", strict: true },
+				include: ["src/**/*"],
+			}),
+		);
+	});
+
+	afterEach(() => {
+		removeTempDir(tempDir);
+	});
+
+	it("locates the declaration without a targetFilePath", async () => {
+		const mathPath = write(
+			"src/math.ts",
+			"export function calculateSum(a: number, b: number) {\n  return a + b;\n}\n",
+		);
+		const cartPath = write(
+			"src/cart.ts",
+			'import { calculateSum } from "./math";\nexport const total = calculateSum(1, 2);\n',
+		);
+
+		const result = await findSymbolReferences({
+			tsconfigPath,
+			symbolName: "calculateSum",
+		});
+		expect(result.definition?.filePath).toBe(mathPath);
+		expect(result.references.some((ref) => ref.filePath === cartPath)).toBe(
+			true,
+		);
+	});
+
+	it("treats function overloads as one declaration, not an ambiguity", async () => {
+		write(
+			"src/fmt.ts",
+			[
+				"export function fmt(x: string): string;",
+				"export function fmt(x: number): string;",
+				"export function fmt(x: unknown): string {",
+				"  return String(x);",
+				"}",
+			].join("\n"),
+		);
+		write("src/use.ts", 'import { fmt } from "./fmt";\nfmt(1);\n');
+
+		const result = await findSymbolReferences({
+			tsconfigPath,
+			symbolName: "fmt",
+		});
+		expect(result.references.length).toBeGreaterThanOrEqual(1);
+	});
+
+	it("lists every candidate when the name is declared in several files", async () => {
+		write("src/a.ts", "export const render = () => 1;\n");
+		write("src/b.ts", "export function render() {\n  return 2;\n}\n");
+
+		await expect(
+			findSymbolReferences({ tsconfigPath, symbolName: "render" }),
+		).rejects.toThrow(/2 declarations[\s\S]*a\.ts[\s\S]*b\.ts/);
+	});
+
+	it("throws a clear error when no project declaration exists", async () => {
+		write("src/a.ts", "export const x = 1;\n");
+		await expect(
+			findSymbolReferences({ tsconfigPath, symbolName: "notDeclaredHere" }),
+		).rejects.toThrow(/No declaration named 'notDeclaredHere'/);
+	});
+
+	it("does not count parameter names as project declarations", async () => {
+		// A symbol that only ever appears as a function parameter is local noise;
+		// symbol-only lookup must miss it so the hook fails open to plain grep.
+		write(
+			"src/a.ts",
+			"export function f(onlyAParam: number) {\n  return onlyAParam;\n}\n",
+		);
+		await expect(
+			findSymbolReferences({ tsconfigPath, symbolName: "onlyAParam" }),
+		).rejects.toThrow(/No declaration named 'onlyAParam'/);
+	});
+
+	it("still requires symbolName or targetFilePath", async () => {
+		await expect(findSymbolReferences({ tsconfigPath })).rejects.toThrow(
+			/symbolName/,
+		);
+	});
+});

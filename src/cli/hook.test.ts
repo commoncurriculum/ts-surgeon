@@ -5,9 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCli } from "../cli";
 import {
 	ALLOW_MARKER,
+	buildSearchTeaching,
 	evaluateBashCommand,
 	installClaudeHook,
 	installOpencodeHook,
+	type SearchAnswerRequest,
+	type SearchAnswerer,
 } from "./hook";
 
 function createCapture() {
@@ -33,8 +36,10 @@ describe("evaluateBashCommand", () => {
 			"perl -pi -e 's/foo/bar/' src/index.js",
 		]) {
 			const verdict = evaluateBashCommand(command);
-			expect(verdict.block, command).toBe(true);
-			expect(verdict.reason).toContain("ts-surgeon");
+			expect(verdict.kind, command).toBe("block");
+			if (verdict.kind === "block") {
+				expect(verdict.reason).toContain("ts-surgeon");
+			}
 		}
 	});
 
@@ -44,23 +49,26 @@ describe("evaluateBashCommand", () => {
 			"sed -n '10,20p' src/utils.ts",
 			"sed 's/foo/bar/' src/utils.ts > /tmp/out.txt",
 		]) {
-			expect(evaluateBashCommand(command).block, command).toBe(false);
+			expect(evaluateBashCommand(command).kind, command).toBe("allow");
 		}
 	});
 
-	it("honors the escape hatch", () => {
-		expect(
-			evaluateBashCommand(
-				`${ALLOW_MARKER} sed -i 's/oldName/newName/g' src/utils.ts`,
-			).block,
-		).toBe(false);
+	it("ignores the inline TS_SURGEON_ALLOW prefix on edits (escape hatch is operator-only)", () => {
+		const verdict = evaluateBashCommand(
+			`${ALLOW_MARKER} sed -i 's/oldName/newName/g' src/utils.ts`,
+		);
+		expect(verdict.kind).toBe("block");
+		if (verdict.kind === "block") {
+			expect(verdict.reason).toContain("operator-only");
+			expect(verdict.reason).toContain("ignored");
+		}
 	});
 
 	// ── Verdict corpus ────────────────────────────────────────────────────────
 	// Every evasion observed in a real transcript gets added here as a fixture,
 	// with a comment citing the date, so regressions are caught by `pnpm test`.
 	// Keep must-allow cases as aggressively as must-block ones: an over-blocking
-	// hook gets TS_SURGEON_ALLOW-prefixed reflexively and stops teaching anything.
+	// hook trains agents to fight the guard instead of learning the tools.
 
 	// Real transcript, 2026-07-19: export-enumeration + consumer-count loop.
 	// The first grep is a regex over single files (fine); the offender is the
@@ -73,26 +81,27 @@ while IFS=: read -r file name; do
   [ "$hits" = "0" ] && echo "UNUSED-OUTSIDE-FILE: $file:$name"
 done < /tmp/exports.txt`;
 
+	// Real transcript, 2026-07-19 (evening): the block messages advertised the
+	// TS_SURGEON_ALLOW=1 prefix, so the agent cargo-culted it onto every search
+	// — including recursive identifier hunts — and never touched the tools. The
+	// prefix is now inert; only an operator-set env var bypasses the guard.
+	const TRANSCRIPT_ALLOW_PREFIX_SWEEP = `TS_SURGEON_ALLOW=1 grep -rn -B3 -A 10 "runDeleteStandard" shared/src/unified-tiptap/extensions/standard/ | head -40; echo ----; sed -n 165,205p shared/src/unified-tiptap/analytics/instrumented-commands.ts; echo ----; TS_SURGEON_ALLOW=1 grep -n "standardNode\\|export function cardNode\\|googleClassroomCardNode" shared/test/fixtures/lesson.ts | head`;
+
+	// Same transcript: a recursive hunt for a declaration site ("function name")
+	// is an identifier lookup wearing a two-word coat — find_references territory.
+	const TRANSCRIPT_DECLARATION_HUNT = `TS_SURGEON_ALLOW=1 grep -rn -B2 -A 10 "function renderStringAsData" shared/src/unified-tiptap/ | head -25; echo ----; sed -n 56,100p shared/src/unified-tiptap/extensions/card-normal/card-normal-extension.ts`;
+
+	// Hard blocks: in-place text edits and runtime-dynamic loop evasions. These
+	// have no answerable single symbol, so the guard still says no — but the
+	// message names tools that work without knowing the declaring file.
 	const MUST_BLOCK: Array<{ command: string; expectInReason: string }> = [
 		{
 			command: TRANSCRIPT_UNUSED_EXPORT_SWEEP,
-			expectInReason: "find_references",
+			expectInReason: "find_unused_exports",
 		},
-		// Recursive identifier searches over (potential) sources.
-		{ command: "grep -r fooBar src/", expectInReason: "find_references" },
-		{ command: "grep -rn calculateSum .", expectInReason: "find_references" },
-		{ command: "rg fooBar", expectInReason: "find_references" },
-		{ command: "rg calculateSum src/", expectInReason: "find_references" },
-		{ command: "git grep -n calculateSum", expectInReason: "find_references" },
 		{
-			command: "grep -rn calculateSum src/**/*.ts",
-			expectInReason: "find_references",
-		},
-		// The offending grep is NOT the first search in the command.
-		{
-			command:
-				"grep -oE '^export (function|const) [A-Za-z_]+' src/index.ts | head && grep -rn calculateSum src/",
-			expectInReason: "find_references",
+			command: `${ALLOW_MARKER} sed -i 's/a/b/' src/x.ts`,
+			expectInReason: "rename_symbol",
 		},
 		// Variable-pattern recursive searches targeting sources (loop evasion).
 		{
@@ -105,18 +114,6 @@ done < /tmp/exports.txt`;
 				'while read -r name; do hits=$(grep -rn -w "$name" --include=\'*.tsx\' frontend/ | wc -l); echo "$name $hits"; done < names.txt',
 			expectInReason: "find_references",
 		},
-		// Live agent validation, 2026-07-19: a wildcard --include glob is not a
-		// non-source scope — `*.*` covers TS/JS sources too.
-		{
-			command:
-				'grep -rn "calculateSum" --include="*.*" -l . 2>/dev/null | grep -v -E "node_modules|\\.git/"',
-			expectInReason: "find_references",
-		},
-		// Multi-file search via find/xargs wrappers.
-		{
-			command: "find src -name '*.ts' | xargs grep -n useThing",
-			expectInReason: "find_references",
-		},
 		// In-place edits (the pre-existing block, unchanged).
 		{
 			command: "sed -i 's/oldName/newName/g' src/utils.ts",
@@ -125,6 +122,162 @@ done < /tmp/exports.txt`;
 		{
 			command: "perl -pi -e 's/foo/bar/' src/index.js",
 			expectInReason: "rename_symbol",
+		},
+	];
+
+	// Identifier hunts are no longer argued with: the hook runs find_references
+	// itself and returns real references (or lets the grep through when it
+	// cannot answer). The classifier must extract every symbol being hunted —
+	// including alternations, whose meaning depends on the regex syntax.
+	const MUST_ANSWER: Array<{
+		command: string;
+		symbols: string[];
+		root?: string;
+	}> = [
+		{
+			command: TRANSCRIPT_ALLOW_PREFIX_SWEEP,
+			symbols: ["runDeleteStandard"],
+			root: "shared/src/unified-tiptap/extensions/standard/",
+		},
+		{
+			command: TRANSCRIPT_DECLARATION_HUNT,
+			symbols: ["renderStringAsData"],
+			root: "shared/src/unified-tiptap/",
+		},
+		// Declaration hunts are identifier lookups wearing a two-word coat.
+		{
+			command: 'grep -rn "function renderStringAsData" src/',
+			symbols: ["renderStringAsData"],
+			root: "src/",
+		},
+		{
+			command: "rg 'export const cartTotal' shared/src/",
+			symbols: ["cartTotal"],
+			root: "shared/src/",
+		},
+		// The inline prefix neither bypasses nor changes the answer.
+		{
+			command: `${ALLOW_MARKER} grep -rn calculateSum src/`,
+			symbols: ["calculateSum"],
+			root: "src/",
+		},
+		// Recursive identifier searches over (potential) sources.
+		{ command: "grep -r fooBar src/", symbols: ["fooBar"], root: "src/" },
+		{
+			command: "grep -rn calculateSum .",
+			symbols: ["calculateSum"],
+			root: ".",
+		},
+		{ command: "rg fooBar", symbols: ["fooBar"] },
+		{
+			command: "rg calculateSum src/",
+			symbols: ["calculateSum"],
+			root: "src/",
+		},
+		{ command: "git grep -n calculateSum", symbols: ["calculateSum"] },
+		{ command: "grep -rn calculateSum src/**/*.ts", symbols: ["calculateSum"] },
+		// The offending grep is NOT the first search in the command.
+		{
+			command:
+				"grep -oE '^export (function|const) [A-Za-z_]+' src/index.ts | head && grep -rn calculateSum src/",
+			symbols: ["calculateSum"],
+			root: "src/",
+		},
+		// Live agent validation, 2026-07-19: a wildcard --include glob is not a
+		// non-source scope — `*.*` covers TS/JS sources too.
+		{
+			command:
+				'grep -rn "calculateSum" --include="*.*" -l . 2>/dev/null | grep -v -E "node_modules|\\.git/"',
+			symbols: ["calculateSum"],
+		},
+		// Multi-file search via find/xargs wrappers.
+		{
+			command: "find src -name '*.ts' | xargs grep -n useThing",
+			symbols: ["useThing"],
+		},
+		// Alternations answer every hunted symbol at once — the exact shape of
+		// the 2026-07-19 transcript's third grep, made recursive (BRE \|).
+		{
+			command:
+				'grep -rn "standardNode\\|export function cardNode\\|googleClassroomCardNode" shared/src/',
+			symbols: ["standardNode", "cardNode", "googleClassroomCardNode"],
+			root: "shared/src/",
+		},
+		{
+			command: "rg 'runDeleteStandard|renderStringAsData' shared/src/",
+			symbols: ["runDeleteStandard", "renderStringAsData"],
+			root: "shared/src/",
+		},
+		{
+			command: "grep -rnE '(cartTotal|calculateSum)' src/",
+			symbols: ["cartTotal", "calculateSum"],
+			root: "src/",
+		},
+		{
+			command: "grep -rn -e calculateSum -e cartTotal src/",
+			symbols: ["calculateSum", "cartTotal"],
+			root: "src/",
+		},
+		// Decorated identifiers: word boundaries and call-site parens.
+		{
+			command: "rg '\\bcalculateSum\\b' src/",
+			symbols: ["calculateSum"],
+			root: "src/",
+		},
+		{
+			command: "rg 'calculateSum\\(' src/",
+			symbols: ["calculateSum"],
+			root: "src/",
+		},
+		// Fixed-string search for an identifier is still an identifier hunt.
+		{
+			command: "grep -rnF calculateSum src/",
+			symbols: ["calculateSum"],
+			root: "src/",
+		},
+		// ── Mined from real transcripts on this machine, 2026-07-20 ──────────
+		// Declaration + call-site branches of ONE symbol dedupe to it.
+		{
+			command:
+				'git grep -n "export async function resolveRouteDocument\\|export function resolveRouteDocument\\|resolveRouteDocument(" -- packages/marketing/src/lib/routes',
+			symbols: ["resolveRouteDocument"],
+		},
+		// Four-way BRE alternation over two trees, piped through a filter.
+		{
+			command:
+				"grep -rn \"reportMenuOpenChange\\|reportAnchoredMenuOpenChange\\|reportCardMenuOpenChange\\|emitMenuOpened\" shared/src frontend --include='*.ts*' | grep -v instrumented-commands.ts",
+			symbols: [
+				"reportMenuOpenChange",
+				"reportAnchoredMenuOpenChange",
+				"reportCardMenuOpenChange",
+				"emitMenuOpened",
+			],
+			root: "shared/src",
+		},
+		// rg with --type-add (value flag) and multiple -t types.
+		{
+			command:
+				"rg -n \"MarkButton|MarkMenuItem|markInfo|InstrumentedMark\" shared/src --type-add 'tsx:*.tsx' -t ts -t tsx | grep -v instrumented-commands.ts",
+			symbols: ["MarkButton", "MarkMenuItem", "markInfo", "InstrumentedMark"],
+			root: "shared/src",
+		},
+		// Call-site hunt: BRE literal paren.
+		{
+			command:
+				'grep -rn "insertBlockContent(" shared frontend | grep -v "export function\\|util/insert-block"',
+			symbols: ["insertBlockContent"],
+			root: "shared",
+		},
+		// Assignment-site and constructor-site hunts.
+		{
+			command: 'grep -rn "CardColorType =" shared/src --include="*.ts"',
+			symbols: ["CardColorType"],
+			root: "shared/src",
+		},
+		{
+			command: 'grep -rn "new SurfaceArbiter" shared/src frontend',
+			symbols: ["SurfaceArbiter"],
+			root: "shared/src",
 		},
 	];
 
@@ -151,38 +304,206 @@ done < /tmp/exports.txt`;
 		"grep -rn TODO src/",
 		// Non-source directory trees.
 		"grep -rn error logs/",
-		// The escape hatch always wins.
-		`${ALLOW_MARKER} grep -rn calculateSum src/`,
-		`${ALLOW_MARKER} sed -i 's/a/b/' src/x.ts`,
+		// Real transcript, 2026-07-19 (evening): reading context out of explicitly
+		// named files is legitimate even with a reflexive -rn — recursion is inert
+		// when every path is a concrete file. (The agent's inert TS_SURGEON_ALLOW=1
+		// prefixes are kept verbatim; they must not flip an allowed command.)
+		'cd /repo && TS_SURGEON_ALLOW=1 grep -n "ObjectId" shared/src/unified-tiptap/extensions/card-normal/card-normal-extension.ts shared/src/unified-tiptap/extensions/image-node/image-node-extension.ts | head -4; TS_SURGEON_ALLOW=1 grep -rn -A3 "addKeyboardShortcuts" shared/src/unified-tiptap/extensions/card-google-classroom/card-google-classroom-extension.ts shared/src/unified-tiptap/extensions/standard/standard-extension.ts | head',
+		"grep -rn addKeyboardShortcuts a.ts b.ts",
+		'grep -rn -A 6 "id:" shared/src/unified-tiptap/extensions/card-normal/card-normal-extension.ts | head -22',
+		// Syntax matters: a plain | is a literal pipe in BRE and in fixed
+		// strings — these hunt the literal text "a|b", not two identifiers.
+		'grep -rn "a|b" src/',
+		"grep -rnF 'foo|bar' src/",
+		// Inverted searches hunt the ABSENCE of the pattern.
+		"grep -rv calculateSum src/",
+		"grep -rL calculateSum src/",
+		// True regexes are not identifier lookups.
+		"rg 'foo.+bar' src/",
+		"grep -rnE 'export (function|const) [A-Za-z_]+' src/",
+		// ── Mined from real transcripts on this machine, 2026-07-20 ──────────
+		// Reserved-word structure sweeps, and git grep over explicit pathspec
+		// files (context reading, like grep -rn over named files).
+		'git grep -n "^export" -- packages/test-sanity/src/fake-sanity-client.ts packages/test-sanity/src/seeded-test-client.ts 2>&1',
+		'git grep -n "^import" -- packages/marketing/src/lib/sanity-queries.ts packages/marketing/src/lib/route-queries.ts | head -20',
+		'grep -rn "^import" src/',
+		// Library spelunking: node_modules anywhere in the path is not project
+		// source — the agent is reading vendored code, not hunting references.
+		'grep -rn "dragstart" node_modules/@tiptap/core/src --include="*.ts"',
+		'grep -rln "hasDragButton" node_modules/.pnpm/react-aria@3.48.0/node_modules/react-aria/dist/',
+		'grep -rn "handleDOMEvents" /Users/dev/app/shared/node_modules/@tiptap/core/src --include="*.ts" -l',
+		// Quoted string-literal hunts are text searches, not identifier lookups.
+		"grep -rn '\"keyboard\"\\|\"markdown\"\\|\"input-rule\"' shared/src --include='*.ts' --include='*.tsx' | grep -v registry.ts",
+		// A runtime-computed search root cannot be scoped — this one resolves
+		// into node_modules (library spelunking via $(...)).
+		'grep -rn "cancelDrag" $(grep -rln "dragIntercepted" node_modules/playwright-core/lib/ 2>/dev/null | head -1) | head -5',
 		// Everyday non-search commands.
 		"ls -la",
 		"git status && git diff",
 		"pnpm test",
 	];
 
-	it("blocks every must-block corpus command", () => {
+	it("hard-blocks every must-block corpus command", () => {
 		for (const { command, expectInReason } of MUST_BLOCK) {
 			const verdict = evaluateBashCommand(command);
-			expect(verdict.block, command).toBe(true);
+			expect(verdict.kind, command).toBe("block");
+			if (verdict.kind !== "block") continue;
 			expect(verdict.reason, command).toContain("ts-surgeon");
 			expect(verdict.reason, command).toContain(expectInReason);
-			expect(verdict.reason, command).toContain(ALLOW_MARKER);
+			// No block message may teach the agent a typeable bypass (that is how
+			// the prefix got cargo-culted in the first place).
+			expect(verdict.reason, command).not.toMatch(
+				/re-run|prefixed with|prefix a command/,
+			);
+		}
+	});
+
+	it("classifies every identifier hunt as answerable, with every hunted symbol", () => {
+		for (const { command, symbols, root } of MUST_ANSWER) {
+			const verdict = evaluateBashCommand(command);
+			expect(verdict.kind, command).toBe("answer-search");
+			if (verdict.kind !== "answer-search") continue;
+			expect(verdict.symbolNames, command).toEqual(symbols);
+			if (root !== undefined) {
+				expect(verdict.searchRoot, command).toBe(root);
+			}
 		}
 	});
 
 	it("allows every must-allow corpus command", () => {
 		for (const command of MUST_ALLOW) {
-			expect(evaluateBashCommand(command).block, command).toBe(false);
+			expect(evaluateBashCommand(command).kind, command).toBe("allow");
+		}
+	});
+});
+
+// formatSearchAnswer / mapBatchResults are covered in src/cli/guard/answer.test.ts.
+
+describe("buildSearchTeaching", () => {
+	it("gives the exact find_references command for an identifier hunt", () => {
+		const line = buildSearchTeaching("Bash", {
+			command: "grep -rn calculateSum src/",
+		});
+		expect(line).toContain("next time");
+		expect(line).toContain(
+			"npx -y @commoncurriculum/ts-surgeon call find_references --symbol-name calculateSum",
+		);
+	});
+
+	it("lists every symbol of a multi-symbol hunt", () => {
+		const line = buildSearchTeaching("Bash", {
+			command: "rg 'calculateSum|cartTotal' src/",
+		});
+		expect(line).toContain("--symbol-name calculateSum");
+		expect(line).toContain("cartTotal");
+	});
+
+	it("falls back to a generic pointer when no exact translation exists", () => {
+		const line = buildSearchTeaching("Bash", {
+			command: "rg 'foo.*bar' src/",
+		});
+		expect(line).toContain("ts-surgeon");
+		expect(line).toContain("search_pattern");
+		expect(line).not.toContain("--symbol-name");
+	});
+
+	it("says nothing for searches ts-surgeon has no business in", () => {
+		for (const command of [
+			"grep -rn error logs/",
+			"ps aux | grep node",
+			"grep -n pattern one-file.ts",
+			"grep -rn addKeyboardShortcuts a.ts b.ts",
+			"ls -la",
+		]) {
+			expect(buildSearchTeaching("Bash", { command }), command).toBeUndefined();
+		}
+	});
+
+	it("covers the native Grep tool, exact and generic", () => {
+		expect(
+			buildSearchTeaching("Grep", { pattern: "calculateSum", path: "src" }),
+		).toContain("--symbol-name calculateSum");
+		expect(
+			buildSearchTeaching("Grep", { pattern: "foo.*bar", path: "src" }),
+		).toContain("search_pattern");
+		expect(
+			buildSearchTeaching("Grep", { pattern: "calculateSum", path: "docs" }),
+		).toBeUndefined();
+	});
+
+	it("never teaches a typeable bypass", () => {
+		const line = buildSearchTeaching("Bash", {
+			command: "grep -rn calculateSum src/",
+		});
+		expect(line).not.toMatch(/re-run|prefixed with|prefix a command/);
+	});
+});
+
+describe("hook --post (runCli)", () => {
+	function postPayload(toolName: string, input: Record<string, unknown>) {
+		return JSON.stringify({ tool_name: toolName, tool_input: input });
+	}
+
+	it("emits additionalContext with the exact ts-surgeon equivalent", async () => {
+		const out = createCapture();
+		const code = await runCli(["hook", "--post"], out, createCapture(), {
+			readStdin: () =>
+				postPayload("Bash", { command: "grep -rn calculateSum src/" }),
+		});
+		expect(code).toBe(0);
+		const parsed = JSON.parse(out.text);
+		expect(parsed.hookSpecificOutput.hookEventName).toBe("PostToolUse");
+		expect(parsed.hookSpecificOutput.additionalContext).toContain(
+			"call find_references --symbol-name calculateSum",
+		);
+	});
+
+	it("stays silent for commands with nothing to teach, garbage, and the operator hatch", async () => {
+		for (const stdin of [
+			postPayload("Bash", { command: "ls -la" }),
+			postPayload("Bash", { command: "grep -rn error logs/" }),
+			"{not json",
+		]) {
+			const out = createCapture();
+			const code = await runCli(["hook", "--post"], out, createCapture(), {
+				readStdin: () => stdin,
+			});
+			expect(code, stdin).toBe(0);
+			expect(out.text, stdin).toBe("");
+		}
+		try {
+			vi.stubEnv("TS_SURGEON_ALLOW", "1");
+			const out = createCapture();
+			await runCli(["hook", "--post"], out, createCapture(), {
+				readStdin: () =>
+					postPayload("Bash", { command: "grep -rn calculateSum src/" }),
+			});
+			expect(out.text).toBe("");
+		} finally {
+			vi.unstubAllEnvs();
 		}
 	});
 });
 
 describe("hook command (runCli)", () => {
-	function payload(toolName: string, command?: string): string {
+	function payload(toolName: string, command?: string, cwd?: string): string {
 		return JSON.stringify({
 			tool_name: toolName,
 			tool_input: command === undefined ? {} : { command },
+			...(cwd === undefined ? {} : { cwd }),
 		});
+	}
+
+	/** Fake answerer: records requests, returns a canned answer (or refuses). */
+	function fakeAnswerer(ok: boolean) {
+		const calls: SearchAnswerRequest[] = [];
+		const answerSearch: SearchAnswerer = (req) => {
+			calls.push(req);
+			return ok
+				? { ok: true, text: `ANSWERED ${req.symbolNames.join(", ")}` }
+				: { ok: false };
+		};
+		return { calls, answerSearch };
 	}
 
 	it("exits 2 with guidance when a Bash refactor-by-sed arrives", async () => {
@@ -192,7 +513,7 @@ describe("hook command (runCli)", () => {
 		});
 		expect(code).toBe(2);
 		expect(err.text).toContain("ts-surgeon");
-		expect(err.text).toContain(ALLOW_MARKER);
+		expect(err.text).not.toMatch(/re-run|prefixed with/);
 	});
 
 	it("exits 0 for non-Bash tools, harmless commands, and garbage payloads", async () => {
@@ -209,14 +530,73 @@ describe("hook command (runCli)", () => {
 		}
 	});
 
-	it("exits 2 with guidance when a Bash recursive identifier search arrives", async () => {
+	it("answers a recursive identifier search with find_references output", async () => {
+		const { calls, answerSearch } = fakeAnswerer(true);
+		const err = createCapture();
+		const code = await runCli(["hook"], createCapture(), err, {
+			readStdin: () => payload("Bash", "grep -rn calculateSum src/", "/repo"),
+			answerSearch,
+		});
+		expect(code).toBe(2);
+		expect(err.text).toContain("ANSWERED calculateSum");
+		expect(calls).toEqual([
+			{ symbolNames: ["calculateSum"], searchRoot: "src/", cwd: "/repo" },
+		]);
+	});
+
+	it("fails open (allows the grep) when the search cannot be answered", async () => {
+		const { calls, answerSearch } = fakeAnswerer(false);
 		const err = createCapture();
 		const code = await runCli(["hook"], createCapture(), err, {
 			readStdin: () => payload("Bash", "grep -rn calculateSum src/"),
+			answerSearch,
+		});
+		expect(code).toBe(0);
+		expect(err.text).toBe("");
+		expect(calls).toHaveLength(1);
+	});
+
+	it("prefixes the answer with the inert-prefix note when the agent cargo-cults TS_SURGEON_ALLOW", async () => {
+		const { answerSearch } = fakeAnswerer(true);
+		const err = createCapture();
+		const code = await runCli(["hook"], createCapture(), err, {
+			readStdin: () =>
+				payload("Bash", `${ALLOW_MARKER} grep -rn calculateSum src/`),
+			answerSearch,
 		});
 		expect(code).toBe(2);
-		expect(err.text).toContain("find_references");
-		expect(err.text).toContain(ALLOW_MARKER);
+		expect(err.text).toContain("operator-only");
+		expect(err.text).toContain("ANSWERED calculateSum");
+	});
+
+	it("honors TS_SURGEON_ALLOW=1 only from the hook's own environment", async () => {
+		const search = payload("Bash", "grep -rn calculateSum src/");
+		try {
+			vi.stubEnv("TS_SURGEON_ALLOW", "1");
+			const { calls, answerSearch } = fakeAnswerer(true);
+			const code = await runCli(["hook"], createCapture(), createCapture(), {
+				readStdin: () => search,
+				answerSearch,
+			});
+			expect(code).toBe(0);
+			expect(calls).toHaveLength(0);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+		// Any other value (or unset) does not bypass.
+		try {
+			vi.stubEnv("TS_SURGEON_ALLOW", "0");
+			const { answerSearch } = fakeAnswerer(true);
+			const err = createCapture();
+			const code = await runCli(["hook"], createCapture(), err, {
+				readStdin: () => search,
+				answerSearch,
+			});
+			expect(code).toBe(2);
+			expect(err.text).toContain("ANSWERED calculateSum");
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it("accepts --strict as a deprecated no-op", async () => {
@@ -231,17 +611,36 @@ describe("hook command (runCli)", () => {
 		expect(code).toBe(0);
 	});
 
-	function grepPayload(input: Record<string, unknown>): string {
-		return JSON.stringify({ tool_name: "Grep", tool_input: input });
+	function grepPayload(input: Record<string, unknown>, cwd?: string): string {
+		return JSON.stringify({
+			tool_name: "Grep",
+			tool_input: input,
+			...(cwd === undefined ? {} : { cwd }),
+		});
 	}
 
-	it("redirects the harness's native Grep tool for identifier lookups over sources", async () => {
+	it("answers the harness's native Grep tool for identifier lookups over sources", async () => {
+		const { calls, answerSearch } = fakeAnswerer(true);
 		const err = createCapture();
 		const code = await runCli(["hook"], createCapture(), err, {
-			readStdin: () => grepPayload({ pattern: "calculateSum", path: "src" }),
+			readStdin: () =>
+				grepPayload({ pattern: "calculateSum", path: "src" }, "/repo"),
+			answerSearch,
 		});
 		expect(code).toBe(2);
-		expect(err.text).toContain("find_references");
+		expect(err.text).toContain("ANSWERED calculateSum");
+		expect(calls).toEqual([
+			{ symbolNames: ["calculateSum"], searchRoot: "src", cwd: "/repo" },
+		]);
+	});
+
+	it("fails open on native Grep when the search cannot be answered", async () => {
+		const { answerSearch } = fakeAnswerer(false);
+		const code = await runCli(["hook"], createCapture(), createCapture(), {
+			readStdin: () => grepPayload({ pattern: "calculateSum", path: "src" }),
+			answerSearch,
+		});
+		expect(code).toBe(0);
 	});
 
 	it("allows native Grep for regexes and non-source scopes", async () => {
@@ -252,10 +651,13 @@ describe("hook command (runCli)", () => {
 			{ pattern: "calculateSum", type: "md" },
 			{ pattern: "TODO" },
 		]) {
+			const { calls, answerSearch } = fakeAnswerer(true);
 			const code = await runCli(["hook"], createCapture(), createCapture(), {
 				readStdin: () => grepPayload(input),
+				answerSearch,
 			});
 			expect(code, JSON.stringify(input)).toBe(0);
+			expect(calls, JSON.stringify(input)).toHaveLength(0);
 		}
 	});
 
@@ -268,19 +670,21 @@ describe("hook command (runCli)", () => {
 		expect(err.text).toContain("Unknown option for hook");
 	});
 
-	it("blocks searches regardless of TS_SURGEON_STRICT (split retired)", async () => {
+	it("answers searches regardless of TS_SURGEON_STRICT (split retired)", async () => {
 		const search = payload("Bash", "grep -rn calculateSum src/");
 		for (const stub of [undefined, "0", "1"]) {
 			if (stub !== undefined) {
 				vi.stubEnv("TS_SURGEON_STRICT", stub);
 			}
 			try {
+				const { answerSearch } = fakeAnswerer(true);
 				const err = createCapture();
 				const code = await runCli(["hook"], createCapture(), err, {
 					readStdin: () => search,
+					answerSearch,
 				});
 				expect(code, `TS_SURGEON_STRICT=${stub}`).toBe(2);
-				expect(err.text).toContain("find_references");
+				expect(err.text).toContain("ANSWERED calculateSum");
 			} finally {
 				vi.unstubAllEnvs();
 			}
@@ -299,7 +703,7 @@ describe("installClaudeHook", () => {
 		fs.rmSync(tempDir, { recursive: true, force: true });
 	});
 
-	it("creates .claude/settings.json with the PreToolUse guard", () => {
+	it("creates .claude/settings.json with the guard and the teaching hook", () => {
 		const out = createCapture();
 		installClaudeHook(tempDir, out);
 		const settings = JSON.parse(
@@ -308,7 +712,11 @@ describe("installClaudeHook", () => {
 		const entry = settings.hooks.PreToolUse[0];
 		expect(entry.matcher).toBe("Bash|Grep");
 		expect(entry.hooks[0].command).toContain("ts-surgeon hook");
+		const post = settings.hooks.PostToolUse[0];
+		expect(post.matcher).toBe("Bash|Grep");
+		expect(post.hooks[0].command).toContain("hook --post");
 		expect(out.text).toContain("Installed");
+		expect(out.text).toContain("teaching hook");
 	});
 
 	it("registers the opencode plugin in opencode.json and is idempotent", () => {
@@ -423,7 +831,13 @@ describe("installClaudeHook", () => {
 
 		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
 		expect(settings.env.FOO).toBe("bar");
-		expect(settings.hooks.PostToolUse).toHaveLength(1);
+		// The pre-existing Edit-lint entry survives; the teaching hook is added
+		// alongside it exactly once.
+		expect(settings.hooks.PostToolUse).toHaveLength(2);
+		expect(settings.hooks.PostToolUse[0].matcher).toBe("Edit");
+		expect(settings.hooks.PostToolUse[1].hooks[0].command).toContain(
+			"hook --post",
+		);
 		expect(settings.hooks.PreToolUse).toHaveLength(1);
 	});
 });

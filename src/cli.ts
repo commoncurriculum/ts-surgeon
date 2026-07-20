@@ -7,7 +7,13 @@ import {
 	readStdinDefault,
 	type StdinReader,
 } from "./cli/params";
-import { installClaudeHook, installOpencodeHook, runHook } from "./cli/hook";
+import {
+	installClaudeHook,
+	installOpencodeHook,
+	runHook,
+	runPostHook,
+	type SearchAnswerer,
+} from "./cli/hook";
 import {
 	findNearestTsconfig,
 	prepareParams,
@@ -350,7 +356,12 @@ export async function runCli(
 	argv: string[],
 	out: Writer = process.stdout,
 	err: Writer = process.stderr,
-	opts: { readStdin?: StdinReader; cwd?: string } = {},
+	opts: {
+		readStdin?: StdinReader;
+		cwd?: string;
+		/** Test seam for `hook`: overrides how identifier searches are answered. */
+		answerSearch?: SearchAnswerer;
+	} = {},
 ): Promise<number> {
 	const [command, ...rawRest] = argv;
 	// --json is a global output-mode flag, valid in any position of any command.
@@ -381,7 +392,11 @@ export async function runCli(
 			case "init":
 				return runInit(rest, out);
 			case "hook":
-				return runHook(rest, readStdin, err);
+				if (rest.includes("--post")) {
+					return runPostHook(readStdin, out);
+				}
+				// An undefined answerSearch falls through to runHook's default.
+				return runHook(rest, readStdin, err, opts.answerSearch);
 			case "list":
 			case "list-tools": {
 				const registry = createToolRegistry();

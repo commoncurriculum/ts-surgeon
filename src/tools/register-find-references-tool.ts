@@ -19,6 +19,7 @@ export function registerFindReferencesTool(registry: ToolRegistry): void {
 
 ## Critical constraints
 - Target the symbol either with \`position\` (1-based line/column landing on the identifier itself) or with \`symbolName\` (the declaration name, when it is unambiguous in the file). Pass at least one.
+- \`targetFilePath\` is optional: \`symbolName\` alone looks the declaration up project-wide (it must be unambiguous across the project; the error lists every candidate otherwise). You do NOT need to know which file declares a symbol to use this tool.
 - All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
 
 ## Result
@@ -29,7 +30,10 @@ Returns the definition (file path, line, column, source line) when found, follow
 				.describe("Absolute path to the project's tsconfig.json file."),
 			targetFilePath: z
 				.string()
-				.describe("Absolute path to the file containing the symbol."),
+				.optional()
+				.describe(
+					"Absolute path to the file containing the symbol. Optional: omit it to resolve symbolName project-wide.",
+				),
 			position: z
 				.object({
 					line: z.number().describe("1-based line number."),
