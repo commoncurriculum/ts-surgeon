@@ -12,8 +12,9 @@ import { beforeAll, describe, expect, it } from "vitest";
  * `.claude/settings.json` that wires this checkout's built hook into every
  * Bash/Grep call, then drives `claude -p` headlessly with a task that tempts
  * text search. From the stream-json transcript we assert:
- *   a. at least one search/edit attempt was blocked by the hook, AND
- *   b. the agent subsequently invoked ts-surgeon, AND
+ *   a. at least one search/edit attempt was intercepted by the hook, AND
+ *   b. ts-surgeon produced the data the agent used — the hook answered the
+ *      search with find_references output, or the agent invoked the CLI — AND
  *   c. the task still completed correctly (a hook that blocks but strands the
  *      agent is a failure).
  * Agents are stochastic, so each scenario runs N times and asserts a rate
@@ -35,8 +36,13 @@ const RUN_TIMEOUT_MS = 600_000;
 const repoRoot = path.resolve(__dirname, "..");
 const distCli = path.join(repoRoot, "dist", "index.js");
 
-/** Unique to the hook's block messages — never in a successful tool call. */
-const BLOCK_MARKER = "file-that-declares-it";
+/**
+ * Unique to the hook's messages — never in a successful tool call. The
+ * answer marker means the hook ran find_references on the agent's behalf;
+ * the hard-block marker appears on sed/perl and dynamic-loop blocks.
+ */
+const ANSWER_MARKER = "ran find_references for you";
+const HARD_BLOCK_MARKER = "no in-session bypass";
 
 const FILLER_MODULES = [
 	"inventory",
@@ -251,11 +257,15 @@ function runAgent(cwd: string, prompt: string): AgentRunResult {
 			}
 		}
 	}
-	// The block messages are unique: the placeholder never appears in a real
-	// (successful) invocation, so its presence in the transcript means the hook
-	// denied at least one tool call.
-	if (raw.includes(BLOCK_MARKER)) {
+	// The hook's messages are unique: these markers never appear in a real
+	// (successful) invocation, so their presence in the transcript means the
+	// hook intercepted at least one tool call. A hook-produced answer counts
+	// as ts-surgeon usage — the agent consumed find_references output.
+	if (raw.includes(ANSWER_MARKER) || raw.includes(HARD_BLOCK_MARKER)) {
 		blocked = true;
+	}
+	if (raw.includes(ANSWER_MARKER)) {
+		usedTsSurgeon = true;
 	}
 	return { blocked, usedTsSurgeon, resultText, raw };
 }

@@ -1,6 +1,9 @@
-import type { Node, SourceFile } from "ts-morph";
+import type { Identifier, Node, SourceFile } from "ts-morph";
 import { initializeProject } from "./_utils/ts-morph-project";
-import { resolveTargetIdentifier } from "./_utils/resolve-identifier";
+import {
+	resolveProjectWideDeclaration,
+	resolveTargetIdentifier,
+} from "./_utils/resolve-identifier";
 
 // --- Data Structure for Result ---
 
@@ -15,7 +18,8 @@ export interface ReferenceLocation {
 
 /**
  * Searches the entire project for all references to a symbol, targeted either
- * by position or by (unambiguous) declaration name.
+ * by position, by (unambiguous) declaration name within a file, or — when no
+ * targetFilePath is given — by an unambiguous declaration name project-wide.
  */
 export async function findSymbolReferences({
 	tsconfigPath,
@@ -24,7 +28,7 @@ export async function findSymbolReferences({
 	symbolName,
 }: {
 	tsconfigPath: string;
-	targetFilePath: string;
+	targetFilePath?: string;
 	position?: { line: number; column: number };
 	symbolName?: string;
 }): Promise<{
@@ -33,11 +37,21 @@ export async function findSymbolReferences({
 }> {
 	const project = initializeProject(tsconfigPath);
 
-	// targetFilePath is expected to be an absolute path
-	const identifierNode = resolveTargetIdentifier(project, targetFilePath, {
-		position,
-		symbolName,
-	});
+	// targetFilePath (when given) is expected to be an absolute path
+	let identifierNode: Identifier;
+	if (targetFilePath !== undefined) {
+		identifierNode = resolveTargetIdentifier(project, targetFilePath, {
+			position,
+			symbolName,
+		});
+	} else {
+		if (symbolName === undefined) {
+			throw new Error(
+				"Pass targetFilePath (with position or symbolName), or symbolName alone for a project-wide lookup.",
+			);
+		}
+		identifierNode = resolveProjectWideDeclaration(project, symbolName);
+	}
 
 	// findReferencesAsNodes() may not include the definition site itself
 	const referenceNodes: Node[] = identifierNode.findReferencesAsNodes();

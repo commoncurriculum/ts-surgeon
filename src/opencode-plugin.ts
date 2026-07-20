@@ -1,4 +1,10 @@
-import { evaluateBashCommand, isOperatorAllowed } from "./cli/hook";
+import {
+	answerSearchViaCli,
+	evaluateBashCommand,
+	INERT_PREFIX_NOTE,
+	isOperatorAllowed,
+	type SearchAnswerer,
+} from "./cli/hook";
 
 /**
  * opencode plugin entry: the package's `main`/`exports` point here so that
@@ -11,21 +17,40 @@ import { evaluateBashCommand, isOperatorAllowed } from "./cli/hook";
  * package dependency-free for CLI users; the shapes below mirror that
  * package's `tool.execute.before` hook contract (throwing blocks the call).
  */
-export const TsSurgeonGuard = async () => ({
-	"tool.execute.before": async (
-		input: { tool: string },
-		output: { args?: Record<string, unknown> },
-	): Promise<void> => {
-		if (input.tool !== "bash") {
-			return;
-		}
-		const command = output.args?.command;
-		if (typeof command !== "string" || isOperatorAllowed()) {
-			return;
-		}
-		const verdict = evaluateBashCommand(command);
-		if (verdict.block) {
-			throw new Error(verdict.reason);
-		}
-	},
-});
+export const createTsSurgeonGuard =
+	(answerSearch: SearchAnswerer) => async () => ({
+		"tool.execute.before": async (
+			input: { tool: string },
+			output: { args?: Record<string, unknown> },
+		): Promise<void> => {
+			if (input.tool !== "bash") {
+				return;
+			}
+			const command = output.args?.command;
+			if (typeof command !== "string" || isOperatorAllowed()) {
+				return;
+			}
+			const verdict = evaluateBashCommand(command);
+			if (verdict.kind === "block") {
+				throw new Error(verdict.reason);
+			}
+			if (verdict.kind === "answer-search") {
+				const answer = answerSearch({
+					symbolName: verdict.symbolName,
+					searchRoot: verdict.searchRoot,
+					cwd: process.cwd(),
+				});
+				if (answer.ok) {
+					// Throwing blocks the call; the answer text is the block message.
+					throw new Error(
+						command.includes("TS_SURGEON_ALLOW")
+							? `${INERT_PREFIX_NOTE}\n${answer.text}`
+							: answer.text,
+					);
+				}
+				// Fail open: the search could not be answered, so let it run.
+			}
+		},
+	});
+
+export const TsSurgeonGuard = createTsSurgeonGuard(answerSearchViaCli);

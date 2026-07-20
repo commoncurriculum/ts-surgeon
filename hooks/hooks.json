@@ -6,7 +6,8 @@
 				"hooks": [
 					{
 						"type": "command",
-						"command": "npx -y @commoncurriculum/ts-surgeon hook"
+						"command": "npx -y @commoncurriculum/ts-surgeon hook",
+						"timeout": 120
 					}
 				]
 			}
