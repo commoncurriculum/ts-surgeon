@@ -27,6 +27,16 @@ const NO_BYPASS_FOOTER =
  */
 export const INERT_PREFIX_NOTE = `ts-surgeon: the ${ALLOW_MARKER} command prefix is ignored — the escape hatch is operator-only, read from the hook's own environment, which your commands cannot set.`;
 
+/**
+ * A cargo-culted TS_SURGEON_ALLOW=1 prefix gets an explicit "that does
+ * nothing" preface so the agent stops reaching for it.
+ */
+export function withInertPrefixNote(command: string, text: string): string {
+	return command.includes("TS_SURGEON_ALLOW")
+		? `${INERT_PREFIX_NOTE}\n${text}`
+		: text;
+}
+
 export const EDIT_BLOCK_MESSAGE = `ts-surgeon: this command hand-edits TypeScript/JavaScript sources with text replacement (sed/perl -i).
 Text replacement misses imports, re-exports, and same-name collisions. Use the AST-accurate CLI instead:
   npx -y @commoncurriculum/ts-surgeon guide     # when to use which tool

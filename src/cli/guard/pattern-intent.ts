@@ -30,8 +30,11 @@ const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const DECLARATION_PATTERN_RE =
 	/^(export +)?(async +)?(function|const|let|var|class|interface|type|enum) +[A-Za-z_$][A-Za-z0-9_$]*$/;
 
-/** `$name` / `${name}` / `$(cmd)` anywhere in the pattern → runtime-dynamic. */
-const DYNAMIC_PATTERN_RE = /\$[A-Za-z_{(]/;
+/**
+ * `$name` / `${name}` / `$(cmd)` — a shell expansion, so the text is
+ * runtime-computed. Applies to patterns here and to search roots in policy.
+ */
+export const SHELL_EXPANSION_RE = /\$[A-Za-z_{(]/;
 
 /** Bare words that look like identifiers but are comment markers, not code. */
 const COMMENT_MARKER_WORDS = new Set([
@@ -327,7 +330,7 @@ export function analyzePatterns(
 	patterns: string[],
 	syntax: PatternSyntax,
 ): PatternIntent {
-	if (patterns.some((p) => DYNAMIC_PATTERN_RE.test(p))) {
+	if (patterns.some((p) => SHELL_EXPANSION_RE.test(p))) {
 		return { kind: "dynamic" };
 	}
 	// grep treats embedded newlines as additional patterns.

@@ -1,23 +1,18 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import * as path from "node:path";
 import { answerSearchViaCli, type SearchAnswerer } from "./guard/answer";
 import { isInPlaceSourceEdit } from "./guard/edits";
 import {
-	ALLOW_MARKER,
 	DYNAMIC_SEARCH_BLOCK_MESSAGE,
 	EDIT_BLOCK_MESSAGE,
-	INERT_PREFIX_NOTE,
 	isOperatorAllowed,
+	withInertPrefixNote,
 } from "./guard/messages";
-import { analyzePatterns } from "./guard/pattern-intent";
+import { analyzePatterns, SHELL_EXPANSION_RE } from "./guard/pattern-intent";
+import { isExplicitFile, resolveSearchScope } from "./guard/scope";
 import {
-	isExplicitFile,
-	isNonSourcePath,
-	resolveSearchScope,
-	RG_SOURCE_TYPES,
-	SOURCE_EXT_RE,
-} from "./guard/scope";
-import { parseSearchInvocation } from "./guard/search-invocation";
+	invocationFromGrepTool,
+	parseSearchInvocation,
+	type SearchInvocation,
+} from "./guard/search-invocation";
 import { splitSimpleCommands } from "./guard/shell";
 import { CliUsageError, type StdinReader } from "./params";
 
@@ -44,6 +39,9 @@ import { CliUsageError, type StdinReader } from "./params";
  *   so a legitimate grep is never stranded.
  * - Everything else — including anything the hook cannot parse — is allowed
  *   (exit 0): the guard must never break the harness.
+ *
+ * A companion `ts-surgeon hook --post` (PostToolUse) teaches the exact
+ * ts-surgeon equivalent after a search actually ran.
  */
 
 export {
@@ -60,6 +58,7 @@ export {
 	type SearchAnswerer,
 	type SearchAnswerRequest,
 } from "./guard/answer";
+export { installClaudeHook, installOpencodeHook } from "./guard/install";
 
 export type HookEvaluation =
 	| { kind: "allow" }
@@ -72,67 +71,84 @@ type SignificantSearch =
 	| { kind: "opaque-source" };
 
 /**
- * Finds the first search in a Bash command the guard has an opinion about:
- * every grep/rg/git grep is inspected (including inside loops and command
- * substitutions); non-recursive greps, explicit-file reads, non-source
- * scopes, dynamic roots, and inverted matches are skipped.
+ * The shared policy core: what does ONE search invocation mean? Skips (→
+ * undefined) everything the guard has no opinion about — non-recursive
+ * greps, explicit-file reads, non-source scopes, runtime-computed roots,
+ * inverted matches — then classifies the pattern intent.
+ */
+function classifySearch(inv: SearchInvocation): SignificantSearch | undefined {
+	if (inv.patterns.length === 0) {
+		return undefined;
+	}
+	// Non-recursive greps read stdin or named files — always fine. So are
+	// recursive tools pointed at explicitly named files (agents reflexively
+	// add -rn even when reading context out of two known files, and run
+	// `git grep -- a.ts b.ts`; observed 2026-07-19/20) — but not globs like
+	// src/**/*.ts, which are project-wide.
+	const explicitFilesOnly =
+		inv.paths.length > 0 && inv.paths.every(isExplicitFile);
+	const multiFile =
+		inv.viaWrapper ||
+		((inv.recursiveFlag || inv.tool === "rg" || inv.tool === "git-grep") &&
+			!explicitFilesOnly);
+	if (!multiFile) {
+		return undefined;
+	}
+	const scope = resolveSearchScope(inv);
+	if (scope === "non-source") {
+		return undefined;
+	}
+	if (inv.paths.some((p) => SHELL_EXPANSION_RE.test(p))) {
+		// A runtime-computed search root (`grep name $(...)`, `grep name $DIR`)
+		// cannot be scoped — answering from the wrong project would be worse
+		// than letting the search run (mined 2026-07-20: a $() root that
+		// resolved into node_modules).
+		return undefined;
+	}
+	if (inv.invert) {
+		// -v/-L hunt the ABSENCE of the pattern — not a reference lookup.
+		return undefined;
+	}
+	const intent = analyzePatterns(inv.patterns, inv.syntax);
+	if (intent.kind === "dynamic") {
+		// A runtime-computed pattern (loop variable, substitution) is the
+		// canonical evasion — but only when the search demonstrably targets
+		// sources; a dynamic grep over unknown paths is too common to block.
+		return scope === "source"
+			? { kind: "dynamic-source" }
+			: { kind: "opaque-source" };
+	}
+	if (intent.kind === "identifiers") {
+		return {
+			kind: "identifiers",
+			symbolNames: intent.symbols,
+			searchRoot: inv.paths[0],
+		};
+	}
+	// opaque: free text, true regexes, markers — nothing to answer, but worth
+	// a generic pointer after the search runs.
+	return { kind: "opaque-source" };
+}
+
+/**
+ * Finds the first search in a Bash command the guard has an opinion about;
+ * every grep/rg/git grep is inspected, including inside loops and command
+ * substitutions.
  */
 function findSignificantSearch(command: string): SignificantSearch | undefined {
 	let sawOpaqueSourceSearch = false;
 	for (const tokens of splitSimpleCommands(command)) {
 		const inv = parseSearchInvocation(tokens);
-		if (inv === undefined || inv.patterns.length === 0) {
+		if (inv === undefined) {
 			continue;
 		}
-		// Non-recursive greps read stdin or named files — always fine. So are
-		// recursive tools pointed at explicitly named files (agents reflexively
-		// add -rn even when reading context out of two known files, and run
-		// `git grep -- a.ts b.ts`; observed 2026-07-19/20) — but not globs like
-		// src/**/*.ts, which are project-wide.
-		const explicitFilesOnly =
-			inv.paths.length > 0 && inv.paths.every(isExplicitFile);
-		const multiFile =
-			inv.viaWrapper ||
-			((inv.recursiveFlag || inv.tool === "rg" || inv.tool === "git-grep") &&
-				!explicitFilesOnly);
-		if (!multiFile) {
+		const found = classifySearch(inv);
+		if (found === undefined) {
 			continue;
 		}
-		const scope = resolveSearchScope(inv);
-		if (scope === "non-source") {
-			continue;
+		if (found.kind !== "opaque-source") {
+			return found;
 		}
-		if (inv.paths.some((p) => /\$[A-Za-z_{(]/.test(p))) {
-			// A runtime-computed search root (`grep name $(...)`, `grep name
-			// $DIR`) cannot be scoped — answering from the wrong project would be
-			// worse than letting the search run (mined 2026-07-20: a $() root
-			// that resolved into node_modules).
-			continue;
-		}
-		if (inv.invert) {
-			// -v/-L hunt the ABSENCE of the pattern — not a reference lookup.
-			continue;
-		}
-		const intent = analyzePatterns(inv.patterns, inv.syntax);
-		if (intent.kind === "dynamic") {
-			// A runtime-computed pattern (loop variable, substitution) is the
-			// canonical evasion — but only when the search demonstrably targets
-			// sources; a dynamic grep over unknown paths is too common to block.
-			if (scope === "source") {
-				return { kind: "dynamic-source" };
-			}
-			sawOpaqueSourceSearch = true;
-			continue;
-		}
-		if (intent.kind === "identifiers") {
-			return {
-				kind: "identifiers",
-				symbolNames: intent.symbols,
-				searchRoot: inv.paths[0],
-			};
-		}
-		// opaque: free text, true regexes, markers — nothing to answer, but
-		// worth a generic pointer after the search runs.
 		sawOpaqueSourceSearch = true;
 	}
 	return sawOpaqueSourceSearch ? { kind: "opaque-source" } : undefined;
@@ -146,20 +162,18 @@ function findSignificantSearch(command: string): SignificantSearch | undefined {
  * TS_SURGEON_STRICT env) is retired.
  */
 export function evaluateBashCommand(command: string): HookEvaluation {
-	const block = (reason: string): HookEvaluation => ({
-		kind: "block",
-		// A cargo-culted TS_SURGEON_ALLOW=1 prefix gets an explicit "that does
-		// nothing" preface so the agent stops reaching for it.
-		reason: command.includes("TS_SURGEON_ALLOW")
-			? `${INERT_PREFIX_NOTE}\n${reason}`
-			: reason,
-	});
 	if (isInPlaceSourceEdit(command)) {
-		return block(EDIT_BLOCK_MESSAGE);
+		return {
+			kind: "block",
+			reason: withInertPrefixNote(command, EDIT_BLOCK_MESSAGE),
+		};
 	}
 	const found = findSignificantSearch(command);
 	if (found?.kind === "dynamic-source") {
-		return block(DYNAMIC_SEARCH_BLOCK_MESSAGE);
+		return {
+			kind: "block",
+			reason: withInertPrefixNote(command, DYNAMIC_SEARCH_BLOCK_MESSAGE),
+		};
 	}
 	if (found?.kind === "identifiers") {
 		return {
@@ -172,9 +186,11 @@ export function evaluateBashCommand(command: string): HookEvaluation {
 }
 
 /**
- * Same policy for a harness's native Grep tool (always recursive; ripgrep
- * regex syntax): identifier lookups over sources are answered; everything
- * else — non-source scopes, single files, real regexes — is allowed.
+ * Same policy for a harness's native Grep tool: the call is modeled as an rg
+ * invocation and flows through the shared classifier. Identifier lookups
+ * over sources are answered; everything else is allowed (the Grep tool never
+ * hard-blocks — a dynamic-looking pattern there is regex text, not a shell
+ * loop).
  */
 export function evaluateGrepToolInput(input: {
 	pattern?: unknown;
@@ -182,36 +198,13 @@ export function evaluateGrepToolInput(input: {
 	glob?: unknown;
 	type?: unknown;
 }): HookEvaluation {
-	const { pattern, path: searchPath, glob, type } = input;
-	if (typeof pattern !== "string") {
-		return { kind: "allow" };
-	}
-	if (typeof glob === "string" && !SOURCE_EXT_RE.test(glob)) {
-		return { kind: "allow" };
-	}
-	if (typeof type === "string" && !RG_SOURCE_TYPES.has(type)) {
-		return { kind: "allow" };
-	}
-	if (
-		typeof searchPath === "string" &&
-		searchPath !== "" &&
-		isNonSourcePath(searchPath)
-	) {
-		return { kind: "allow" };
-	}
-	if (typeof searchPath === "string" && SOURCE_EXT_RE.test(searchPath)) {
-		// A single-file lookup is not a project-wide reference hunt.
-		return { kind: "allow" };
-	}
-	const intent = analyzePatterns([pattern], "ere");
-	if (intent.kind === "identifiers") {
+	const inv = invocationFromGrepTool(input);
+	const found = inv === undefined ? undefined : classifySearch(inv);
+	if (found?.kind === "identifiers") {
 		return {
 			kind: "answer-search",
-			symbolNames: intent.symbols,
-			searchRoot:
-				typeof searchPath === "string" && searchPath !== ""
-					? searchPath
-					: undefined,
+			symbolNames: found.symbolNames,
+			searchRoot: found.searchRoot,
 		};
 	}
 	return { kind: "allow" };
@@ -242,42 +235,44 @@ export function buildSearchTeaching(
 	toolName: string,
 	toolInput: Record<string, unknown> | undefined,
 ): string | undefined {
+	let found: SignificantSearch | undefined;
 	if (toolName === "Bash" && typeof toolInput?.command === "string") {
-		const found = findSignificantSearch(toolInput.command);
-		if (found === undefined) {
-			return undefined;
-		}
-		return found.kind === "identifiers"
-			? exactTeachingLine(found.symbolNames)
-			: GENERIC_TEACHING_LINE;
+		found = findSignificantSearch(toolInput.command);
+	} else if (toolName === "Grep" && toolInput) {
+		const inv = invocationFromGrepTool(toolInput);
+		found = inv === undefined ? undefined : classifySearch(inv);
 	}
-	if (toolName === "Grep" && toolInput) {
-		const verdict = evaluateGrepToolInput(toolInput);
-		if (verdict.kind === "answer-search") {
-			return exactTeachingLine(verdict.symbolNames);
-		}
-		const { pattern, path: searchPath, glob, type } = toolInput;
-		if (typeof pattern !== "string") return undefined;
-		if (typeof glob === "string" && !SOURCE_EXT_RE.test(glob)) return undefined;
-		if (typeof type === "string" && !RG_SOURCE_TYPES.has(type))
-			return undefined;
-		if (
-			typeof searchPath === "string" &&
-			searchPath !== "" &&
-			isNonSourcePath(searchPath)
-		) {
-			return undefined;
-		}
-		if (typeof searchPath === "string" && SOURCE_EXT_RE.test(searchPath)) {
-			return undefined;
-		}
-		return GENERIC_TEACHING_LINE;
+	if (found === undefined) {
+		return undefined;
 	}
-	return undefined;
+	return found.kind === "identifiers"
+		? exactTeachingLine(found.symbolNames)
+		: GENERIC_TEACHING_LINE;
 }
+
+// ── Hook entry points ───────────────────────────────────────────────────────
 
 interface Writer {
 	write(chunk: string): unknown;
+}
+
+interface HookPayload {
+	tool_name?: unknown;
+	tool_input?: Record<string, unknown>;
+	cwd?: unknown;
+}
+
+function readHookPayload(readStdin: StdinReader): HookPayload | undefined {
+	let payload: unknown;
+	try {
+		payload = JSON.parse(readStdin());
+	} catch {
+		return undefined;
+	}
+	if (payload === null || typeof payload !== "object") {
+		return undefined;
+	}
+	return payload as HookPayload;
 }
 
 /**
@@ -290,23 +285,11 @@ export function runPostHook(readStdin: StdinReader, out: Writer): number {
 	if (isOperatorAllowed()) {
 		return 0;
 	}
-	let payload: unknown;
-	try {
-		payload = JSON.parse(readStdin());
-	} catch {
+	const payload = readHookPayload(readStdin);
+	if (payload === undefined || typeof payload.tool_name !== "string") {
 		return 0;
 	}
-	if (payload === null || typeof payload !== "object") {
-		return 0;
-	}
-	const { tool_name, tool_input } = payload as {
-		tool_name?: unknown;
-		tool_input?: Record<string, unknown>;
-	};
-	if (typeof tool_name !== "string") {
-		return 0;
-	}
-	const teaching = buildSearchTeaching(tool_name, tool_input);
+	const teaching = buildSearchTeaching(payload.tool_name, payload.tool_input);
 	if (teaching === undefined) {
 		return 0;
 	}
@@ -346,20 +329,11 @@ export function runHook(
 		// Not being driven by a harness; nothing to check.
 		return 0;
 	}
-	let payload: unknown;
-	try {
-		payload = JSON.parse(readStdin());
-	} catch {
+	const payload = readHookPayload(readStdin);
+	if (payload === undefined) {
 		return 0;
 	}
-	if (payload === null || typeof payload !== "object") {
-		return 0;
-	}
-	const { tool_name, tool_input, cwd } = payload as {
-		tool_name?: string;
-		tool_input?: Record<string, unknown>;
-		cwd?: unknown;
-	};
+	const { tool_name, tool_input, cwd } = payload;
 	let evaluation: HookEvaluation = { kind: "allow" };
 	if (tool_name === "Bash" && typeof tool_input?.command === "string") {
 		evaluation = evaluateBashCommand(tool_input.command);
@@ -384,166 +358,8 @@ export function runHook(
 			tool_name === "Bash" && typeof tool_input?.command === "string"
 				? tool_input.command
 				: "";
-		err.write(
-			`${
-				command.includes("TS_SURGEON_ALLOW")
-					? `${INERT_PREFIX_NOTE}\n${answer.text}`
-					: answer.text
-			}\n`,
-		);
+		err.write(`${withInertPrefixNote(command, answer.text)}\n`);
 		return 2;
 	}
 	return 0;
-}
-
-const HOOK_COMMAND = "npx -y @commoncurriculum/ts-surgeon hook";
-const POST_HOOK_COMMAND = "npx -y @commoncurriculum/ts-surgeon hook --post";
-
-/** npm package opencode loads as the guard plugin (this package itself). */
-const OPENCODE_PLUGIN_PACKAGE = "@commoncurriculum/ts-surgeon";
-
-/**
- * Registers the guard in the project's opencode.json `"plugin"` array — the
- * package's main export is the opencode plugin, and opencode auto-installs
- * npm plugins at startup. Merges with existing config; idempotent.
- */
-export function installOpencodeHook(cwd: string, out: Writer): void {
-	const configPath = path.join(cwd, "opencode.json");
-	let config: Record<string, unknown> = {
-		$schema: "https://opencode.ai/config.json",
-	};
-	if (existsSync(configPath)) {
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(readFileSync(configPath, "utf-8"));
-		} catch (error) {
-			throw new CliUsageError(
-				`${configPath} is not valid JSON — fix it before installing the plugin: ${error instanceof Error ? error.message : String(error)}`,
-			);
-		}
-		if (
-			parsed === null ||
-			typeof parsed !== "object" ||
-			Array.isArray(parsed)
-		) {
-			throw new CliUsageError(
-				`${configPath} must contain a JSON object to register the plugin (found ${Array.isArray(parsed) ? "an array" : typeof parsed}).`,
-			);
-		}
-		config = parsed as Record<string, unknown>;
-	}
-
-	config.plugin ??= [];
-	if (!Array.isArray(config.plugin)) {
-		throw new CliUsageError(
-			`${configPath} has a non-array "plugin" field — fix it before installing (expected e.g. ["@commoncurriculum/ts-surgeon"]).`,
-		);
-	}
-	const plugins: unknown[] = config.plugin;
-	if (
-		plugins.some(
-			(entry) =>
-				typeof entry === "string" && entry.startsWith(OPENCODE_PLUGIN_PACKAGE),
-		)
-	) {
-		out.write(
-			`${configPath} already lists the ${OPENCODE_PLUGIN_PACKAGE} plugin — nothing to do.\n`,
-		);
-		return;
-	}
-	plugins.push(OPENCODE_PLUGIN_PACKAGE);
-	writeFileSync(configPath, `${JSON.stringify(config, null, "\t")}\n`);
-	out.write(
-		`Registered the ${OPENCODE_PLUGIN_PACKAGE} guard plugin in ${configPath} (blocks sed/perl -i on TS/JS sources; answers recursive identifier searches with find_references output and fails open when it cannot answer; operators can disable it by launching the agent with ${ALLOW_MARKER} in the environment).\n`,
-	);
-
-	// Older versions of this installer copied a standalone plugin file instead.
-	for (const legacy of [
-		path.join(cwd, ".opencode", "plugin", "ts-surgeon.js"),
-		path.join(cwd, ".opencode", "plugins", "ts-surgeon.js"),
-	]) {
-		if (existsSync(legacy)) {
-			out.write(
-				`Note: ${legacy} is the old copy-installed guard — delete it to avoid running the check twice.\n`,
-			);
-		}
-	}
-}
-
-/**
- * Installs the PreToolUse guard into a project's .claude/settings.json
- * (Claude Code hooks). Merges with existing settings; idempotent.
- */
-export function installClaudeHook(cwd: string, out: Writer): void {
-	const settingsPath = path.join(cwd, ".claude", "settings.json");
-	let settings: Record<string, unknown> = {};
-	if (existsSync(settingsPath)) {
-		try {
-			settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-		} catch (error) {
-			throw new CliUsageError(
-				`${settingsPath} is not valid JSON — fix it before installing the hook: ${error instanceof Error ? error.message : String(error)}`,
-			);
-		}
-	}
-
-	settings.hooks ??= {};
-	const hooks = settings.hooks as Record<string, unknown>;
-	hooks.PreToolUse ??= [];
-	hooks.PostToolUse ??= [];
-	type HookEntry = {
-		matcher?: string;
-		hooks?: Array<{ type?: string; command?: string; timeout?: number }>;
-	};
-	const preToolUse = hooks.PreToolUse as HookEntry[];
-	const postToolUse = hooks.PostToolUse as HookEntry[];
-	const notes: string[] = [];
-
-	const existing = preToolUse.find((entry) =>
-		entry.hooks?.some((hook) => hook.command?.includes("ts-surgeon hook")),
-	);
-	if (existing) {
-		if (existing.matcher === "Bash") {
-			// Older installs only guarded Bash; extend them to the native Grep tool.
-			existing.matcher = "Bash|Grep";
-			notes.push(
-				`Upgraded the ts-surgeon hook matcher in ${settingsPath} from Bash to Bash|Grep (the guard now also redirects the native Grep tool).\n`,
-			);
-		}
-	} else {
-		preToolUse.push({
-			matcher: "Bash|Grep",
-			// Generous timeout: answering a search runs find_references in-process,
-			// which loads the ts-morph project (bounded by TS_SURGEON_ANSWER_TIMEOUT_MS).
-			hooks: [{ type: "command", command: HOOK_COMMAND, timeout: 120 }],
-		});
-		notes.push(
-			`Installed the ts-surgeon PreToolUse guard in ${settingsPath} (blocks sed/perl -i on TS/JS sources; answers recursive identifier searches with find_references output and fails open when it cannot answer; operators can disable it by launching the agent with ${ALLOW_MARKER} in the environment).\n`,
-		);
-	}
-
-	const existingPost = postToolUse.some((entry) =>
-		entry.hooks?.some((hook) => hook.command?.includes("hook --post")),
-	);
-	if (!existingPost) {
-		postToolUse.push({
-			matcher: "Bash|Grep",
-			hooks: [{ type: "command", command: POST_HOOK_COMMAND, timeout: 30 }],
-		});
-		notes.push(
-			`Added the ts-surgeon PostToolUse teaching hook in ${settingsPath} (after an executed search it suggests the exact ts-surgeon equivalent — e.g. call find_references --symbol-name <name>).\n`,
-		);
-	}
-
-	if (notes.length === 0) {
-		out.write(
-			`${settingsPath} already runs the ts-surgeon hooks — nothing to do.\n`,
-		);
-		return;
-	}
-	mkdirSync(path.dirname(settingsPath), { recursive: true });
-	writeFileSync(settingsPath, `${JSON.stringify(settings, null, "\t")}\n`);
-	for (const note of notes) {
-		out.write(note);
-	}
 }

@@ -23,6 +23,35 @@ export interface SearchInvocation {
 	paths: string[];
 }
 
+/**
+ * A harness's native Grep tool call IS an rg invocation: always recursive,
+ * ripgrep regex syntax, one pattern, optional path/glob/type scope filters.
+ * Modeling it as one lets the whole guard pipeline (scope, pattern intent,
+ * policy, teaching) treat both entry points identically.
+ */
+export function invocationFromGrepTool(input: {
+	pattern?: unknown;
+	path?: unknown;
+	glob?: unknown;
+	type?: unknown;
+}): SearchInvocation | undefined {
+	if (typeof input.pattern !== "string") {
+		return undefined;
+	}
+	return {
+		tool: "rg",
+		syntax: "ere",
+		patterns: [input.pattern],
+		recursiveFlag: true,
+		viaWrapper: false,
+		invert: false,
+		includeGlobs: typeof input.glob === "string" ? [input.glob] : [],
+		rgTypes: typeof input.type === "string" ? [input.type] : [],
+		paths:
+			typeof input.path === "string" && input.path !== "" ? [input.path] : [],
+	};
+}
+
 const SHELL_KEYWORDS = new Set([
 	"do",
 	"then",

@@ -395,9 +395,8 @@ export async function runCli(
 				if (rest.includes("--post")) {
 					return runPostHook(readStdin, out);
 				}
-				return opts.answerSearch === undefined
-					? runHook(rest, readStdin, err)
-					: runHook(rest, readStdin, err, opts.answerSearch);
+				// An undefined answerSearch falls through to runHook's default.
+				return runHook(rest, readStdin, err, opts.answerSearch);
 			case "list":
 			case "list-tools": {
 				const registry = createToolRegistry();
