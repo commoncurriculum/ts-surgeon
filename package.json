@@ -33,6 +33,7 @@
 		"prepublishOnly": "pnpm run build",
 		"test": "vitest run --pool threads --poolOptions.threads.singleThread",
 		"test:e2e": "vitest run --config vitest.e2e.config.ts",
+		"test:e2e:hook": "pnpm run build && vitest run --config vitest.e2e.config.ts e2e/hook-answer.e2e.test.ts",
 		"test:e2e:agent": "TS_SURGEON_E2E_AGENT=1 vitest run --config vitest.e2e.config.ts e2e/agent-hook.e2e.test.ts",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
