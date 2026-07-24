@@ -41,3 +41,9 @@ jobs:
 
       - name: Run tests
         run: pnpm run test
+
+      # Offline and fast, unlike the clone-based e2e suites: drives the built
+      # hook against a temp project so the fail-open guarantee is covered here
+      # rather than only in the network-dependent `test:e2e`.
+      - name: Run hook answer e2e
+        run: pnpm run test:e2e:hook

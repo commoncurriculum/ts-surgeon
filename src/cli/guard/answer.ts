@@ -260,6 +260,12 @@ export const answerSearchViaCli: SearchAnswerer = (req) => {
 	if (results === undefined) {
 		return { ok: false };
 	}
+	// The guard's central bargain: intercept a search only when ts-surgeon has
+	// something better to say. A name with no project declaration is not a
+	// TypeScript symbol — a CSS-module class, a string literal, a name from an
+	// untyped dependency — and text search is the right tool for it. Answering
+	// anyway is how the guard strands an agent: it blocks the grep, asks for a
+	// disambiguation, and leads nowhere. Pinned by hook-answer.e2e.test.ts.
 	if (!results.some((r) => r.status === "found" || r.status === "ambiguous")) {
 		return { ok: false };
 	}
