@@ -1,5 +1,53 @@
 # @commoncurriculum/ts-surgeon
 
+## 1.4.0
+
+### Minor Changes
+
+- 3fbf17b: Add `ts-surgeon install`: compile the guard, and stop paying npx on every tool call.
+
+  The guard runs before every Bash and Grep call, so what it costs is what the
+  harness costs. Through `npx -y @commoncurriculum/ts-surgeon hook` that was
+  ~590ms per invocation — npx re-resolving the package, then Node loading a
+  module graph that reached the TypeScript compiler — to decide that `ls` is
+  harmless. With a PostToolUse hook installed too, that is over a second of
+  latency added to every tool call.
+
+  `ts-surgeon install` compiles the guard into a standalone executable with bun
+  and points the hook config directly at it: **~15ms, a 39x improvement**,
+  measured on a real project. bun is a build-time dependency only — `npx -y bun`
+  fetches it, and the executable embeds its own runtime, so the machine running
+  the guard afterwards needs neither bun nor node. The e2e test proves this by
+  running the compiled guard with both removed from PATH.
+
+  The hook config names the executable directly, with no `npx` and no shell
+  wrapper in front of it: a wrapper to pick a fallback costs ~2.5ms, which is
+  most of what compiling buys.
+
+  Also splits `solutionReferences` out of `paths.ts` into its own module. It was
+  the only thing importing `typescript` there, and `paths.ts` is on the guard's
+  import graph — so every tool call was loading a compiler it never used. That
+  alone took the hook's module graph from ~153ms to ~27ms, which also speeds up
+  `npx … hook` for anyone not installing the binary.
+
+### Patch Changes
+
+- 051dff9: Stop counting property reads as declarations.
+
+  `PropertyAccessExpression.getNameNode()` returns the identifier being read, so
+  every `styles.lessonTitle` looked like a declaration of `lessonTitle`. That was
+  invisible while the property had a resolvable symbol to dedupe on — but a
+  CSS-module import is typed as an index signature, so each read counted as its
+  own declaration. Symbol lookups then reported "N declarations; pass
+  targetFilePath to disambiguate", and passing one of those positions resolved to
+  nothing. The guard blocked the grep, demanded a disambiguation, and led nowhere.
+
+  Declaration lookups now ignore access syntax (`a.b`, `Outer.Inner`), and group
+  the remaining candidates by the declaration they ultimately stand for — so an
+  object-literal key contextually typed by an interface resolves to that
+  interface's property instead of rivalling it, and an overloaded function
+  resolves to its implementation.
+
 ## 1.3.4
 
 ### Patch Changes
