@@ -105,13 +105,16 @@ export async function answerSearchViaTsgo(
 			status: "found",
 			definition: declaration,
 			// tsgo includes the declaration in its reference list; the answer shows
-			// it separately, so it must not appear twice.
+			// it separately, so it must not appear twice. Match the full position —
+			// file, line and column — so a real reference sharing the declaration's
+			// line (e.g. `const a = f(), b = f()`) is not dropped with it.
 			references: found.references
 				.filter(
 					(r) =>
 						!(
 							r.filePath === found.declaration.filePath &&
-							r.line === found.declaration.line
+							r.line === found.declaration.line &&
+							r.column === found.declaration.column
 						),
 				)
 				.map((r) => ({ ...r, text: lineText(r.filePath, r.line) })),

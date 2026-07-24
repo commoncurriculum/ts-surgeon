@@ -14,13 +14,17 @@ import { type ChildProcess, spawn } from "node:child_process";
  *    the symptom is a `textDocument/references` that never returns.
  * 2. Every read has to survive TCP-style fragmentation: a single stdout chunk
  *    may hold part of a message, several messages, or both.
+ *
+ * A request settles four ways: a result, a JSON-RPC error, the process dying,
+ * or the timeout. The first three settle immediately so a crashed tsgo fails
+ * the guard open at once rather than stalling for the full budget.
  */
 
 interface JsonRpcMessage {
 	id?: number | string;
 	method?: string;
 	result?: unknown;
-	error?: unknown;
+	error?: { message?: string } | unknown;
 }
 
 export interface LspClient {
@@ -37,6 +41,22 @@ export class LspTimeoutError extends Error {
 	}
 }
 
+/** Thrown when tsgo answers a request with a JSON-RPC error. */
+export class LspRequestError extends Error {
+	constructor(method: string, detail: string) {
+		super(`tsgo failed ${method}: ${detail}`);
+		this.name = "LspRequestError";
+	}
+}
+
+/** Thrown at every in-flight request when the tsgo process goes away. */
+export class LspProcessError extends Error {
+	constructor(detail: string) {
+		super(`tsgo exited before answering: ${detail}`);
+		this.name = "LspProcessError";
+	}
+}
+
 export function createLspClient(exePath: string, timeoutMs: number): LspClient {
 	const proc: ChildProcess = spawn(exePath, ["--lsp", "-stdio"], {
 		stdio: ["pipe", "pipe", "pipe"],
@@ -45,9 +65,27 @@ export function createLspClient(exePath: string, timeoutMs: number): LspClient {
 	proc.stderr?.resume();
 
 	let buffer = Buffer.alloc(0);
-	const pending = new Map<number, (message: JsonRpcMessage) => void>();
+	interface Pending {
+		settle(message: JsonRpcMessage): void;
+		fail(error: Error): void;
+	}
+	const pending = new Map<number, Pending>();
 	let nextId = 1;
 	let disposed = false;
+
+	const failAllPending = (error: Error): void => {
+		const entries = [...pending.values()];
+		pending.clear();
+		for (const entry of entries) entry.fail(error);
+	};
+
+	// A crashed or exited tsgo would otherwise leave every request hanging until
+	// its timeout; fail them at once so the guard fails open immediately.
+	proc.on("error", (error) => failAllPending(error));
+	proc.on("exit", (code, signal) => {
+		if (disposed) return;
+		failAllPending(new LspProcessError(signal ?? `code ${code}`));
+	});
 
 	const send = (payload: unknown): void => {
 		if (disposed) return;
@@ -85,8 +123,9 @@ export function createLspClient(exePath: string, timeoutMs: number): LspClient {
 				continue;
 			}
 			if (typeof message.id === "number") {
-				pending.get(message.id)?.(message);
+				const entry = pending.get(message.id);
 				pending.delete(message.id);
+				entry?.settle(message);
 			}
 		}
 	});
@@ -99,9 +138,25 @@ export function createLspClient(exePath: string, timeoutMs: number): LspClient {
 					pending.delete(id);
 					reject(new LspTimeoutError(method, timeoutMs));
 				}, timeoutMs);
-				pending.set(id, (message) => {
-					clearTimeout(timer);
-					resolve(message.result);
+				pending.set(id, {
+					settle(message) {
+						clearTimeout(timer);
+						if (message.error !== undefined) {
+							const detail =
+								typeof message.error === "object" &&
+								message.error !== null &&
+								"message" in message.error
+									? String((message.error as { message?: unknown }).message)
+									: JSON.stringify(message.error);
+							reject(new LspRequestError(method, detail));
+							return;
+						}
+						resolve(message.result);
+					},
+					fail(error) {
+						clearTimeout(timer);
+						reject(error);
+					},
 				});
 				send({ jsonrpc: "2.0", id, method, params });
 			});
@@ -111,10 +166,7 @@ export function createLspClient(exePath: string, timeoutMs: number): LspClient {
 		},
 		dispose() {
 			disposed = true;
-			for (const [, resolve] of pending) {
-				resolve({});
-			}
-			pending.clear();
+			failAllPending(new LspProcessError("client disposed"));
 			proc.kill();
 		},
 	};
