@@ -726,6 +726,98 @@ describe("hook command (runCli)", () => {
 /** Stands in for a compiled guard: the installer only writes the path. */
 const GUARD_BIN = "/home/someone/.cache/ts-surgeon/guard-9.9.9";
 
+describe("installClaudeHook leaves hooks it does not own alone", () => {
+	let tempDir: string;
+
+	beforeEach(() => {
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsurgeon-foreign-"));
+	});
+
+	afterEach(() => {
+		fs.rmSync(tempDir, { recursive: true, force: true });
+	});
+
+	/**
+	 * The installer rewrites the commands it recognises, so recognising too much
+	 * silently destroys someone else's hook. A hook that merely mentions
+	 * ts-surgeon is not ours; neither is any hook that happens to take --post.
+	 */
+	it("does not rewrite unrelated hooks that mention ts-surgeon or use --post", () => {
+		const foreignPre = "npx -y @commoncurriculum/ts-surgeon doctor";
+		const foreignPost = "./scripts/notify.sh --post";
+		fs.mkdirSync(path.join(tempDir, ".claude"), { recursive: true });
+		fs.writeFileSync(
+			path.join(tempDir, ".claude", "settings.json"),
+			JSON.stringify({
+				hooks: {
+					PreToolUse: [
+						{
+							matcher: "Bash",
+							hooks: [{ type: "command", command: foreignPre }],
+						},
+					],
+					PostToolUse: [
+						{
+							matcher: "Bash",
+							hooks: [{ type: "command", command: foreignPost }],
+						},
+					],
+				},
+			}),
+		);
+
+		installClaudeHook(tempDir, createCapture(), GUARD_BIN);
+
+		const settings = JSON.parse(
+			fs.readFileSync(path.join(tempDir, ".claude", "settings.json"), "utf-8"),
+		);
+		expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe(foreignPre);
+		expect(settings.hooks.PreToolUse[0].matcher).toBe("Bash");
+		expect(settings.hooks.PostToolUse[0].hooks[0].command).toBe(foreignPost);
+		// The guard is added alongside them rather than replacing them.
+		expect(settings.hooks.PreToolUse).toHaveLength(2);
+		expect(settings.hooks.PostToolUse).toHaveLength(2);
+		expect(settings.hooks.PreToolUse[1].hooks[0].command).toBe(
+			`"${GUARD_BIN}"`,
+		);
+		expect(settings.hooks.PostToolUse[1].hooks[0].command).toBe(
+			`"${GUARD_BIN}" --post`,
+		);
+	});
+
+	it("upgrades an older npx guard install in place", () => {
+		fs.mkdirSync(path.join(tempDir, ".claude"), { recursive: true });
+		fs.writeFileSync(
+			path.join(tempDir, ".claude", "settings.json"),
+			JSON.stringify({
+				hooks: {
+					PreToolUse: [
+						{
+							matcher: "Bash|Grep",
+							hooks: [
+								{
+									type: "command",
+									command: "npx -y @commoncurriculum/ts-surgeon hook",
+								},
+							],
+						},
+					],
+				},
+			}),
+		);
+
+		installClaudeHook(tempDir, createCapture(), GUARD_BIN);
+
+		const settings = JSON.parse(
+			fs.readFileSync(path.join(tempDir, ".claude", "settings.json"), "utf-8"),
+		);
+		expect(settings.hooks.PreToolUse).toHaveLength(1);
+		expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe(
+			`"${GUARD_BIN}"`,
+		);
+	});
+});
+
 describe("installClaudeHook", () => {
 	let tempDir: string;
 

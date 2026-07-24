@@ -22,6 +22,15 @@ function hookCommands(binaryPath: string): {
 	return { pre: quoted, post: `${quoted} --post` };
 }
 
+/**
+ * Recognises a hook entry this installer owns, and nothing else. The installer
+ * rewrites what it matches, so "mentions ts-surgeon" is too broad a test — it
+ * would silently eat an unrelated `ts-surgeon doctor` hook someone added by
+ * hand. Only two shapes qualify: the npx command older versions wrote, and a
+ * compiled guard, which always lives at .../ts-surgeon/guard-<version>.
+ */
+const GUARD_COMMAND = /ts-surgeon hook\b|[/\\]ts-surgeon[/\\]guard-[^"']*/;
+
 /** npm package opencode loads as the guard plugin (this package itself). */
 const OPENCODE_PLUGIN_PACKAGE = "@commoncurriculum/ts-surgeon";
 
@@ -132,10 +141,13 @@ export function installClaudeHook(
 	const postToolUse = hooks.PostToolUse as HookEntry[];
 	const notes: string[] = [];
 
-	// Matches both shapes an install can have: the old `npx … ts-surgeon hook`
-	// command and a compiled guard, which lives under a ts-surgeon cache dir.
 	const isGuardHook = (entry: HookEntry) =>
-		entry.hooks?.some((hook) => hook.command?.includes("ts-surgeon"));
+		entry.hooks?.some(
+			(hook) =>
+				hook.command !== undefined &&
+				GUARD_COMMAND.test(hook.command) &&
+				!hook.command.includes("--post"),
+		);
 
 	const existing = preToolUse.find(isGuardHook);
 	if (existing) {
@@ -167,8 +179,15 @@ export function installClaudeHook(
 		);
 	}
 
+	// `--post` alone would match any unrelated hook that happens to take that
+	// flag; it only identifies ours alongside a guard command.
 	const existingPost = postToolUse.find((entry) =>
-		entry.hooks?.some((hook) => hook.command?.includes("--post")),
+		entry.hooks?.some(
+			(hook) =>
+				hook.command !== undefined &&
+				GUARD_COMMAND.test(hook.command) &&
+				hook.command.includes("--post"),
+		),
 	);
 	if (existingPost) {
 		for (const hook of existingPost.hooks ?? []) {

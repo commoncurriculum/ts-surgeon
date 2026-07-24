@@ -263,6 +263,10 @@ export const answerSearchViaCli: SearchAnswerer = (req) => {
 			killSignal: "SIGKILL",
 			maxBuffer: 64 * 1024 * 1024,
 			stdio: ["ignore", "pipe", "pipe"],
+			// Run where the guarded project is, not wherever the harness happened
+			// to start. It decides which node_modules npx resolves against, so the
+			// wrong cwd can mean a surprise network install of a different version.
+			cwd: rootDir,
 		});
 	} catch (error) {
 		// batch exits 1 when any op errored but still prints the full array;
