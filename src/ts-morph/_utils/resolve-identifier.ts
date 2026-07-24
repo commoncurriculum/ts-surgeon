@@ -1,4 +1,4 @@
-import { type Identifier, type Project, SyntaxKind } from "ts-morph";
+import { type Identifier, type Node, type Project, SyntaxKind } from "ts-morph";
 
 /**
  * Locating the Identifier a tool should operate on — by explicit position,
@@ -63,10 +63,26 @@ export function validateSymbol(
 	);
 }
 
+/**
+ * Access syntax whose `getNameNode()` returns the identifier being *read*, not
+ * a declared name: `styles.lessonTitle`, `Outer.Inner`. Without this, every
+ * property read looks like a declaration — harmless while the property has a
+ * resolvable symbol to dedupe on, but a CSS-module import (an index signature)
+ * has none, so each read counted as its own declaration and the lookup
+ * demanded a disambiguation that resolved to nothing.
+ */
+const ACCESS_EXPRESSION_PARENTS = new Set<SyntaxKind>([
+	SyntaxKind.PropertyAccessExpression,
+	SyntaxKind.QualifiedName,
+]);
+
 /** True when the identifier is the name node of its parent declaration. */
 function isDeclarationName(identifier: Identifier): boolean {
 	const parent = identifier.getParent();
 	if (!parent) {
+		return false;
+	}
+	if (ACCESS_EXPRESSION_PARENTS.has(parent.getKind())) {
 		return false;
 	}
 	const getNameNode = (parent as { getNameNode?: () => unknown }).getNameNode;
@@ -78,6 +94,41 @@ function isDeclarationName(identifier: Identifier): boolean {
 	} catch {
 		return false;
 	}
+}
+
+/**
+ * The declaration a name ultimately stands for: itself for a primary
+ * declaration, something else for the alias-like names TypeScript resolves
+ * through — an object-literal key contextually typed by an interface, a
+ * destructured binding, an overload signature. Grouping candidates by this
+ * collapses those onto the one declaration a caller means, instead of
+ * reporting each spelling as a rival declaration.
+ */
+function canonicalDeclaration(identifier: Identifier): Node {
+	const fallback = identifier.getParent() ?? identifier;
+	try {
+		return identifier.getDefinitionNodes()[0] ?? fallback;
+	} catch {
+		return fallback;
+	}
+}
+
+/**
+ * One entry per declaration, represented by the name that declares it directly
+ * when there is one: an interface's property beats the object literal that
+ * fills it in, an implementation beats its overload signatures. Both resolvers
+ * dedupe this way, so widening a search to the project and narrowing it to a
+ * file agree on how many declarations exist.
+ */
+function dedupeByDeclaration(matches: Identifier[]): Identifier[] {
+	const byDeclaration = new Map<Node, Identifier>();
+	for (const match of matches) {
+		const canonical = canonicalDeclaration(match);
+		if (!byDeclaration.has(canonical) || match.getParent() === canonical) {
+			byDeclaration.set(canonical, match);
+		}
+	}
+	return [...byDeclaration.values()];
 }
 
 /**
@@ -143,18 +194,7 @@ export function resolveProjectWideDeclaration(
 			}
 		}
 	}
-	const seenSymbols = new Set<unknown>();
-	const unique: Identifier[] = [];
-	for (const match of matches) {
-		const symbol = match.getSymbol();
-		if (symbol !== undefined) {
-			if (seenSymbols.has(symbol)) {
-				continue;
-			}
-			seenSymbols.add(symbol);
-		}
-		unique.push(match);
-	}
+	const unique = dedupeByDeclaration(matches);
 	if (unique.length === 1) {
 		return unique[0];
 	}
@@ -215,10 +255,8 @@ export function resolveTargetIdentifier(
 	if (symbolName === undefined) {
 		throw new Error("Pass position {line, column}, symbolName, or both.");
 	}
-	const matches = findDeclarationIdentifiersByName(
-		project,
-		targetFilePath,
-		symbolName,
+	const matches = dedupeByDeclaration(
+		findDeclarationIdentifiersByName(project, targetFilePath, symbolName),
 	);
 	if (matches.length === 1) {
 		return matches[0];
