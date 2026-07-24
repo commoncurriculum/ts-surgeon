@@ -40,6 +40,35 @@ describe("resolveProjectWideDeclaration", () => {
 		).toThrowError(/No declaration named 'lessonTitle'/);
 	});
 
+	/**
+	 * Optional chaining and non-null assertion look like distinct syntax but
+	 * parse to a plain PropertyAccessExpression — there is no
+	 * SyntaxKind.PropertyAccessChain — so one entry covers all three spellings.
+	 * Pinned because that is easy to doubt and cheap to guarantee.
+	 */
+	it("does not treat optional-chained or asserted property reads as declarations", () => {
+		const project = new Project({ useInMemoryFileSystem: true });
+		project.createSourceFile(
+			"/src/styles.d.ts",
+			`declare const styles: Record<string, string> | undefined;
+export default styles;`,
+		);
+		project.createSourceFile(
+			"/src/optional.ts",
+			`import styles from './styles';
+export const a = styles?.lessonTitle;`,
+		);
+		project.createSourceFile(
+			"/src/asserted.ts",
+			`import styles from './styles';
+export const b = styles!.lessonTitle;`,
+		);
+
+		expect(() =>
+			resolveProjectWideDeclaration(project, "lessonTitle"),
+		).toThrowError(/No declaration named 'lessonTitle'/);
+	});
+
 	it("resolves to the declared property, not the object literal that fills it in", () => {
 		const project = new Project({ useInMemoryFileSystem: true });
 		project.createSourceFile(
