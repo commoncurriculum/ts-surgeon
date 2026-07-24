@@ -375,12 +375,12 @@ export function runPostHook(readStdin: StdinReader, out: Writer): number {
  * or answer, 0 to allow. Handles Bash commands and the harness's native Grep
  * tool. `--strict` is accepted as a deprecated no-op.
  */
-export function runHook(
+export async function runHook(
 	rest: string[],
 	readStdin: StdinReader,
 	err: Writer,
 	answerSearch: SearchAnswerer = answerSearchViaCli,
-): number {
+): Promise<number> {
 	for (const arg of rest) {
 		if (arg !== "--strict") {
 			throw new CliUsageError(`Unknown option for hook: '${arg}'`);
@@ -410,7 +410,7 @@ export function runHook(
 		return 2;
 	}
 	if (evaluation.kind === "answer-search") {
-		const answer = answerSearch({
+		const answer = await answerSearch({
 			symbolNames: evaluation.symbolNames,
 			searchRoot: evaluation.searchRoot,
 			cwd: typeof cwd === "string" ? cwd : process.cwd(),

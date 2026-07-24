@@ -128,6 +128,48 @@ describe("ts-surgeon install", () => {
 		expect(status).toBe(0);
 	});
 
+	/**
+	 * The expensive tier from inside the compiled guard. This is the only place
+	 * that exercises tsgo resolution the way it actually ships: under Vitest,
+	 * Vite's resolver finds the platform binary even when Node's would not, so
+	 * a unit test here passes while the built artifact fails open silently.
+	 */
+	it("answers an identifier search from the compiled binary", () => {
+		fs.mkdirSync(path.join(project, "src"), { recursive: true });
+		fs.writeFileSync(
+			path.join(project, "tsconfig.json"),
+			JSON.stringify({
+				compilerOptions: { strict: true, target: "es2020" },
+				include: ["src/**/*"],
+			}),
+		);
+		fs.writeFileSync(
+			path.join(project, "src", "util.ts"),
+			"export function splitTitle(v: string) {\n\treturn v.split(' ');\n}\n",
+		);
+		fs.writeFileSync(
+			path.join(project, "src", "use.ts"),
+			"import { splitTitle } from './util.js';\nexport const a = splitTitle('x');\n",
+		);
+
+		// PATH must stay intact here: the guard spawns tsgo for this tier.
+		const res = spawnSync(binaryPath, [], {
+			input: JSON.stringify({
+				tool_name: "Bash",
+				tool_input: { command: "rg splitTitle src" },
+				cwd: project,
+			}),
+			encoding: "utf-8",
+			maxBuffer: 16 * 1024 * 1024,
+			env: childEnv({ HOME: home }),
+		});
+
+		expect(res.stderr).toContain("ran find_references for you");
+		expect(res.stderr).toContain("splitTitle");
+		expect(res.stderr).toContain("src/use.ts");
+		expect(res.status).toBe(2);
+	});
+
 	it("runs the teaching hook with no runtime on PATH", () => {
 		const { status } = runGuard(
 			{

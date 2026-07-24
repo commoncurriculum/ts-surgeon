@@ -43,7 +43,8 @@
 		"lint": "biome lint ./",
 		"lint:fix": "biome lint --write ./",
 		"format": "biome check --write ./",
-		"test:e2e:guard": "pnpm run build && vitest run --config vitest.e2e.config.ts e2e/guard-binary.e2e.test.ts"
+		"test:e2e:guard": "pnpm run build && vitest run --config vitest.e2e.config.ts e2e/guard-binary.e2e.test.ts",
+		"test:e2e:tsgo": "pnpm run build && vitest run --config vitest.e2e.config.ts e2e/tsgo-answer.e2e.test.ts"
 	},
 	"keywords": [
 		"cli",
@@ -75,6 +76,7 @@
 	},
 	"dependencies": {
 		"@ast-grep/napi": "^0.44.1",
+		"@typescript/native-preview": "7.0.0-dev.20260707.2",
 		"pino": "9.6.0",
 		"ts-morph": "25.0.1",
 		"typescript": "5.8.3",
