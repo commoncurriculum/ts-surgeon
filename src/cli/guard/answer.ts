@@ -178,6 +178,37 @@ export function resolveCliRuntime(): string | undefined {
 }
 
 /**
+ * How the answerer reaches the full CLI for the expensive tier.
+ *
+ * Normally that is this package's own dist entry, run by the current runtime.
+ * The compiled guard binary has no dist on disk — it is one executable — so it
+ * falls back to npx, which is affordable here and only here: this path already
+ * parses the whole project and costs seconds, so npx's own overhead is noise.
+ * Deliberately unpinned, because reading the version means reading package.json
+ * at runtime, which does not exist inside the binary either.
+ */
+function resolveBatchInvocation(
+	batchArgs: string[],
+): { command: string; args: string[] } | undefined {
+	let cliEntry: string | undefined;
+	try {
+		cliEntry = fileURLToPath(new URL("../../index.js", import.meta.url));
+	} catch {
+		cliEntry = undefined;
+	}
+	if (cliEntry !== undefined && existsSync(cliEntry)) {
+		const runtime = resolveCliRuntime();
+		if (runtime !== undefined) {
+			return { command: runtime, args: [cliEntry, ...batchArgs] };
+		}
+	}
+	return {
+		command: "npx",
+		args: ["-y", "@commoncurriculum/ts-surgeon", ...batchArgs],
+	};
+}
+
+/**
  * The real answerer: locate the nearest tsconfig above the searched path,
  * then run this package's own CLI (`batch` of find_references calls — one
  * parsed project serves every symbol) in a child process with a time budget.
@@ -210,37 +241,33 @@ export const answerSearchViaCli: SearchAnswerer = (req) => {
 	if (tsconfigPath === undefined) {
 		return { ok: false };
 	}
-	const cliEntry = fileURLToPath(new URL("../../index.js", import.meta.url));
-	if (!existsSync(cliEntry)) {
-		return { ok: false };
-	}
-	const runtime = resolveCliRuntime();
-	if (runtime === undefined) {
-		return { ok: false };
-	}
 	const ops = req.symbolNames.map((symbolName) => ({
 		tool: "find_references",
 		params: { tsconfigPath, symbolName },
 	}));
+	const batchArgs = [
+		"batch",
+		"--continue-on-error",
+		"--params",
+		JSON.stringify(ops),
+	];
+	const invocation = resolveBatchInvocation(batchArgs);
+	if (invocation === undefined) {
+		return { ok: false };
+	}
 	let stdout: string;
 	try {
-		stdout = execFileSync(
-			runtime,
-			[
-				cliEntry,
-				"batch",
-				"--continue-on-error",
-				"--params",
-				JSON.stringify(ops),
-			],
-			{
-				encoding: "utf-8",
-				timeout: ANSWER_TIMEOUT_MS,
-				killSignal: "SIGKILL",
-				maxBuffer: 64 * 1024 * 1024,
-				stdio: ["ignore", "pipe", "pipe"],
-			},
-		);
+		stdout = execFileSync(invocation.command, invocation.args, {
+			encoding: "utf-8",
+			timeout: ANSWER_TIMEOUT_MS,
+			killSignal: "SIGKILL",
+			maxBuffer: 64 * 1024 * 1024,
+			stdio: ["ignore", "pipe", "pipe"],
+			// Run where the guarded project is, not wherever the harness happened
+			// to start. It decides which node_modules npx resolves against, so the
+			// wrong cwd can mean a surprise network install of a different version.
+			cwd: rootDir,
+		});
 	} catch (error) {
 		// batch exits 1 when any op errored but still prints the full array;
 		// a timeout or crash leaves nothing parseable and fails open below.

@@ -58,6 +58,9 @@ export {
 	type SearchAnswerer,
 	type SearchAnswerRequest,
 } from "./guard/answer.js";
+// compile.ts is deliberately NOT re-exported here: it reads package.json for
+// the version, which does not exist inside the compiled guard, and hook.ts is
+// on the guard's import graph.
 export { installClaudeHook, installOpencodeHook } from "./guard/install.js";
 
 export type HookEvaluation =
