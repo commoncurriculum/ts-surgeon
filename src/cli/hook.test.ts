@@ -723,6 +723,9 @@ describe("hook command (runCli)", () => {
 	});
 });
 
+/** Stands in for a compiled guard: the installer only writes the path. */
+const GUARD_BIN = "/home/someone/.cache/ts-surgeon/guard-9.9.9";
+
 describe("installClaudeHook", () => {
 	let tempDir: string;
 
@@ -736,16 +739,18 @@ describe("installClaudeHook", () => {
 
 	it("creates .claude/settings.json with the guard and the teaching hook", () => {
 		const out = createCapture();
-		installClaudeHook(tempDir, out);
+		installClaudeHook(tempDir, out, GUARD_BIN);
 		const settings = JSON.parse(
 			fs.readFileSync(path.join(tempDir, ".claude", "settings.json"), "utf-8"),
 		);
 		const entry = settings.hooks.PreToolUse[0];
 		expect(entry.matcher).toBe("Bash|Grep");
-		expect(entry.hooks[0].command).toContain("ts-surgeon hook");
+		// The compiled guard is named directly: no npx, no shell wrapper. Both
+		// cost more per tool call than the guard itself.
+		expect(entry.hooks[0].command).toBe(`"${GUARD_BIN}"`);
 		const post = settings.hooks.PostToolUse[0];
 		expect(post.matcher).toBe("Bash|Grep");
-		expect(post.hooks[0].command).toContain("hook --post");
+		expect(post.hooks[0].command).toBe(`"${GUARD_BIN}" --post`);
 		expect(out.text).toContain("Installed");
 		expect(out.text).toContain("teaching hook");
 	});
@@ -833,7 +838,7 @@ describe("installClaudeHook", () => {
 		);
 
 		const out = createCapture();
-		installClaudeHook(tempDir, out);
+		installClaudeHook(tempDir, out, GUARD_BIN);
 		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
 		expect(settings.hooks.PreToolUse).toHaveLength(1);
 		expect(settings.hooks.PreToolUse[0].matcher).toBe("Bash|Grep");
@@ -855,9 +860,9 @@ describe("installClaudeHook", () => {
 			}),
 		);
 
-		installClaudeHook(tempDir, createCapture());
+		installClaudeHook(tempDir, createCapture(), GUARD_BIN);
 		const out2 = createCapture();
-		installClaudeHook(tempDir, out2);
+		installClaudeHook(tempDir, out2, GUARD_BIN);
 		expect(out2.text).toContain("nothing to do");
 
 		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
@@ -866,8 +871,8 @@ describe("installClaudeHook", () => {
 		// alongside it exactly once.
 		expect(settings.hooks.PostToolUse).toHaveLength(2);
 		expect(settings.hooks.PostToolUse[0].matcher).toBe("Edit");
-		expect(settings.hooks.PostToolUse[1].hooks[0].command).toContain(
-			"hook --post",
+		expect(settings.hooks.PostToolUse[1].hooks[0].command).toBe(
+			`"${GUARD_BIN}" --post`,
 		);
 		expect(settings.hooks.PreToolUse).toHaveLength(1);
 	});

@@ -7,6 +7,7 @@ import {
 	readStdinDefault,
 	type StdinReader,
 } from "./cli/params.js";
+import { compileGuardBinary } from "./cli/guard/compile.js";
 import {
 	installClaudeHook,
 	installOpencodeHook,
@@ -14,11 +15,8 @@ import {
 	runPostHook,
 	type SearchAnswerer,
 } from "./cli/hook.js";
-import {
-	findNearestTsconfig,
-	prepareParams,
-	solutionReferences,
-} from "./cli/paths.js";
+import { findNearestTsconfig, prepareParams } from "./cli/paths.js";
+import { solutionReferences } from "./cli/solution-references.js";
 import { probeAstGrep } from "./ast-grep/pattern-tools.js";
 import { AGENT_SNIPPET, GUIDE, INIT_MARKER } from "./guide.js";
 import {
@@ -185,6 +183,31 @@ interface Writer {
 }
 
 /**
+ * `ts-surgeon install` — compiles the guard and points this project's Claude
+ * Code hooks at the executable. Separate from `init`, which is about the
+ * instructions file; this is the one command that makes the guard cheap enough
+ * to run on every tool call.
+ */
+function runInstall(rest: string[], out: Writer): number {
+	let force = false;
+	for (const arg of rest) {
+		if (arg === "--force") {
+			force = true;
+		} else {
+			throw new CliUsageError(`Unknown option for install: '${arg}'`);
+		}
+	}
+	const { binaryPath, alreadyPresent } = compileGuardBinary(force);
+	out.write(
+		alreadyPresent
+			? `Guard already compiled at ${binaryPath} (re-run with --force to rebuild).\n`
+			: `Compiled the guard to ${binaryPath}.\n`,
+	);
+	installClaudeHook(process.cwd(), out, binaryPath);
+	return 0;
+}
+
+/**
  * Appends the agent snippet to an instructions file (AGENTS.md by default).
  * Idempotent: skips when the snippet's npx command is already present.
  */
@@ -210,7 +233,8 @@ function runInit(rest: string[], out: Writer): number {
 		}
 	}
 	if (claudeHook) {
-		installClaudeHook(process.cwd(), out);
+		const { binaryPath } = compileGuardBinary();
+		installClaudeHook(process.cwd(), out, binaryPath);
 	}
 	if (opencodeHook) {
 		installOpencodeHook(process.cwd(), out);
@@ -391,6 +415,8 @@ export async function runCli(
 				return runDoctor(out, cwd);
 			case "init":
 				return runInit(rest, out);
+			case "install":
+				return runInstall(rest, out);
 			case "hook":
 				if (rest.includes("--post")) {
 					return runPostHook(readStdin, out);

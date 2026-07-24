@@ -141,3 +141,6 @@ dist
 
 # E2E: cache of cloned target repositories (hono, etc.)
 e2e/.cache/
+
+# bun --compile scratch files (ts-surgeon install)
+*.bun-build

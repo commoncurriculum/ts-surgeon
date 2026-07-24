@@ -9,8 +9,18 @@ import { ALLOW_MARKER } from "./messages.js";
  * opencode.json. Pure config-file mutation — no policy logic lives here.
  */
 
-const HOOK_COMMAND = "npx -y @commoncurriculum/ts-surgeon hook";
-const POST_HOOK_COMMAND = "npx -y @commoncurriculum/ts-surgeon hook --post";
+/**
+ * The compiled guard, named directly — no `npx`, no shell wrapper in front of
+ * it. Both cost more than the guard itself: see compile.ts. Quoted because the
+ * cache path contains the user's home directory.
+ */
+function hookCommands(binaryPath: string): {
+	pre: string;
+	post: string;
+} {
+	const quoted = `"${binaryPath}"`;
+	return { pre: quoted, post: `${quoted} --post` };
+}
 
 /** npm package opencode loads as the guard plugin (this package itself). */
 const OPENCODE_PLUGIN_PACKAGE = "@commoncurriculum/ts-surgeon";
@@ -92,7 +102,12 @@ export function installOpencodeHook(cwd: string, out: Writer): void {
  * project's .claude/settings.json (Claude Code hooks). Merges with existing
  * settings; idempotent; upgrades older installs in place.
  */
-export function installClaudeHook(cwd: string, out: Writer): void {
+export function installClaudeHook(
+	cwd: string,
+	out: Writer,
+	binaryPath: string,
+): void {
+	const { pre, post } = hookCommands(binaryPath);
 	const settingsPath = path.join(cwd, ".claude", "settings.json");
 	let settings: Record<string, unknown> = {};
 	if (existsSync(settingsPath)) {
@@ -117,9 +132,12 @@ export function installClaudeHook(cwd: string, out: Writer): void {
 	const postToolUse = hooks.PostToolUse as HookEntry[];
 	const notes: string[] = [];
 
-	const existing = preToolUse.find((entry) =>
-		entry.hooks?.some((hook) => hook.command?.includes("ts-surgeon hook")),
-	);
+	// Matches both shapes an install can have: the old `npx … ts-surgeon hook`
+	// command and a compiled guard, which lives under a ts-surgeon cache dir.
+	const isGuardHook = (entry: HookEntry) =>
+		entry.hooks?.some((hook) => hook.command?.includes("ts-surgeon"));
+
+	const existing = preToolUse.find(isGuardHook);
 	if (existing) {
 		if (existing.matcher === "Bash") {
 			// Older installs only guarded Bash; extend them to the native Grep tool.
@@ -128,25 +146,43 @@ export function installClaudeHook(cwd: string, out: Writer): void {
 				`Upgraded the ts-surgeon hook matcher in ${settingsPath} from Bash to Bash|Grep (the guard now also redirects the native Grep tool).\n`,
 			);
 		}
+		for (const hook of existing.hooks ?? []) {
+			if (hook.command !== undefined && hook.command !== pre) {
+				hook.command = pre;
+				notes.push(
+					`Pointed the ts-surgeon PreToolUse guard in ${settingsPath} at the compiled binary (${binaryPath}) — it no longer starts a package manager on every tool call.\n`,
+				);
+			}
+		}
 	} else {
 		preToolUse.push({
 			matcher: "Bash|Grep",
-			// Generous timeout: answering a search runs find_references in-process,
-			// which loads the ts-morph project (bounded by TS_SURGEON_ANSWER_TIMEOUT_MS).
-			hooks: [{ type: "command", command: HOOK_COMMAND, timeout: 120 }],
+			// Generous timeout: answering a search runs find_references in a child
+			// process, which loads the ts-morph project (bounded by
+			// TS_SURGEON_ANSWER_TIMEOUT_MS).
+			hooks: [{ type: "command", command: pre, timeout: 120 }],
 		});
 		notes.push(
 			`Installed the ts-surgeon PreToolUse guard in ${settingsPath} (blocks sed/perl -i on TS/JS sources; answers recursive identifier searches with find_references output and fails open when it cannot answer; operators can disable it by launching the agent with ${ALLOW_MARKER} in the environment).\n`,
 		);
 	}
 
-	const existingPost = postToolUse.some((entry) =>
-		entry.hooks?.some((hook) => hook.command?.includes("hook --post")),
+	const existingPost = postToolUse.find((entry) =>
+		entry.hooks?.some((hook) => hook.command?.includes("--post")),
 	);
-	if (!existingPost) {
+	if (existingPost) {
+		for (const hook of existingPost.hooks ?? []) {
+			if (hook.command !== undefined && hook.command !== post) {
+				hook.command = post;
+				notes.push(
+					`Pointed the ts-surgeon PostToolUse hook in ${settingsPath} at the compiled binary.\n`,
+				);
+			}
+		}
+	} else {
 		postToolUse.push({
 			matcher: "Bash|Grep",
-			hooks: [{ type: "command", command: POST_HOOK_COMMAND, timeout: 30 }],
+			hooks: [{ type: "command", command: post, timeout: 30 }],
 		});
 		notes.push(
 			`Added the ts-surgeon PostToolUse teaching hook in ${settingsPath} (after an executed search it suggests the exact ts-surgeon equivalent — e.g. call find_references --symbol-name <name>).\n`,

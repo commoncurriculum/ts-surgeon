@@ -41,7 +41,8 @@
 		"release": "pnpm run build && changeset publish",
 		"lint": "biome lint ./",
 		"lint:fix": "biome lint --write ./",
-		"format": "biome check --write ./"
+		"format": "biome check --write ./",
+		"test:e2e:guard": "pnpm run build && vitest run --config vitest.e2e.config.ts e2e/guard-binary.e2e.test.ts"
 	},
 	"keywords": [
 		"cli",

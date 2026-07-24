@@ -41,3 +41,8 @@ jobs:
 
       - name: Run tests
         run: pnpm run test
+
+      # Compiles the guard and proves the artifact still guards with no runtime
+      # on PATH. Offline and ~3s, unlike the clone-based e2e suites.
+      - name: Run guard binary e2e
+        run: pnpm run test:e2e:guard
