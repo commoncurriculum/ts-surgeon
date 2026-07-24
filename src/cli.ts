@@ -55,6 +55,12 @@ Usage:
                                           .claude/settings.json (Claude Code);
                                           --opencode-hook registers the guard plugin
                                           in opencode.json's "plugin" array
+  ts-surgeon install [--force]            Compile the guard with bun and point
+                                          .claude/settings.json at the executable.
+                                          The guard runs on every tool call; through
+                                          npx that costs ~590ms a call, compiled ~15ms.
+                                          bun is fetched via npx and only needed to
+                                          build — the executable embeds its runtime
   ts-surgeon hook                         PreToolUse guard for agent harnesses: blocks
                                           sed/perl -i on TS/JS sources and recursive
                                           identifier searches (grep -r / rg / native
