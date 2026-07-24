@@ -22,7 +22,9 @@ export interface SearchAnswerRequest {
 
 /** ok:false means "could not answer — let the original search run". */
 export type SearchAnswer = { ok: true; text: string } | { ok: false };
-export type SearchAnswerer = (req: SearchAnswerRequest) => SearchAnswer;
+export type SearchAnswerer = (
+	req: SearchAnswerRequest,
+) => SearchAnswer | Promise<SearchAnswer>;
 
 interface AnswerLocation {
 	filePath: string;

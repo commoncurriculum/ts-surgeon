@@ -48,7 +48,7 @@ export const createTsSurgeonGuard =
 					throw new Error(verdict.reason);
 				}
 				if (verdict.kind === "answer-search") {
-					const answer = answerSearch({
+					const answer = await answerSearch({
 						symbolNames: verdict.symbolNames,
 						searchRoot: verdict.searchRoot,
 						cwd: process.cwd(),

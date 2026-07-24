@@ -8,6 +8,7 @@ import {
 	type StdinReader,
 } from "./cli/params.js";
 import { compileGuardBinary } from "./cli/guard/compile.js";
+import { answerSearchViaTsgo } from "./cli/guard/answer-tsgo.js";
 import {
 	installClaudeHook,
 	installOpencodeHook,
@@ -428,7 +429,12 @@ export async function runCli(
 					return runPostHook(readStdin, out);
 				}
 				// An undefined answerSearch falls through to runHook's default.
-				return runHook(rest, readStdin, err, opts.answerSearch);
+				return await runHook(
+					rest,
+					readStdin,
+					err,
+					opts.answerSearch ?? answerSearchViaTsgo,
+				);
 			case "list":
 			case "list-tools": {
 				const registry = createToolRegistry();
