@@ -3,6 +3,7 @@ import { Project } from "ts-morph";
 import {
 	findDeclarationIdentifiersByName,
 	resolveProjectWideDeclaration,
+	resolveTargetIdentifier,
 } from "./resolve-identifier.js";
 
 /**
@@ -90,6 +91,28 @@ export function parse(a: unknown): number { return Number(a) }`,
 		expect(() => resolveProjectWideDeclaration(project, "helper")).toThrowError(
 			/'helper' has 2 declarations/,
 		);
+	});
+});
+
+describe("resolveTargetIdentifier", () => {
+	/**
+	 * The recovery path from an ambiguity error is "pass targetFilePath", so a
+	 * file-scoped lookup must not demand a position for a rivalry the
+	 * project-wide lookup just collapsed.
+	 */
+	it("agrees with the project-wide lookup about what counts as one declaration", () => {
+		const project = new Project({ useInMemoryFileSystem: true });
+		project.createSourceFile(
+			"/src/config.ts",
+			`export interface Config { lessonTitle: string }
+export const config: Config = { lessonTitle: 'x' };`,
+		);
+
+		const declaration = resolveTargetIdentifier(project, "/src/config.ts", {
+			symbolName: "lessonTitle",
+		});
+
+		expect(declaration.getParent()?.getKindName()).toBe("PropertySignature");
 	});
 });
 

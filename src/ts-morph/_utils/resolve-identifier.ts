@@ -114,6 +114,24 @@ function canonicalDeclaration(identifier: Identifier): Node {
 }
 
 /**
+ * One entry per declaration, represented by the name that declares it directly
+ * when there is one: an interface's property beats the object literal that
+ * fills it in, an implementation beats its overload signatures. Both resolvers
+ * dedupe this way, so widening a search to the project and narrowing it to a
+ * file agree on how many declarations exist.
+ */
+function dedupeByDeclaration(matches: Identifier[]): Identifier[] {
+	const byDeclaration = new Map<Node, Identifier>();
+	for (const match of matches) {
+		const canonical = canonicalDeclaration(match);
+		if (!byDeclaration.has(canonical) || match.getParent() === canonical) {
+			byDeclaration.set(canonical, match);
+		}
+	}
+	return [...byDeclaration.values()];
+}
+
+/**
  * Finds every declaration-name Identifier with the given text in a file
  * (function/class/interface/type/enum/variable/method/property/parameter
  * names — not usage sites).
@@ -176,17 +194,7 @@ export function resolveProjectWideDeclaration(
 			}
 		}
 	}
-	// One entry per declaration, represented by the name that declares it
-	// directly when there is one (an interface's property beats the object
-	// literal that fills it in; an implementation beats its overload signatures).
-	const byDeclaration = new Map<Node, Identifier>();
-	for (const match of matches) {
-		const canonical = canonicalDeclaration(match);
-		if (!byDeclaration.has(canonical) || match.getParent() === canonical) {
-			byDeclaration.set(canonical, match);
-		}
-	}
-	const unique = [...byDeclaration.values()];
+	const unique = dedupeByDeclaration(matches);
 	if (unique.length === 1) {
 		return unique[0];
 	}
@@ -247,10 +255,8 @@ export function resolveTargetIdentifier(
 	if (symbolName === undefined) {
 		throw new Error("Pass position {line, column}, symbolName, or both.");
 	}
-	const matches = findDeclarationIdentifiersByName(
-		project,
-		targetFilePath,
-		symbolName,
+	const matches = dedupeByDeclaration(
+		findDeclarationIdentifiersByName(project, targetFilePath, symbolName),
 	);
 	if (matches.length === 1) {
 		return matches[0];
