@@ -195,14 +195,19 @@ export function templateCaveat({
 	const projectRoot = path.dirname(path.resolve(tsconfigPath));
 	const mentions = findTemplateMentions(env, projectRoot, symbolNames);
 	const extensions = env.extensions.join("/");
+	// Stated as a capability ("cannot update"), never as an action ("did not
+	// update"). The latter reads like an edit pass that skipped these files,
+	// which is simply false under dryRun, where nothing was attempted at all —
+	// and implying things about actions taken is the defect class this whole
+	// change is about (caught in review, 2026-07-29).
 	const headline = mutating
-		? `Incomplete edit: this project declares ${env.label} in its tsconfig. ${extensions} templates are outside the TypeScript program, so this tool did NOT update them — ${env.resolution}.`
+		? `Incomplete edit: this project declares ${env.label} in its tsconfig. ${extensions} templates are outside the TypeScript program, so this tool cannot update them — ${env.resolution}.`
 		: `Incomplete result: this project declares ${env.label} in its tsconfig. ${extensions} templates are outside the TypeScript program, so references from them cannot appear above — ${env.resolution}.`;
 	const body =
 		mentions.length > 0
 			? `\n\n${
 					mutating
-						? "Template text matches left untouched — review each by hand:"
+						? "Template text matches, not updated by this tool — review each by hand:"
 						: "Template text matches (unresolved, matched as text — review by hand):"
 				}\n${formatMentions(mentions)}`
 			: `\n\nNo template text matched this symbol's known spellings, which is evidence but not proof: a template can reach a symbol through a name this tool cannot predict.`;

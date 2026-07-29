@@ -661,6 +661,23 @@ describe("findSymbolReferences with symbolName only (project-wide)", () => {
 		]);
 	});
 
+	it("clamps a nonsensical declaration cap instead of returning nothing", async () => {
+		write("src/a.ts", "export const render = () => 1;\n");
+		write("src/b.ts", "export function render() {\n  return 2;\n}\n");
+
+		for (const maxDeclarations of [0, -3, 1.5]) {
+			const result = await findSymbolReferences({
+				tsconfigPath,
+				symbolName: "render",
+				maxDeclarations,
+			});
+			// Consumers read declarations[0]; an empty list alongside "there are
+			// more" would be a contradiction.
+			expect(result.declarations.length, `cap ${maxDeclarations}`).toBe(1);
+			expect(result.unsearchedDeclarations.length).toBe(1);
+		}
+	});
+
 	it("throws a clear error when no project declaration exists", async () => {
 		write("src/a.ts", "export const x = 1;\n");
 		await expect(

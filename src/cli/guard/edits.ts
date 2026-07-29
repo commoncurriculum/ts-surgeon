@@ -67,11 +67,24 @@ const EVAL_FLAGS: Record<string, ReadonlySet<string>> = {
 	php: new Set(["-r"]),
 };
 
+/**
+ * FILE writes only. A bare `.write(` used to be listed here, which made
+ * `process.stdout.write(fs.readFileSync('x.ts','utf8').replace(a,b))` — a
+ * read-only transform printed to the terminal — look like a rewrite and get
+ * blocked (caught in review, 2026-07-29). Every alternative below names a
+ * file API or an `open()` in a writing mode; a python file handle's `.write()`
+ * is reached through that `open(..., 'w')` instead of a generic method name.
+ */
 const WRITE_API_RE =
-	/\b(?:write_text|write_bytes|writelines|writeFileSync|writeFile|writeTextFile|writeTextFileSync|outputFileSync|file_put_contents|fwrite|fputs)\b|\bFile\.(?:write|open)\b|\bIO\.write\b|\.write\s*\(|\bopen\s*\([^)]*['"][^'"]*[wa]\+?['"]/;
+	/\b(?:write_text|write_bytes|writelines|writeFileSync|writeFile|writeTextFile|writeTextFileSync|outputFileSync|file_put_contents|fwrite|fputs)\b|\bFile\.(?:write|open)\b|\b(?:IO|Bun)\.write\b|\bopen\s*\([^)]*['"][^'"]*[wa]\+?['"]/;
 
+/**
+ * A generic `.read(` is kept: on its own it cannot trigger anything, because a
+ * block also requires a real file WRITE. `.text(` was dropped as redundant —
+ * `Bun.file(...)` already identifies that read.
+ */
 const READ_API_RE =
-	/\b(?:read_text|read_bytes|readlines|readFileSync|readFile|readTextFile|readTextFileSync|file_get_contents|fread)\b|\bFile\.read\b|\bIO\.read\b|\bBun\.file\b|\.read\s*\(|\.text\s*\(/;
+	/\b(?:read_text|read_bytes|readlines|readFileSync|readFile|readTextFile|readTextFileSync|file_get_contents|fread)\b|\bFile\.read\b|\bIO\.read\b|\bBun\.file\b|\.read\s*\(/;
 
 const REPLACE_API_RE =
 	/\.replace(?:All)?\s*\(|\bre\.sub\b|\bgsub\b|\bstr_replace\b|\bpreg_replace\b|\bs\/[^/]*\/[^/]*\//;

@@ -56,6 +56,11 @@ describe("detectSourceRewrite", () => {
 			`node -e "fs.writeFileSync('notes.md', fs.readFileSync('notes.md','utf8').replace('a','b'))"`,
 			// Generating a file, not rewriting one.
 			`node -e "fs.writeFileSync('src/generated.ts', template)"`,
+			// Transforms and PRINTS — nothing is written back. Caught in review
+			// (2026-07-29): a bare `.write(` in the write-API pattern made
+			// process.stdout.write look like a file write.
+			`node -e "process.stdout.write(fs.readFileSync('x.ts','utf8').replace(/a/g,'b'))"`,
+			`python3 -c "import pathlib; print(pathlib.Path('f.ts').read_text().replace('a','b'))"`,
 			// Not an eval at all.
 			"node scripts/codemod.js",
 			"python3 -m pytest",

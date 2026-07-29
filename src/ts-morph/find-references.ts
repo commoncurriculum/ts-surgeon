@@ -59,6 +59,11 @@ export async function findSymbolReferences({
 	/** Declarations found but not searched, because the cap was reached. */
 	unsearchedDeclarations: ReferenceLocation[];
 }> {
+	// Not reachable from the CLI (the tool schema does not expose it), but a
+	// caller passing 0 or a fraction would get an empty `declarations` while
+	// still being told there are unsearched ones — and every consumer reads
+	// declarations[0]. Clamp rather than trust.
+	const cap = Math.max(1, Math.floor(maxDeclarations));
 	const project = initializeProject(tsconfigPath);
 
 	// targetFilePath (when given) is expected to be an absolute path
@@ -83,10 +88,10 @@ export async function findSymbolReferences({
 
 	return {
 		declarations: identifierNodes
-			.slice(0, maxDeclarations)
+			.slice(0, cap)
 			.map((node) => collectReferences(node)),
 		unsearchedDeclarations: identifierNodes
-			.slice(maxDeclarations)
+			.slice(cap)
 			.map((node) => locationOf(node)),
 	};
 }
