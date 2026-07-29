@@ -38,6 +38,17 @@ const NON_SOURCE_DIRS = new Set([
 	"dev",
 ]);
 
+/**
+ * True when ANY segment of the path is a directory project sources do not live
+ * in. Unlike isNonSourcePath (which looks at the top segment and lets a `.ts`
+ * extension win), this is about write targets: `dist/index.js` and
+ * `build/out.ts` are generated artifacts, not code an agent should be steered
+ * away from rewriting.
+ */
+export function hasGeneratedOrVendoredSegment(p: string): boolean {
+	return p.split("/").some((segment) => NON_SOURCE_DIRS.has(segment));
+}
+
 export function hasFileExtension(p: string): boolean {
 	return /\.[A-Za-z0-9]{1,8}$/.test(p) || SOURCE_EXT_RE.test(p);
 }

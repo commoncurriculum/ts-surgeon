@@ -116,6 +116,9 @@ node dist/index.js call <tool> --params '<json>'
      - `safe-delete-symbol/`: Deleting a symbol only when it is unreferenced
    - `_utils/`: Shared utilities
      - `ts-morph-project.ts`: Common project creation logic
+     - `template-environment.ts` / `template-references.ts`: Detecting
+       Glint/Vue/Svelte projects from the tsconfig and reporting the template
+       references the type checker cannot see
    - `_test-utils/`: Test helpers
 
 5. **Utilities** (`src/utils/`)

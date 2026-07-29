@@ -1,7 +1,36 @@
 import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { findSymbolReferences } from "../ts-morph/find-references.js";
+import {
+	type DeclarationReferences,
+	findSymbolReferences,
+} from "../ts-morph/find-references.js";
+import { templateCaveat } from "../ts-morph/_utils/template-references.js";
 import { runTool } from "./_tool-runner.js";
+
+/** One declaration's definition line plus its numbered references. */
+function formatDeclaration(declaration: DeclarationReferences): string {
+	let text = "";
+	if (declaration.definition) {
+		const { filePath, line, column } = declaration.definition;
+		text += "Definition:\n";
+		text += `- ${filePath}:${line}:${column}\n`;
+		text += `  \`\`\`typescript\n  ${declaration.definition.text}\n  \`\`\`\n\n`;
+	} else {
+		text += "Definition not found.\n\n";
+	}
+	if (declaration.references.length > 0) {
+		text += `References (${declaration.references.length} found):\n`;
+		text += declaration.references
+			.map(
+				(ref) =>
+					`- ${ref.filePath}:${ref.line}:${ref.column}\n  \`\`\`typescript\n  ${ref.text}\n  \`\`\``,
+			)
+			.join("\n\n");
+	} else {
+		text += "References not found.";
+	}
+	return text.trim();
+}
 
 export function registerFindReferencesTool(registry: ToolRegistry): void {
 	registry.tool(
@@ -59,36 +88,45 @@ Returns the definition (file path, line, column, source line) when found, follow
 					symbolName: args.symbolName,
 				},
 				async () => {
-					const { references, definition } = await findSymbolReferences({
+					const { declarations } = await findSymbolReferences({
 						tsconfigPath: args.tsconfigPath,
 						targetFilePath: args.targetFilePath,
 						position: args.position,
 						symbolName: args.symbolName,
 					});
 
-					let resultText = "";
-					if (definition) {
-						resultText += "Definition:\n";
-						resultText += `- ${definition.filePath}:${definition.line}:${definition.column}\n`;
-						resultText += `  \`\`\`typescript\n  ${definition.text}\n  \`\`\`\n\n`;
-					} else {
-						resultText += "Definition not found.\n\n";
-					}
+					// One declaration reads exactly as before. Several are reported
+					// side by side instead of raising an ambiguity error the caller
+					// would have to pay another full project parse to answer.
+					const sections =
+						declarations.length === 1
+							? formatDeclaration(declarations[0])
+							: [
+									`'${declarations[0].symbolName}' has ${declarations.length} declarations; references for each follow. Pass position {line, column} to target just one.`,
+									...declarations.map(
+										(declaration, index) =>
+											`## Declaration ${index + 1} — ${declaration.definition?.filePath ?? "unknown file"}:${declaration.definition?.line ?? "?"}:${declaration.definition?.column ?? "?"}\n${formatDeclaration(declaration)}`,
+									),
+								].join("\n\n");
 
-					if (references.length > 0) {
-						resultText += `References (${references.length} found):\n`;
-						resultText += references
-							.map(
-								(ref) =>
-									`- ${ref.filePath}:${ref.line}:${ref.column}\n  \`\`\`typescript\n  ${ref.text}\n  \`\`\`\``,
-							)
-							.join("\n\n");
-					} else {
-						resultText += "References not found.";
-					}
+					// Templates outside the TypeScript program hold references the
+					// checker cannot see. Reporting a partial answer as "Success" is
+					// what made that omission dangerous.
+					const caveat = templateCaveat({
+						tsconfigPath: args.tsconfigPath,
+						symbolNames: [...new Set(declarations.map((d) => d.symbolName))],
+						mutating: false,
+					});
+
 					return {
-						message: resultText.trim(),
-						data: { definition, references },
+						message: caveat ? `${sections}\n\n${caveat.text}` : sections,
+						data: {
+							declarations,
+							// Retained for single-declaration consumers of --json.
+							definition: declarations[0]?.definition ?? null,
+							references: declarations[0]?.references ?? [],
+							...(caveat ? { templateBlindSpot: caveat.data } : {}),
+						},
 					};
 				},
 			),

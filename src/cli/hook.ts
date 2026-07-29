@@ -1,13 +1,18 @@
 import { answerSearchViaCli, type SearchAnswerer } from "./guard/answer.js";
-import { isInPlaceSourceEdit } from "./guard/edits.js";
+import {
+	detectSourceRewrite,
+	type EditEnvironment,
+	realEditEnvironment,
+} from "./guard/edits.js";
 import {
 	DYNAMIC_SEARCH_BLOCK_MESSAGE,
-	EDIT_BLOCK_MESSAGE,
+	editBlockMessage,
 	isOperatorAllowed,
 	withInertPrefixNote,
 } from "./guard/messages.js";
 import { analyzePatterns, SHELL_EXPANSION_RE } from "./guard/pattern-intent.js";
 import { isExplicitFile, resolveSearchScope } from "./guard/scope.js";
+import { rootsContainSources } from "./guard/source-presence.js";
 import {
 	invocationFromGrepTool,
 	parseSearchInvocation,
@@ -68,6 +73,26 @@ export type HookEvaluation =
 	| { kind: "block"; reason: string }
 	| { kind: "answer-search"; symbolNames: string[]; searchRoot?: string };
 
+/**
+ * Everything the policy needs to know about the world outside the command
+ * string: where it runs, which files exist, and whether a searched directory
+ * holds any TS/JS at all. Injected so every rule stays testable without a
+ * fixture tree, and so the harness's reported cwd (not the guard process's) is
+ * what paths resolve against.
+ */
+export interface GuardEnvironment extends EditEnvironment {
+	hasSources: (paths: string[]) => boolean;
+}
+
+export function realGuardEnvironment(
+	cwd: string = process.cwd(),
+): GuardEnvironment {
+	return {
+		...realEditEnvironment(cwd),
+		hasSources: (paths) => rootsContainSources(paths, cwd),
+	};
+}
+
 type SignificantSearch =
 	| { kind: "dynamic-source" }
 	| { kind: "identifiers"; symbolNames: string[]; searchRoot?: string }
@@ -79,7 +104,10 @@ type SignificantSearch =
  * greps, explicit-file reads, non-source scopes, runtime-computed roots,
  * inverted matches — then classifies the pattern intent.
  */
-function classifySearch(inv: SearchInvocation): SignificantSearch | undefined {
+function classifySearch(
+	inv: SearchInvocation,
+	env: GuardEnvironment,
+): SignificantSearch | undefined {
 	if (inv.patterns.length === 0) {
 		return undefined;
 	}
@@ -99,6 +127,11 @@ function classifySearch(inv: SearchInvocation): SignificantSearch | undefined {
 	}
 	const scope = resolveSearchScope(inv);
 	if (scope === "non-source") {
+		return undefined;
+	}
+	if (!env.hasSources(inv.paths)) {
+		// The searched directories exist and hold no TS/JS: this project's code
+		// is in another language, and ts-surgeon has nothing to say about it.
 		return undefined;
 	}
 	if (inv.paths.some((p) => SHELL_EXPANSION_RE.test(p))) {
@@ -138,14 +171,17 @@ function classifySearch(inv: SearchInvocation): SignificantSearch | undefined {
  * every grep/rg/git grep is inspected, including inside loops and command
  * substitutions.
  */
-function findSignificantSearch(command: string): SignificantSearch | undefined {
+function findSignificantSearch(
+	command: string,
+	env: GuardEnvironment,
+): SignificantSearch | undefined {
 	let sawOpaqueSourceSearch = false;
 	for (const tokens of splitSimpleCommands(command)) {
 		const inv = parseSearchInvocation(tokens);
 		if (inv === undefined) {
 			continue;
 		}
-		const found = classifySearch(inv);
+		const found = classifySearch(inv, env);
 		if (found === undefined) {
 			continue;
 		}
@@ -158,20 +194,24 @@ function findSignificantSearch(command: string): SignificantSearch | undefined {
 }
 
 /**
- * Evaluates a Bash command: in-place text edits of TS/JS sources (sed/perl
- * -i) and runtime-dynamic search loops are blocked; recursive identifier
- * searches come back as "answer-search" so the hook can run find_references
- * on the agent's behalf. The old strict/default split (--strict flag,
- * TS_SURGEON_STRICT env) is retired.
+ * Evaluates a Bash command: hand-edits of TS/JS sources (whatever writes
+ * them — see guard/edits.ts) and runtime-dynamic search loops are blocked;
+ * recursive identifier searches come back as "answer-search" so the hook can
+ * run find_references on the agent's behalf. The old strict/default split
+ * (--strict flag, TS_SURGEON_STRICT env) is retired.
  */
-export function evaluateBashCommand(command: string): HookEvaluation {
-	if (isInPlaceSourceEdit(command)) {
+export function evaluateBashCommand(
+	command: string,
+	env: GuardEnvironment = realGuardEnvironment(),
+): HookEvaluation {
+	const rewrite = detectSourceRewrite(command, env);
+	if (rewrite !== undefined) {
 		return {
 			kind: "block",
-			reason: withInertPrefixNote(command, EDIT_BLOCK_MESSAGE),
+			reason: withInertPrefixNote(command, editBlockMessage(rewrite)),
 		};
 	}
-	const found = findSignificantSearch(command);
+	const found = findSignificantSearch(command, env);
 	if (found?.kind === "dynamic-source") {
 		return {
 			kind: "block",
@@ -195,15 +235,18 @@ export function evaluateBashCommand(command: string): HookEvaluation {
  * hard-blocks — a dynamic-looking pattern there is regex text, not a shell
  * loop).
  */
-export function evaluateGrepToolInput(input: {
-	pattern?: unknown;
-	path?: unknown;
-	glob?: unknown;
-	include?: unknown;
-	type?: unknown;
-}): HookEvaluation {
+export function evaluateGrepToolInput(
+	input: {
+		pattern?: unknown;
+		path?: unknown;
+		glob?: unknown;
+		include?: unknown;
+		type?: unknown;
+	},
+	env: GuardEnvironment = realGuardEnvironment(),
+): HookEvaluation {
 	const inv = invocationFromGrepTool(input);
-	const found = inv === undefined ? undefined : classifySearch(inv);
+	const found = inv === undefined ? undefined : classifySearch(inv, env);
 	if (found?.kind === "identifiers") {
 		return {
 			kind: "answer-search",
@@ -243,11 +286,17 @@ const GENERIC_TEACHING_LINE = `ts-surgeon: next time, use ts-surgeon for code se
  */
 function classifySearchForTeaching(
 	inv: SearchInvocation,
+	env: GuardEnvironment,
 ): SignificantSearch | undefined {
 	if (inv.patterns.length === 0 || inv.invert) {
 		return undefined;
 	}
 	if (resolveSearchScope(inv) === "non-source") {
+		return undefined;
+	}
+	if (!env.hasSources(inv.paths)) {
+		// Teaching a TypeScript toolset after a search through Elixir (or Go, or
+		// Python) is advice about a language the code is not written in.
 		return undefined;
 	}
 	if (inv.paths.some((p) => SHELL_EXPANSION_RE.test(p))) {
@@ -277,12 +326,15 @@ function classifySearchForTeaching(
 	return { kind: "opaque-source" };
 }
 
-function findTeachableSearch(command: string): SignificantSearch | undefined {
+function findTeachableSearch(
+	command: string,
+	env: GuardEnvironment,
+): SignificantSearch | undefined {
 	let sawOpaqueSourceSearch = false;
 	for (const tokens of splitSimpleCommands(command)) {
 		const inv = parseSearchInvocation(tokens);
 		if (inv === undefined) continue;
-		const found = classifySearchForTeaching(inv);
+		const found = classifySearchForTeaching(inv, env);
 		if (found?.kind === "identifiers") return found;
 		if (found?.kind === "opaque-source") sawOpaqueSourceSearch = true;
 	}
@@ -299,13 +351,14 @@ function findTeachableSearch(command: string): SignificantSearch | undefined {
 export function buildSearchTeaching(
 	toolName: string,
 	toolInput: Record<string, unknown> | undefined,
+	env: GuardEnvironment = realGuardEnvironment(),
 ): string | undefined {
 	let found: SignificantSearch | undefined;
 	if (toolName === "Bash" && typeof toolInput?.command === "string") {
-		found = findTeachableSearch(toolInput.command);
+		found = findTeachableSearch(toolInput.command, env);
 	} else if (toolName === "Grep" && toolInput) {
 		const inv = invocationFromGrepTool(toolInput);
-		found = inv === undefined ? undefined : classifySearchForTeaching(inv);
+		found = inv === undefined ? undefined : classifySearchForTeaching(inv, env);
 	}
 	if (found === undefined) {
 		return undefined;
@@ -354,7 +407,13 @@ export function runPostHook(readStdin: StdinReader, out: Writer): number {
 	if (payload === undefined || typeof payload.tool_name !== "string") {
 		return 0;
 	}
-	const teaching = buildSearchTeaching(payload.tool_name, payload.tool_input);
+	const teaching = buildSearchTeaching(
+		payload.tool_name,
+		payload.tool_input,
+		realGuardEnvironment(
+			typeof payload.cwd === "string" ? payload.cwd : process.cwd(),
+		),
+	);
 	if (teaching === undefined) {
 		return 0;
 	}
@@ -399,11 +458,16 @@ export async function runHook(
 		return 0;
 	}
 	const { tool_name, tool_input, cwd } = payload;
+	// Paths in the command are relative to where the HARNESS ran it, not to
+	// wherever the guard process happens to sit.
+	const env = realGuardEnvironment(
+		typeof cwd === "string" ? cwd : process.cwd(),
+	);
 	let evaluation: HookEvaluation = { kind: "allow" };
 	if (tool_name === "Bash" && typeof tool_input?.command === "string") {
-		evaluation = evaluateBashCommand(tool_input.command);
+		evaluation = evaluateBashCommand(tool_input.command, env);
 	} else if (tool_name === "Grep" && tool_input) {
-		evaluation = evaluateGrepToolInput(tool_input);
+		evaluation = evaluateGrepToolInput(tool_input, env);
 	}
 	if (evaluation.kind === "block") {
 		err.write(`${evaluation.reason}\n`);

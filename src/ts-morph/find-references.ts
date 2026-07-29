@@ -1,8 +1,8 @@
 import type { Identifier, Node, SourceFile } from "ts-morph";
 import { initializeProject } from "./_utils/ts-morph-project.js";
 import {
-	resolveProjectWideDeclaration,
-	resolveTargetIdentifier,
+	resolveProjectWideDeclarationCandidates,
+	resolveTargetIdentifierCandidates,
 } from "./_utils/resolve-identifier.js";
 
 // --- Data Structure for Result ---
@@ -14,12 +14,25 @@ export interface ReferenceLocation {
 	text: string;
 }
 
+/** What one declaration of the requested name resolves to. */
+export interface DeclarationReferences {
+	symbolName: string;
+	definition: ReferenceLocation | null;
+	references: ReferenceLocation[];
+}
+
 // --- Main Function ---
 
 /**
  * Searches the entire project for all references to a symbol, targeted either
- * by position, by (unambiguous) declaration name within a file, or — when no
- * targetFilePath is given — by an unambiguous declaration name project-wide.
+ * by position, by declaration name within a file, or — when no targetFilePath
+ * is given — by declaration name project-wide.
+ *
+ * A name matching several declarations returns ALL of them rather than raising
+ * an ambiguity error. This is a read-only lookup: it already knows every
+ * candidate position by the time it could complain, and erroring out costs the
+ * caller another process start and another full project parse to learn what
+ * this call could simply have reported (defect report, 2026-07-29).
  */
 export async function findSymbolReferences({
 	tsconfigPath,
@@ -31,28 +44,35 @@ export async function findSymbolReferences({
 	targetFilePath?: string;
 	position?: { line: number; column: number };
 	symbolName?: string;
-}): Promise<{
-	references: ReferenceLocation[];
-	definition: ReferenceLocation | null;
-}> {
+}): Promise<{ declarations: DeclarationReferences[] }> {
 	const project = initializeProject(tsconfigPath);
 
 	// targetFilePath (when given) is expected to be an absolute path
-	let identifierNode: Identifier;
+	let identifierNodes: Identifier[];
 	if (targetFilePath !== undefined) {
-		identifierNode = resolveTargetIdentifier(project, targetFilePath, {
-			position,
-			symbolName,
-		});
+		identifierNodes = resolveTargetIdentifierCandidates(
+			project,
+			targetFilePath,
+			{ position, symbolName },
+		);
 	} else {
 		if (symbolName === undefined) {
 			throw new Error(
 				"Pass targetFilePath (with position or symbolName), or symbolName alone for a project-wide lookup.",
 			);
 		}
-		identifierNode = resolveProjectWideDeclaration(project, symbolName);
+		identifierNodes = resolveProjectWideDeclarationCandidates(
+			project,
+			symbolName,
+		);
 	}
 
+	return {
+		declarations: identifierNodes.map((node) => collectReferences(node)),
+	};
+}
+
+function collectReferences(identifierNode: Identifier): DeclarationReferences {
 	// findReferencesAsNodes() may not include the definition site itself
 	const referenceNodes: Node[] = identifierNode.findReferencesAsNodes();
 
@@ -111,7 +131,11 @@ export async function findSymbolReferences({
 		return a.line - b.line;
 	});
 
-	return { references, definition: definitionLocation };
+	return {
+		symbolName: identifierNode.getText(),
+		references,
+		definition: definitionLocation,
+	};
 }
 
 function getLineText(sourceFile: SourceFile, lineNumber: number): string {

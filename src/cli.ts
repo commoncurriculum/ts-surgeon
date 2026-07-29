@@ -90,7 +90,10 @@ Params for call (flags win over JSON; both can be combined):
                          "references" array), run the tool once per referenced
                          project and merge the results. Read-only tools only
                          (search_pattern, find_references, find_unused_exports,
-                         get_diagnostics)
+                         get_diagnostics). Those tools already do this by
+                         default; the flag is only needed to be explicit
+  --single-project       Opposite of --all-projects: run against the solution
+                         config itself, which usually contains no source files
 
 Conveniences:
   - Relative paths are resolved against the current working directory.
@@ -465,9 +468,19 @@ export async function runCli(
 				}
 				const registry = createToolRegistry();
 				const tool = registry.get(toolName);
-				const allProjects = rest.includes("--all-projects");
+				const singleProject = rest.includes("--single-project");
+				const explicitAllProjects = rest.includes("--all-projects");
+				if (explicitAllProjects && singleProject) {
+					throw new CliUsageError(
+						"--all-projects and --single-project contradict each other; pass one.",
+					);
+				}
 				const params = readCallParams(
-					rest.slice(1).filter((arg) => arg !== "--all-projects"),
+					rest
+						.slice(1)
+						.filter(
+							(arg) => arg !== "--all-projects" && arg !== "--single-project",
+						),
 					readStdin,
 					tool.schemaShape,
 					cwd,
@@ -477,7 +490,22 @@ export async function runCli(
 					typeof prepared.tsconfigPath === "string"
 						? solutionReferences(prepared.tsconfigPath)
 						: [];
+				// A solution-style config usually contains no source files of its
+				// own, so a read-only tool pointed at one would silently answer from
+				// an empty project. Fanning out is what the caller meant; warning on
+				// every single invocation and making them re-run with a flag was
+				// just a toll (defect report, 2026-07-29).
+				const allProjects =
+					explicitAllProjects ||
+					(!singleProject &&
+						references.length > 0 &&
+						ALL_PROJECTS_TOOLS.has(tool.name));
 				if (allProjects) {
+					if (!explicitAllProjects) {
+						err.write(
+							`Note: ${String(prepared.tsconfigPath)} is a solution-style tsconfig; running across its ${references.length} referenced project(s). Pass --single-project to run against this config alone.\n`,
+						);
+					}
 					// awaited so a CliUsageError rejection lands in this try/catch
 					return await runAllProjects(
 						registry,
@@ -490,10 +518,15 @@ export async function runCli(
 					);
 				}
 				if (references.length > 0) {
-					// A solution-style config often contains no source files itself, so
-					// the tool would silently see a partial (or empty) project.
+					// Everything that reaches here runs against the solution config
+					// itself, which often contains no source files — either because
+					// the caller asked for that (--single-project) or because a
+					// mutating tool cannot fan out (a file shared between referenced
+					// projects would be edited once per project).
 					err.write(
-						`Warning: ${String(prepared.tsconfigPath)} is a solution-style tsconfig ("references" with ${references.length} project(s)). Pass a leaf tsconfig (e.g. ${references[0]}) or add --all-projects to run a read-only tool across every referenced project.\n`,
+						singleProject
+							? `Warning: ${String(prepared.tsconfigPath)} is a solution-style tsconfig ("references" with ${references.length} project(s)); --single-project means only files this config itself includes are in scope.\n`
+							: `Warning: ${String(prepared.tsconfigPath)} is a solution-style tsconfig ("references" with ${references.length} project(s)), and '${tool.name}' mutates files, so it cannot be fanned out. Pass a leaf tsconfig (e.g. ${references[0]}).\n`,
 					);
 				}
 				const outcome = await callToolOnce(tool.name, prepared, registry);

@@ -2,6 +2,7 @@ import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
 import { safeDeleteSymbol } from "../ts-morph/safe-delete-symbol/safe-delete-symbol.js";
 import type { BlockingReference } from "../ts-morph/safe-delete-symbol/types.js";
+import { templateCaveat } from "../ts-morph/_utils/template-references.js";
 import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 function formatBlockers(blockers: BlockingReference[]): string {
@@ -62,6 +63,30 @@ On success: the deleted symbol and the modified file(s). When blocked: the list 
 					dryRun: args.dryRun,
 				},
 				async () => {
+					// This tool's whole promise is "only when unreferenced", and in a
+					// template project the type checker cannot see every reference. A
+					// template match is checked BEFORE the deletion so the promise is
+					// not broken by something the checker never looked at.
+					const caveat = templateCaveat({
+						tsconfigPath: args.tsconfigPath,
+						symbolNames: [args.symbolName],
+						mutating: true,
+					});
+					if (caveat && caveat.data.unresolvedMentions.length > 0) {
+						return {
+							message: `Not deleted: '${args.symbolName}' may still be used from templates this tool cannot resolve.\n\n${caveat.text}\n\nIf these matches are unrelated, delete the declaration with your editor or re-run after confirming by hand.`,
+							log: {
+								deleted: false,
+								templateMentions: caveat.data.unresolvedMentions.length,
+							},
+							data: {
+								deleted: false,
+								blockingReferences: [],
+								changedFiles: [],
+								templateBlindSpot: caveat.data,
+							},
+						};
+					}
 					const result = await safeDeleteSymbol({
 						tsconfigPath: args.tsconfigPath,
 						targetFilePath: args.targetFilePath,
@@ -81,9 +106,12 @@ On success: the deleted symbol and the modified file(s). When blocked: the list 
 					}
 
 					const changedFilesList = formatChangedFiles(result.changedFiles);
-					const message = args.dryRun
+					const deletion = args.dryRun
 						? `Dry run complete: '${args.symbolName}' is safe to delete. Would modify the following files:\n - ${changedFilesList}`
 						: `Deleted '${args.symbolName}'. The following files were modified:\n - ${changedFilesList}`;
+					// No template matched, which is evidence rather than proof — the
+					// caveat says exactly that.
+					const message = caveat ? `${deletion}\n\n${caveat.text}` : deletion;
 
 					return {
 						message,

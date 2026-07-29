@@ -71,7 +71,11 @@ describe("solution-style tsconfigs (--all-projects)", () => {
 		return plainTsconfig;
 	}
 
-	it("warns on stderr when the tsconfig is solution-style and --all-projects is absent", async () => {
+	it("fans a read-only tool across the referenced projects by default", async () => {
+		// Defect report, 2026-07-29: the old behavior warned on every single
+		// invocation and told the caller to re-run with a flag, for the only
+		// behavior that could have been meant. Fanning out is now the default and
+		// the note just says what happened.
 		writeSolution();
 		const out = createCapture();
 		const err = createCapture();
@@ -84,7 +88,52 @@ describe("solution-style tsconfigs (--all-projects)", () => {
 
 		expect(code).toBe(0);
 		expect(err.text).toContain("solution-style tsconfig");
-		expect(err.text).toContain("--all-projects");
+		expect(err.text).toContain("--single-project");
+		expect(out.text).toContain(path.join("pkg-a", "tsconfig.json"));
+		expect(out.text).toContain(path.join("pkg-b", "tsconfig.json"));
+	});
+
+	it("--single-project opts out of the fan-out", async () => {
+		writeSolution();
+		const out = createCapture();
+		const err = createCapture();
+
+		const code = await runCli(
+			[
+				"call",
+				"get_diagnostics",
+				"--single-project",
+				"--tsconfig-path",
+				solutionPath,
+			],
+			out,
+			err,
+		);
+
+		expect(code).toBe(0);
+		expect(err.text).toContain("solution-style tsconfig");
+		expect(out.text).not.toContain(path.join("pkg-b", "tsconfig.json"));
+	});
+
+	it("still warns for a mutating tool, which cannot fan out", async () => {
+		writeSolution();
+		const out = createCapture();
+		const err = createCapture();
+
+		await runCli(
+			[
+				"call",
+				"organize_imports",
+				"--tsconfig-path",
+				solutionPath,
+				"--file-paths",
+				path.join(tempDir, "mono", "pkg-a", "src", "index.ts"),
+			],
+			out,
+			err,
+		);
+
+		expect(err.text).toContain("solution-style tsconfig");
 		expect(err.text).toContain(path.join("pkg-a", "tsconfig.json"));
 	});
 
