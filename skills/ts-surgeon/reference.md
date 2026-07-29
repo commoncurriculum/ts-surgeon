@@ -337,6 +337,11 @@ partner to `find_unused_exports`.
   reference — other files, same-file usages, local `export { x }` re-exports —
   blocks the delete and is returned as `file:line:col`. Overload signatures go
   together; one declarator is removed from a multi-variable statement.
+- **Template projects** (tsconfig declaring Glint/Vue/Svelte): a `.hbs`/`.vue`/
+  `.svelte`/`.gts` file mentioning the symbol also blocks the delete, matched as
+  *text* — those files are outside the TypeScript program, so the checker cannot
+  prove the symbol is unused. Verify by hand and delete in your editor if the
+  matches are unrelated.
 - **Gotchas**: if two symbols share the name, the first in the file is targeted.
   Imports left unused by the deletion are **not** removed — follow with
   `organize_imports` / `apply_code_fix` (`remove_unused`).

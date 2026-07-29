@@ -13,7 +13,7 @@ Address a nine-point defect report (2026-07-29) about tools reporting more confi
 - Tools now detect the environment from the tsconfig they already read and stop presenting partial results as complete: `find_references` reports the blind spot and lists matching template lines as text; `rename_symbol` / `rename_filesystem_entry` report which templates they did not update; `safe_delete_symbol` refuses to delete a symbol a template still mentions.
 
 **Lookups**
-- `find_references` answers every declaration of an ambiguous name instead of erroring and forcing a second process start and project parse (`--json` data gains `declarations`).
+- `find_references` answers every declaration of an ambiguous name instead of erroring and forcing a second process start and project parse (`--json` data gains `declarations`). Reference resolution is capped at 5 declarations — each one costs a full type-checker search — and the rest are reported as positions under `unsearchedDeclarations`.
 - A file that exists on disk but sits outside the tsconfig's include globs now says so, instead of the misleading "File not found".
 - Read-only tools fan out across a solution-style tsconfig's referenced projects by default; `--single-project` opts out, and the per-invocation warning is gone.
 

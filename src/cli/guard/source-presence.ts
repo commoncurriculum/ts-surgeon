@@ -38,8 +38,15 @@ const SKIP_DIRS = new Set([
 	".cache",
 ]);
 
-/** Bounds the walk: a source-less tree must not cost more than a few ms. */
-const ENTRY_BUDGET = 3000;
+/**
+ * Bounds the walk. This runs inside a PreToolUse hook — one process per tool
+ * call, so nothing is reused between calls — and it must never cost more than
+ * the grep it is deciding about. Breadth-first with both caps means a source
+ * tree answers from the shallow levels, where source directories actually live,
+ * and a source-less tree gives up quickly instead of walking a monorepo.
+ */
+const ENTRY_BUDGET = 1500;
+const MAX_DEPTH = 6;
 
 const cache = new Map<string, boolean>();
 
@@ -49,11 +56,13 @@ function containsSourceFile(root: string): boolean {
 		return cached;
 	}
 	let budget = ENTRY_BUDGET;
-	const queue: string[] = [root];
+	const queue: Array<{ dir: string; depth: number }> = [
+		{ dir: root, depth: 0 },
+	];
 	let exhausted = false;
 	let found = false;
 	while (queue.length > 0 && !found) {
-		const dir = queue.shift() as string;
+		const { dir, depth } = queue.shift() as { dir: string; depth: number };
 		let entries: fs.Dirent[];
 		try {
 			entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -68,8 +77,12 @@ function containsSourceFile(root: string): boolean {
 				break;
 			}
 			if (entry.isDirectory()) {
-				if (!SKIP_DIRS.has(entry.name)) {
-					queue.push(path.join(dir, entry.name));
+				if (depth >= MAX_DEPTH) {
+					// Deeper than this is not worth a hook's latency; unknown, so
+					// the answer stays "cannot prove absence".
+					exhausted = true;
+				} else if (!SKIP_DIRS.has(entry.name)) {
+					queue.push({ dir: path.join(dir, entry.name), depth: depth + 1 });
 				}
 			} else if (SOURCE_EXT_RE.test(entry.name)) {
 				found = true;

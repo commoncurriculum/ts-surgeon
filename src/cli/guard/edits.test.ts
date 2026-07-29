@@ -77,6 +77,25 @@ describe("detectSourceRewrite", () => {
 		}
 	});
 
+	// The block message says this check is a policy decision, not a sandbox.
+	// These are the shapes that prove it: a command string cannot reveal what an
+	// arbitrary program writes. They are pinned so nobody reads the corpus above
+	// as a coverage claim — if one of them ever becomes detectable, this test
+	// should fail and be rewritten, not deleted.
+	it("does not pretend to catch writes it cannot see from a command string", () => {
+		const disk = diskWith("/repo/src/app.ts");
+		for (const command of [
+			"python3 scripts/codemod.py", // the same edit, one file away
+			"bash scripts/rename.sh",
+			"make refactor",
+			"git apply rename.patch",
+			"patch -p1 < rename.diff",
+			"./bin/my-compiled-codemod",
+		]) {
+			expect(detectSourceRewrite(command, disk), command).toBeUndefined();
+		}
+	});
+
 	it("allows writes that create something new or target generated output", () => {
 		const disk = diskWith("/repo/src/app.ts");
 		for (const command of [

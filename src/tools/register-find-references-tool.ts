@@ -88,25 +88,40 @@ Returns the definition (file path, line, column, source line) when found, follow
 					symbolName: args.symbolName,
 				},
 				async () => {
-					const { declarations } = await findSymbolReferences({
-						tsconfigPath: args.tsconfigPath,
-						targetFilePath: args.targetFilePath,
-						position: args.position,
-						symbolName: args.symbolName,
-					});
+					const { declarations, unsearchedDeclarations } =
+						await findSymbolReferences({
+							tsconfigPath: args.tsconfigPath,
+							targetFilePath: args.targetFilePath,
+							position: args.position,
+							symbolName: args.symbolName,
+						});
 
 					// One declaration reads exactly as before. Several are reported
 					// side by side instead of raising an ambiguity error the caller
 					// would have to pay another full project parse to answer.
+					const total = declarations.length + unsearchedDeclarations.length;
 					const sections =
-						declarations.length === 1
+						total === 1
 							? formatDeclaration(declarations[0])
 							: [
-									`'${declarations[0].symbolName}' has ${declarations.length} declarations; references for each follow. Pass position {line, column} to target just one.`,
+									`'${declarations[0].symbolName}' has ${total} declarations; references for each follow. Pass position {line, column} to target just one.`,
 									...declarations.map(
 										(declaration, index) =>
 											`## Declaration ${index + 1} — ${declaration.definition?.filePath ?? "unknown file"}:${declaration.definition?.line ?? "?"}:${declaration.definition?.column ?? "?"}\n${formatDeclaration(declaration)}`,
 									),
+									// Each declaration costs a full type-checker search, so
+									// the rest are listed as positions rather than silently
+									// dropped or paid for.
+									...(unsearchedDeclarations.length > 0
+										? [
+												`## ${unsearchedDeclarations.length} further declaration(s) — positions only, not searched (re-run with position {line, column} for any of these):\n${unsearchedDeclarations
+													.map(
+														(d) =>
+															`- ${d.filePath}:${d.line}:${d.column}\n  \`\`\`typescript\n  ${d.text}\n  \`\`\``,
+													)
+													.join("\n")}`,
+											]
+										: []),
 								].join("\n\n");
 
 					// Templates outside the TypeScript program hold references the
@@ -122,6 +137,7 @@ Returns the definition (file path, line, column, source line) when found, follow
 						message: caveat ? `${sections}\n\n${caveat.text}` : sections,
 						data: {
 							declarations,
+							unsearchedDeclarations,
 							// Retained for single-declaration consumers of --json.
 							definition: declarations[0]?.definition ?? null,
 							references: declarations[0]?.references ?? [],

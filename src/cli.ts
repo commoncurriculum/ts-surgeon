@@ -503,7 +503,7 @@ export async function runCli(
 				if (allProjects) {
 					if (!explicitAllProjects) {
 						err.write(
-							`Note: ${String(prepared.tsconfigPath)} is a solution-style tsconfig; running across its ${references.length} referenced project(s). Pass --single-project to run against this config alone.\n`,
+							`Note: ${String(prepared.tsconfigPath)} is a solution-style tsconfig; running across its ${references.length} referenced project(s), which costs ${references.length} project parses. Pass --single-project to run against this config alone.\n`,
 						);
 					}
 					// awaited so a CliUsageError rejection lands in this try/catch

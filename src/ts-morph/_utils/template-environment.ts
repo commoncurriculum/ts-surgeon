@@ -37,7 +37,10 @@ const ENVIRONMENTS: Array<{ key: string; env: TemplateEnvironment }> = [
 		env: {
 			kind: "glint",
 			label: "Glint (Ember)",
-			extensions: [".hbs"],
+			// .gts/.gjs (template imports) are no more part of the TypeScript
+			// program than .hbs is — glint compiles them, this tool cannot parse
+			// them, so a symbol used only from one is equally invisible.
+			extensions: [".hbs", ".gts", ".gjs"],
 			resolution:
 				"Ember resolves components, helpers, and modifiers from templates by filename convention, so no TypeScript reference edge exists for the type checker to follow",
 		},
@@ -62,6 +65,22 @@ const ENVIRONMENTS: Array<{ key: string; env: TemplateEnvironment }> = [
 				"a .svelte component's markup is compiled by svelte-check, not parsed by this tool",
 		},
 	},
+];
+
+/**
+ * Language-service plugins that mean the same thing as the top-level markers.
+ * A Vue or Svelte project often carries no `vueCompilerOptions`/`svelteOptions`
+ * block at all and is identified only by its plugin, so keying solely on the
+ * top-level marker would leave this check with a blind spot of exactly the kind
+ * it exists to report.
+ */
+const PLUGIN_MARKERS: Array<{
+	match: RegExp;
+	kind: TemplateEnvironment["kind"];
+}> = [
+	{ match: /^@glint\//, kind: "glint" },
+	{ match: /vue.*typescript-plugin|typescript-vue-plugin/, kind: "vue" },
+	{ match: /svelte/, kind: "svelte" },
 ];
 
 /** Guards against a cyclic or pathological `extends` chain. */
@@ -113,6 +132,29 @@ function resolveExtends(
 	return undefined;
 }
 
+/** The environment implied by `compilerOptions.plugins`, if any. */
+function environmentFromPlugins(
+	config: Record<string, unknown>,
+): TemplateEnvironment | undefined {
+	const compilerOptions = config.compilerOptions as
+		| { plugins?: unknown }
+		| undefined;
+	const plugins = compilerOptions?.plugins;
+	if (!Array.isArray(plugins)) {
+		return undefined;
+	}
+	for (const plugin of plugins) {
+		const name = (plugin as { name?: unknown })?.name;
+		if (typeof name !== "string") continue;
+		for (const { match, kind } of PLUGIN_MARKERS) {
+			if (match.test(name)) {
+				return ENVIRONMENTS.find((e) => e.env.kind === kind)?.env;
+			}
+		}
+	}
+	return undefined;
+}
+
 /**
  * The template environment this tsconfig declares, or undefined for an ordinary
  * TypeScript project. Cheap: one (cached) config read per path.
@@ -136,6 +178,7 @@ export function detectTemplateEnvironment(
 					break;
 				}
 			}
+			found ??= environmentFromPlugins(config as Record<string, unknown>);
 			if (found) break;
 		}
 	} catch {
