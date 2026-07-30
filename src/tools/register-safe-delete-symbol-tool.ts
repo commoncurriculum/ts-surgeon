@@ -79,6 +79,7 @@ On success: the deleted symbol and the modified file(s). When blocked: the list 
 					const caveat = templateCaveat({
 						tsconfigPath: args.tsconfigPath,
 						symbolNames: [args.symbolName],
+						filePaths: [args.targetFilePath],
 						mutating: true,
 					});
 					// The refusal is overridable because the match is TEXT: a component

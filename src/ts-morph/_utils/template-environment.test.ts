@@ -3,7 +3,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { detectTemplateEnvironment } from "./template-environment.js";
-import { templateSpellings } from "./template-references.js";
+import {
+	invocationPatternFor,
+	templateSpellings,
+} from "./template-references.js";
 
 /**
  * Detection is what decides whether a tool warns at all, so its own blind spots
@@ -93,6 +96,43 @@ describe("detectTemplateEnvironment", () => {
 		const broken = path.join(dir, "broken.json");
 		fs.writeFileSync(broken, "{ not json");
 		expect(detectTemplateEnvironment(broken)).toBeUndefined();
+	});
+});
+
+describe("invocationPatternFor", () => {
+	// Decides which matches survive truncation, so a real invocation classified
+	// as noise can be dropped entirely from a busy template tree.
+	const pattern = invocationPatternFor("Item|item|ItemComponent");
+
+	it("recognizes the shapes a template engine resolves from", () => {
+		for (const line of [
+			"<Item />",
+			"  <Item @label='hi' />",
+			"</Item>",
+			// A contextual component: dotted, and still a real use of `Item`.
+			"<Item.Sub @x={{1}} />",
+			"{{Item}}",
+			"{{#Item}}",
+			'{{component "Item"}}',
+			"{{yield (Item)}}",
+			// Svelte interpolation.
+			"{Item}",
+		]) {
+			expect(pattern.test(line), line).toBe(true);
+		}
+	});
+
+	it("does not mistake a local path read or a block param for an invocation", () => {
+		for (const line of [
+			// `item` here is the block param below, not the component.
+			"<span>{{item.name}}</span>",
+			"{{item.id}}",
+			"{{#each model.rows as |item|}}",
+			"{{! Item is deprecated }}",
+			"the Item component is described here",
+		]) {
+			expect(pattern.test(line), line).toBe(false);
+		}
 	});
 });
 

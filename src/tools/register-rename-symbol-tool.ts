@@ -1,7 +1,10 @@
 import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
 import { renameSymbol } from "../ts-morph/rename-symbol/rename-symbol.js";
-import { templateCaveat } from "../ts-morph/_utils/template-references.js";
+import {
+	templateCaveat,
+	withTemplateCaveat,
+} from "../ts-morph/_utils/template-references.js";
 import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 export function registerRenameSymbolTool(registry: ToolRegistry): void {
@@ -85,24 +88,19 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					// pointing at the old name has orphaned them silently. The type
 					// checker cannot see those files, so say so rather than let
 					// "Success" imply the rename was complete.
-					const caveat = templateCaveat({
-						tsconfigPath: args.tsconfigPath,
-						symbolNames: [symbolName],
-						mutating: true,
-					});
-
-					return {
-						message: caveat ? `${message}\n\n${caveat.text}` : message,
-						log: {
-							changedFilesCount: result.changedFiles.length,
-							...(caveat
-								? { templateMentions: caveat.data.unresolvedMentions.length }
-								: {}),
+					return withTemplateCaveat(
+						{
+							message,
+							log: { changedFilesCount: result.changedFiles.length },
+							data: result,
 						},
-						data: caveat
-							? { ...result, templateBlindSpot: caveat.data }
-							: result,
-					};
+						templateCaveat({
+							tsconfigPath: args.tsconfigPath,
+							symbolNames: [symbolName],
+							filePaths: [args.targetFilePath],
+							mutating: true,
+						}),
+					);
 				},
 			),
 	);

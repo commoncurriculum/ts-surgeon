@@ -121,6 +121,32 @@ function collectTemplateFiles(root: string, extensions: string[]): string[] {
 }
 
 /**
+ * Matches a spelling sitting where a template engine RESOLVES a name, as
+ * opposed to merely mentioning it. Two shapes, because a trailing `.` means
+ * opposite things in each:
+ *
+ * - **angle** — `<Foo`, `</Foo`, and `<Foo.Bar`. A dotted angle-bracket name is
+ *   a CONTEXTUAL COMPONENT (`<Item.Sub />`), which is a real invocation of
+ *   `Item`, so the dot must not disqualify it.
+ * - **curly** — `{{foo`, `{{#foo`, `{{/foo`, `{foo}`, `(foo`, `"foo"`. Here a
+ *   dot is a path read off a local, nearly always a block param: `{{item.name}}`
+ *   inside `{{#each rows as |item|}}` invokes nothing called `item`.
+ *
+ * Ranking only — never a filter. A shape this does not recognize still gets
+ * reported, it just sorts lower.
+ *
+ * @param alternation escaped spellings already joined with `|`
+ */
+export function invocationPatternFor(alternation: string): RegExp {
+	return new RegExp(
+		[
+			`<\\/?(?:${alternation})(?![\\w-])`,
+			`(?:\\{\\{[#/]?|\\{|\\(|["'])(?:${alternation})(?![\\w-.])`,
+		].join("|"),
+	);
+}
+
+/**
  * Template lines mentioning any spelling of the given symbols. Word-ish
  * boundaries keep `<BasicTooltip />` and `{{basic-tooltip}}` in while keeping
  * `basic-tooltip-header` out.
@@ -146,13 +172,7 @@ export function findTemplateMentions(
 	}
 	const alternation = spellings.map(escapeRegExp).join("|");
 	const pattern = new RegExp(`(?<![\\w-])(?:${alternation})(?![\\w-])`);
-	// `<Foo`, `</Foo`, `{{foo`, `{{#foo`, `{{/foo`, `{foo}`, `(foo`, `"foo"` —
-	// the positions a template engine actually resolves a name from. A trailing
-	// `.` excludes it again: `{{item.name}}` reads a property off a local (very
-	// often a block param), it does not invoke anything called `item`.
-	const invocationPattern = new RegExp(
-		`(?:<\\/?|\\{\\{[#/]?|\\{|\\(|["'])(?:${alternation})(?![\\w-.])`,
-	);
+	const invocationPattern = invocationPatternFor(alternation);
 	const mentions: TemplateMention[] = [];
 	for (const file of collectTemplateFiles(projectRoot, env.extensions)) {
 		if (mentions.length >= MAX_SCANNED_MENTIONS) break;
@@ -237,7 +257,7 @@ const MAX_ATTRIBUTED_NAMES = 500;
  */
 export function findTemplateMentionedNames(
 	tsconfigPath: string,
-	symbolNames: string[],
+	candidates: Array<{ name: string; filePath?: string }>,
 ):
 	| {
 			environment: TemplateEnvironment;
@@ -246,15 +266,30 @@ export function findTemplateMentionedNames(
 	  }
 	| undefined {
 	const environment = detectTemplateEnvironment(tsconfigPath);
-	if (environment === undefined || symbolNames.length === 0) {
+	if (environment === undefined || candidates.length === 0) {
 		return undefined;
 	}
-	const searched = [...new Set(symbolNames)].slice(0, MAX_ATTRIBUTED_NAMES);
+	const byName = new Map<string, string | undefined>();
+	for (const candidate of candidates) {
+		if (!byName.has(candidate.name)) {
+			byName.set(candidate.name, candidate.filePath);
+		}
+	}
+	const searched = [...byName].slice(0, MAX_ATTRIBUTED_NAMES);
 	// One spelling can belong to several names (two symbols can dasherize alike),
 	// so a hit credits every owner rather than an arbitrary one.
 	const owners = new Map<string, Set<string>>();
-	for (const name of searched) {
-		for (const spelling of templateSpellings(name)) {
+	for (const [name, filePath] of searched) {
+		// The declaring file's name counts as a spelling of the symbol: Ember
+		// resolves `<SidePanel />` to side-panel.ts whatever the class inside is
+		// called, so a name-only search misses the component's only real use.
+		const spellings = [
+			...templateSpellings(name),
+			...(filePath
+				? templateSpellings(path.basename(filePath, path.extname(filePath)))
+				: []),
+		];
+		for (const spelling of spellings) {
 			if (spelling.length <= 1) continue;
 			const existing = owners.get(spelling);
 			if (existing) {
@@ -298,6 +333,36 @@ export function findTemplateMentionedNames(
 	};
 }
 
+/**
+ * Folds a caveat into a tool result: prose appended, mention count logged,
+ * `templateBlindSpot` added to the payload.
+ *
+ * Three mutating tools wired this identically by hand, which is three chances
+ * for the next one to log a different key or forget the payload. The result is
+ * returned unchanged when there is no caveat, so a non-template project pays
+ * nothing and reads exactly as before.
+ */
+export function withTemplateCaveat<T extends object>(
+	result: { message: string; log?: Record<string, unknown>; data: T },
+	caveat: TemplateCaveat | undefined,
+): {
+	message: string;
+	log?: Record<string, unknown>;
+	data: T | (T & { templateBlindSpot: TemplateCaveat["data"] });
+} {
+	if (caveat === undefined) {
+		return result;
+	}
+	return {
+		message: `${result.message}\n\n${caveat.text}`,
+		log: {
+			...result.log,
+			templateMentions: caveat.data.unresolvedMentions.length,
+		},
+		data: { ...result.data, templateBlindSpot: caveat.data },
+	};
+}
+
 export interface TemplateCaveat {
 	/** Prose to append to the tool's message. */
 	text: string;
@@ -322,10 +387,19 @@ export interface TemplateCaveat {
 export function templateCaveat({
 	tsconfigPath,
 	symbolNames,
+	filePaths = [],
 	mutating,
 }: {
 	tsconfigPath: string;
 	symbolNames: string[];
+	/**
+	 * Files declaring those symbols. Classic Ember resolves a component from its
+	 * FILE NAME, not its class name, so a `class Tooltip` living in
+	 * `app/components/basic-tooltip.ts` is invoked as `<BasicTooltip />` — a
+	 * spelling nothing about the symbol name can predict. Searching the symbol
+	 * alone made the blind-spot detector blind in exactly the case it exists for.
+	 */
+	filePaths?: string[];
 	mutating: boolean;
 }): TemplateCaveat | undefined {
 	const env = detectTemplateEnvironment(tsconfigPath);
@@ -333,7 +407,13 @@ export function templateCaveat({
 		return undefined;
 	}
 	const projectRoot = path.dirname(path.resolve(tsconfigPath));
-	const mentions = findTemplateMentions(env, projectRoot, symbolNames);
+	const names = [
+		...new Set([
+			...symbolNames,
+			...filePaths.map((file) => path.basename(file, path.extname(file))),
+		]),
+	];
+	const mentions = findTemplateMentions(env, projectRoot, names);
 	const extensions = env.extensions.join("/");
 	// Stated as a capability ("cannot update"), never as an action ("did not
 	// update"). The latter reads like an edit pass that skipped these files,

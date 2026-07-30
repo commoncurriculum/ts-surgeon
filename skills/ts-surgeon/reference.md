@@ -90,7 +90,9 @@ Lists the definition and every reference of a symbol at a position. Read-only.
 - **Template projects** (tsconfig declaring Glint/Vue/Svelte): `.hbs`/`.vue`/
   `.svelte`/`.gts` files are outside the TypeScript program, so references from
   them **cannot** appear in the list. The result says so and appends matching
-  template lines as *text* — treat the answer as incomplete, not empty.
+  template lines as *text* — treat the answer as incomplete, not empty. Matching
+  covers the declaring **file** name as well as the symbol's, since Ember reaches
+  `export class Panel` in `side-panel.ts` as `<SidePanel />`.
 
 ---
 

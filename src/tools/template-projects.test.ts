@@ -144,6 +144,29 @@ describe("Glint/Ember projects (references outside the TS program)", () => {
 		expect(text).toContain("application.hbs");
 	});
 
+	it("finds a template that addresses the component by file name", async () => {
+		// Ember resolves `<BasicTooltip />` to app/components/basic-tooltip.ts by
+		// convention — the class inside need not share the name. Deriving spellings
+		// from the symbol alone made the blind-spot detector blind in its own
+		// primary case.
+		const oddPath = path.join(tempDir, "app/components/side-panel.ts");
+		fs.writeFileSync(oddPath, "export class Panel {\n  open = false;\n}\n");
+		fs.writeFileSync(
+			path.join(tempDir, "app/templates/panel.hbs"),
+			"<div>\n  <SidePanel />\n</div>\n",
+		);
+
+		const result = await registry.call("safe_delete_symbol", {
+			tsconfigPath,
+			targetFilePath: oddPath,
+			symbolName: "Panel",
+		});
+		const text = textOf(result);
+		expect(text).toContain("Not deleted");
+		expect(text).toContain("panel.hbs");
+		expect(fs.readFileSync(oddPath, "utf-8")).toContain("class Panel");
+	});
+
 	it("safe_delete_symbol lets a caller override a text match, on the record", async () => {
 		// Text matching cannot tell a real use from a coincidence, so a generic
 		// name would otherwise be undeletable forever. The override is explicit and
@@ -167,11 +190,23 @@ describe("Glint/Ember projects (references outside the TS program)", () => {
 		// The sharpest version of the blind spot: this tool's whole answer is
 		// "nothing references these", and it is the list an agent sweeps before
 		// deleting. BasicTooltipComponent has exactly one consumer, in an .hbs.
+		// A class whose name the template never spells: Ember reaches it through
+		// the file name, so this is the candidate most likely to be deleted.
+		fs.writeFileSync(
+			path.join(tempDir, "app/components/side-panel.ts"),
+			"export class Panel {\n  open = false;\n}\n",
+		);
+		fs.writeFileSync(
+			path.join(tempDir, "app/templates/panel.hbs"),
+			"<div>\n  <SidePanel />\n</div>\n",
+		);
+
 		const result = await registry.call("find_unused_exports", {
 			tsconfigPath,
 		});
 		const text = textOf(result);
 		expect(text).toContain("Glint (Ember)");
+		expect(text).toMatch(/LIKELY USED[^\n]*\bPanel\b/);
 		// Named, not blanket-disclaimed: this candidate is the false positive.
 		expect(text).toContain("BasicTooltipComponent");
 		expect(text).toContain("LIKELY USED");

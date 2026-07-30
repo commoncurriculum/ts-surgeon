@@ -7,7 +7,10 @@ import {
 	initializeProject,
 } from "../ts-morph/_utils/ts-morph-project.js";
 import { moveSymbolToFile } from "../ts-morph/move-symbol-to-file/move-symbol-to-file.js";
-import { templateCaveat } from "../ts-morph/_utils/template-references.js";
+import {
+	templateCaveat,
+	withTemplateCaveat,
+} from "../ts-morph/_utils/template-references.js";
 import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 const declarationKindNames = [
@@ -155,24 +158,19 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 				// same break rename_filesystem_entry warns about: classic Ember finds
 				// a component by file name, so no import statement records the link
 				// and the move leaves nothing behind for the checker to follow.
-				const caveat = templateCaveat({
-					tsconfigPath,
-					symbolNames: [symbolToMove],
-					mutating: true,
-				});
-
-				return {
-					message: caveat ? `${message}\n\n${caveat.text}` : message,
-					log: {
-						changedFilesCount: changedFiles.length,
-						...(caveat
-							? { templateMentions: caveat.data.unresolvedMentions.length }
-							: {}),
+				return withTemplateCaveat(
+					{
+						message,
+						log: { changedFilesCount: changedFiles.length },
+						data: { changedFiles },
 					},
-					data: caveat
-						? { changedFiles, templateBlindSpot: caveat.data }
-						: { changedFiles },
-				};
+					templateCaveat({
+						tsconfigPath,
+						symbolNames: [symbolToMove],
+						filePaths: [originalFilePath],
+						mutating: true,
+					}),
+				);
 			});
 		},
 	);

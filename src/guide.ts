@@ -68,7 +68,11 @@ Conveniences:
 - Template frameworks (Glint/Ember, Vue, Svelte): \`.hbs\`/\`.vue\`/\`.svelte\`
   files are outside the TypeScript program, so no tool here can resolve
   references from them. Results say so explicitly and list template text
-  matches to review; \`safe_delete_symbol\` refuses rather than guess.
+  matches to review; \`safe_delete_symbol\` refuses rather than guess
+  (\`ignoreTemplateMentions\` overrides once you have read the matches).
+  Watch \`find_unused_exports\` hardest here: a component used only as
+  \`<BasicTooltip />\` is reported unused with the strongest possible
+  "safe to delete" numbers, and nothing fails until runtime.
 - \`--stdin-files\` turns a piped file list into \`filePaths\`:
   \`git diff --name-only | ts-surgeon call organize_imports --stdin-files\`
   (non-source and missing paths are skipped).

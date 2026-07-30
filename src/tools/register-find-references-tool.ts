@@ -130,6 +130,14 @@ Returns the definition (file path, line, column, source line) when found, follow
 					const caveat = templateCaveat({
 						tsconfigPath: args.tsconfigPath,
 						symbolNames: [...new Set(declarations.map((d) => d.symbolName))],
+						// Ember addresses a component by file name, which the class name
+						// need not match (`class Tooltip` in `basic-tooltip.ts`).
+						filePaths: [
+							...(args.targetFilePath ? [args.targetFilePath] : []),
+							...declarations.flatMap((d) =>
+								d.definition ? [d.definition.filePath] : [],
+							),
+						],
 						mutating: false,
 					});
 

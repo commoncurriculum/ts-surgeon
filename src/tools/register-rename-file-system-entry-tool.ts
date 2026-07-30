@@ -2,7 +2,10 @@ import * as path from "node:path";
 import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
 import { TimeoutError } from "../errors/timeout-error.js";
-import { templateCaveat } from "../ts-morph/_utils/template-references.js";
+import {
+	templateCaveat,
+	withTemplateCaveat,
+} from "../ts-morph/_utils/template-references.js";
 import { initializeProject } from "../ts-morph/_utils/ts-morph-project.js";
 import { renameFileSystemEntry } from "../ts-morph/rename-file-system/rename-file-system-entry.js";
 import { formatChangedFiles, runTool } from "./_tool-runner.js";
@@ -121,26 +124,20 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					// resolve a component from its FILE NAME (classic Ember) lose every
 					// template reference the moment the file moves, and no import
 					// statement records the link.
-					const caveat = templateCaveat({
-						tsconfigPath,
-						symbolNames: renames.map((r) =>
-							path.basename(r.oldPath, path.extname(r.oldPath)),
-						),
-						mutating: true,
-					});
-
-					return {
-						message: caveat ? `${message}\n\n${caveat.text}` : message,
-						log: {
-							changedFilesCount: result.changedFiles.length,
-							...(caveat
-								? { templateMentions: caveat.data.unresolvedMentions.length }
-								: {}),
+					return withTemplateCaveat(
+						{
+							message,
+							log: { changedFilesCount: result.changedFiles.length },
+							data: result,
 						},
-						data: caveat
-							? { ...result, templateBlindSpot: caveat.data }
-							: result,
-					};
+						templateCaveat({
+							tsconfigPath,
+							symbolNames: renames.map((r) =>
+								path.basename(r.oldPath, path.extname(r.oldPath)),
+							),
+							mutating: true,
+						}),
+					);
 				} catch (error) {
 					// Map cancellation into friendly messages; the harness prefixes "Error:".
 					if (error instanceof TimeoutError) {

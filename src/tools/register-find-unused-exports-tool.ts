@@ -56,7 +56,13 @@ function formatTemplateWarnings(
 	candidates: UnusedExport[],
 ): { lines: string[]; blindSpot?: Record<string, unknown> } {
 	const names = [...new Set(candidates.map((c) => c.name))];
-	const usage = findTemplateMentionedNames(tsconfigPath, names);
+	// Each candidate's declaring file matters as much as its name: Ember invokes
+	// `export class Panel` in side-panel.ts as `<SidePanel />`, which no spelling
+	// of "Panel" reaches.
+	const usage = findTemplateMentionedNames(
+		tsconfigPath,
+		candidates.map((c) => ({ name: c.name, filePath: c.filePath })),
+	);
 	if (usage === undefined) {
 		return { lines: [] };
 	}
