@@ -313,7 +313,11 @@ function mergeProjectArrays(
 			}
 			const existing = merged.get(key);
 			if (existing) {
-				existing.push(...value);
+				// Appended one at a time, not `push(...value)`: spreading an array
+				// of ~100k (a monorepo's diagnostics) overflows the call stack.
+				for (const item of value) {
+					existing.push(item);
+				}
 			} else {
 				merged.set(key, [...value]);
 			}
