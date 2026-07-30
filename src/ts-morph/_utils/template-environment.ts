@@ -16,6 +16,14 @@ import * as ts from "typescript";
  * `templateUrl` file is invisible to the checker, so renaming it reports
  * success while breaking the template.
  *
+ * Astro is the sharpest of the lot, because the invisible code is not markup at
+ * all: an `.astro` file's frontmatter is ordinary TypeScript — imports, calls,
+ * whatever you like — compiled by the Astro toolchain and never parsed here. A
+ * plain utility used only from a page's frontmatter reads as dead code.
+ *
+ * React, by contrast, needs nothing: `.tsx` is in the program, so JSX usage
+ * resolves through the checker like any other reference.
+ *
  * The tool cannot resolve those references — that needs the framework's own
  * template compiler — but it can know it is in such a project, because the
  * marker sits in the tsconfig it already reads. Reporting an incomplete answer
@@ -25,7 +33,7 @@ import * as ts from "typescript";
 
 export interface TemplateEnvironment {
 	/** Config key that identified the environment. */
-	kind: "glint" | "vue" | "svelte" | "angular";
+	kind: "glint" | "vue" | "svelte" | "angular" | "astro";
 	/** How the environment is named in messages. */
 	label: string;
 	/** Extensions of template files outside the TypeScript program. */
@@ -34,7 +42,20 @@ export interface TemplateEnvironment {
 	resolution: string;
 }
 
-const ENVIRONMENTS: Array<{ key: string; env: TemplateEnvironment }> = [
+const ENVIRONMENTS: Array<{ key?: string; env: TemplateEnvironment }> = [
+	{
+		// No top-level marker of its own: Astro is recognized by the shared config
+		// it extends or by its JSX factory. See environmentFromAstro.
+		env: {
+			kind: "astro",
+			label: "Astro",
+			// .mdx too: it imports and renders components the same way, and is
+			// equally absent from the TypeScript program.
+			extensions: [".astro", ".mdx"],
+			resolution:
+				"an .astro file's frontmatter is real TypeScript that the Astro toolchain compiles and this tool never parses, so an import, a call, or a `<Component />` use inside one produces no TypeScript reference edge",
+		},
+	},
 	{
 		key: "glint",
 		env: {
@@ -96,6 +117,7 @@ const PLUGIN_MARKERS: Array<{
 	kind: TemplateEnvironment["kind"];
 }> = [
 	{ match: /^@glint\//, kind: "glint" },
+	{ match: /^@astrojs\/ts-plugin/, kind: "astro" },
 	{ match: /^@angular\/language-ser(vice|ver)/, kind: "angular" },
 	{ match: /vue.*typescript-plugin|typescript-vue-plugin/, kind: "vue" },
 	{ match: /svelte/, kind: "svelte" },
@@ -150,6 +172,38 @@ function resolveExtends(
 	return undefined;
 }
 
+/**
+ * Astro, which declares itself by what it extends rather than by a marker key.
+ *
+ * A generated Astro tsconfig is `{"extends": "astro/tsconfigs/strict"}` and
+ * little else, so there is no `astroOptions` block to look for. The `extends`
+ * STRING is read here rather than the file it resolves to: that string sits in
+ * the project's own config, while the file lives in node_modules, which this
+ * module deliberately does not treat as evidence about the project.
+ * `jsxImportSource: "astro"` catches a hand-rolled config that extends nothing.
+ */
+function environmentFromAstro(
+	config: Record<string, unknown>,
+): TemplateEnvironment | undefined {
+	const astro = ENVIRONMENTS.find((e) => e.env.kind === "astro")?.env;
+	const extendsValue = config.extends;
+	// `extends` accepts an array since TypeScript 5.0.
+	const extendsList = Array.isArray(extendsValue)
+		? extendsValue
+		: [extendsValue];
+	if (
+		extendsList.some(
+			(entry) => typeof entry === "string" && /^astro\/tsconfigs\//.test(entry),
+		)
+	) {
+		return astro;
+	}
+	const compilerOptions = config.compilerOptions as
+		| { jsxImportSource?: unknown }
+		| undefined;
+	return compilerOptions?.jsxImportSource === "astro" ? astro : undefined;
+}
+
 /** The environment implied by `compilerOptions.plugins`, if any. */
 function environmentFromPlugins(
 	config: Record<string, unknown>,
@@ -191,11 +245,15 @@ export function detectTemplateEnvironment(
 		for (const config of readConfigChain(key)) {
 			if (config === null || typeof config !== "object") continue;
 			for (const { key: marker, env } of ENVIRONMENTS) {
-				if (marker in (config as Record<string, unknown>)) {
+				if (
+					marker !== undefined &&
+					marker in (config as Record<string, unknown>)
+				) {
 					found = env;
 					break;
 				}
 			}
+			found ??= environmentFromAstro(config as Record<string, unknown>);
 			found ??= environmentFromPlugins(config as Record<string, unknown>);
 			if (found) break;
 		}

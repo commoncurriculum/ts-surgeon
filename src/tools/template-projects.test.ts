@@ -254,6 +254,97 @@ describe("Glint/Ember projects (references outside the TS program)", () => {
 });
 
 /**
+ * Astro's version of the hole is the sharpest of the lot, because the invisible
+ * code is not markup at all: an `.astro` file's frontmatter is ordinary
+ * TypeScript — imports, calls, whatever you like — that the Astro toolchain
+ * compiles and ts-morph never parses. A plain utility function used only from a
+ * page's frontmatter looks completely unreferenced.
+ */
+describe("Astro projects (frontmatter TypeScript outside the program)", () => {
+	let tempDir: string;
+	let tsconfigPath: string;
+	let modulePath: string;
+	let registry: ToolRegistry;
+
+	beforeEach(() => {
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ts-surgeon-astro-"));
+		tsconfigPath = path.join(tempDir, "tsconfig.json");
+		fs.writeFileSync(
+			tsconfigPath,
+			JSON.stringify({
+				// What `npm create astro` actually writes.
+				extends: "astro/tsconfigs/strict",
+				compilerOptions: {
+					target: "es2022",
+					module: "esnext",
+					strict: true,
+					moduleResolution: "bundler",
+				},
+				include: ["src/**/*"],
+			}),
+		);
+		fs.mkdirSync(path.join(tempDir, "src", "components"), { recursive: true });
+		fs.mkdirSync(path.join(tempDir, "src", "pages"), { recursive: true });
+		modulePath = path.join(tempDir, "src/components/money.ts");
+		fs.writeFileSync(
+			modulePath,
+			"export function formatPrice(n: number) {\n  return n.toFixed(2);\n}\n",
+		);
+		fs.writeFileSync(
+			path.join(tempDir, "src/pages/index.astro"),
+			[
+				"---",
+				'import { formatPrice } from "../components/money";',
+				"const total = formatPrice(9.5);",
+				"---",
+				"<p>{total}</p>",
+				"",
+			].join("\n"),
+		);
+		registry = createToolRegistry();
+	});
+
+	afterEach(() => {
+		fs.rmSync(tempDir, { recursive: true, force: true });
+	});
+
+	it("find_references reports the frontmatter use it cannot resolve", async () => {
+		const result = await registry.call("find_references", {
+			tsconfigPath,
+			targetFilePath: modulePath,
+			symbolName: "formatPrice",
+		});
+		const text = textOf(result);
+		expect(text).toContain("Incomplete result");
+		expect(text).toContain("Astro");
+		expect(text).toContain("index.astro:3");
+	});
+
+	it("ranks the frontmatter call above the bare import", async () => {
+		const result = await registry.call("find_references", {
+			tsconfigPath,
+			targetFilePath: modulePath,
+			symbolName: "formatPrice",
+		});
+		const text = textOf(result);
+		// A call is the use that breaks; the import line is bookkeeping.
+		expect(text.indexOf("index.astro:3")).toBeLessThan(
+			text.indexOf("index.astro:2"),
+		);
+	});
+
+	it("safe_delete_symbol refuses a helper only the frontmatter calls", async () => {
+		const result = await registry.call("safe_delete_symbol", {
+			tsconfigPath,
+			targetFilePath: modulePath,
+			symbolName: "formatPrice",
+		});
+		expect(textOf(result)).toContain("Not deleted");
+		expect(fs.readFileSync(modulePath, "utf-8")).toContain("formatPrice");
+	});
+});
+
+/**
  * Angular has the same hole and a far larger installed base: a component's
  * markup lives in a separate `.html` reached by `templateUrl`, and its bindings
  * resolve against the class with no TypeScript reference edge. Before this was

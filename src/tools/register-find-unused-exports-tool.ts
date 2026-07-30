@@ -43,7 +43,7 @@ function formatPackageWarnings(warnings: PackageExportWarning[]): string[] {
 /**
  * The template blind spot, stated where it does the most damage.
  *
- * This tool answers "what has no references?", and in a Glint/Vue/Svelte/Angular project
+ * This tool answers "what has no references?", and in a Glint/Astro/Vue/Svelte/Angular project
  * the type checker cannot see template files at all — so a component used ONLY
  * from `<BasicTooltip />` is reported here as unused, with nothing on the line
  * to suggest otherwise. `safe_delete_symbol` refuses such a delete, but this is
@@ -229,8 +229,8 @@ Deleting every reported declaration blindly will break the build: the majority a
 ### ⚠ Package-level warnings
 When a package that produced candidates publishes built output (see Known limitations), a ⚠ warnings block is prepended to the result (both list and summary modes) naming the package, its out-of-scan entry points, and how many candidates are affected. Those candidates are likely false positives.
 
-### ⚠ Template-based frameworks (Glint/Ember, Vue, Svelte, Angular)
-When the tsconfig declares one of these, \`.hbs\`/\`.vue\`/\`.svelte\`/\`.gts\`/\`.html\` files are outside the TypeScript program, so an export used ONLY from a template (\`<BasicTooltip />\`) has no reference the checker can see and is reported here as unused. A ⚠ block is prepended naming the candidates a template mentions as text — treat those as **likely used**, not dead. Absence of a match is evidence, not proof; templates can reach a symbol through a name this tool cannot predict.
+### ⚠ Template-based frameworks (Glint/Ember, Astro, Vue, Svelte, Angular)
+When the tsconfig declares one of these, \`.hbs\`/\`.astro\`/\`.vue\`/\`.svelte\`/\`.gts\`/\`.html\` files are outside the TypeScript program, so an export used ONLY from a template (\`<BasicTooltip />\`) has no reference the checker can see and is reported here as unused. A ⚠ block is prepended naming the candidates a template mentions as text — treat those as **likely used**, not dead. Absence of a match is evidence, not proof; templates can reach a symbol through a name this tool cannot predict.
 
 Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 		{

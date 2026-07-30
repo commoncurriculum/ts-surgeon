@@ -55,6 +55,55 @@ describe("detectTemplateEnvironment", () => {
 		).toBe("angular");
 	});
 
+	it("finds Astro, which has no marker key of its own", () => {
+		// A generated Astro tsconfig is essentially just this line.
+		expect(
+			detectTemplateEnvironment(
+				writeConfig("astro.json", { extends: "astro/tsconfigs/strict" }),
+			)?.kind,
+		).toBe("astro");
+		// TypeScript 5 allows an array of bases.
+		expect(
+			detectTemplateEnvironment(
+				writeConfig("astro-array.json", {
+					extends: ["./base.json", "astro/tsconfigs/base"],
+				}),
+			)?.kind,
+		).toBe("astro");
+		// Hand-rolled config that extends nothing.
+		expect(
+			detectTemplateEnvironment(
+				writeConfig("astro-jsx.json", {
+					compilerOptions: { jsx: "preserve", jsxImportSource: "astro" },
+				}),
+			)?.kind,
+		).toBe("astro");
+		expect(
+			detectTemplateEnvironment(
+				writeConfig("astro-plugin.json", {
+					compilerOptions: { plugins: [{ name: "@astrojs/ts-plugin" }] },
+				}),
+			)?.kind,
+		).toBe("astro");
+	});
+
+	it("scans .astro and .mdx, which both render components", () => {
+		const env = detectTemplateEnvironment(
+			writeConfig("astro-ext.json", { extends: "astro/tsconfigs/base" }),
+		);
+		expect(env?.extensions).toEqual([".astro", ".mdx"]);
+	});
+
+	it("does not mistake another package's tsconfig for Astro's", () => {
+		expect(
+			detectTemplateEnvironment(
+				writeConfig("other.json", {
+					extends: "@tsconfig/node20/tsconfig.json",
+				}),
+			),
+		).toBeUndefined();
+	});
+
 	it("scans .html for Angular, where the component markup lives", () => {
 		const env = detectTemplateEnvironment(
 			writeConfig("ng-ext.json", { angularCompilerOptions: {} }),
@@ -141,6 +190,10 @@ describe("invocationPatternFor", () => {
 			"{{yield (Item)}}",
 			// Svelte interpolation.
 			"{Item}",
+			// An .astro frontmatter use is a plain call — no template punctuation
+			// in front of it at all.
+			"const rows = Item(props);",
+			"export const x = Item ();",
 		]) {
 			expect(pattern.test(line), line).toBe(true);
 		}

@@ -94,7 +94,7 @@ export function registerMoveSymbolToFileTool(registry: ToolRegistry): void {
   - Dependencies also used by other symbols in the source file stay put, gain \`export\` if missing, and are imported back into the destination file.
 - All paths (\`tsconfigPath\`, \`originalFilePath\`, \`targetFilePath\`) MUST be absolute.
 - \`targetFilePath\` may point to a non-existent file; it will be created.
-- **Template projects** (tsconfig declaring Glint/Vue/Svelte/Angular): \`.hbs\`/\`.vue\`/\`.svelte\`/\`.gts\`/\`.html\` files are outside the TypeScript program, so this tool CANNOT update them. Classic Ember resolves a component from its file name, so moving the symbol moves that file and breaks every template use with no import statement recording the link — nothing fails until runtime. The result lists the template text matches it left alone.
+- **Template projects** (tsconfig declaring Glint/Astro/Vue/Svelte/Angular): \`.hbs\`/\`.astro\`/\`.vue\`/\`.svelte\`/\`.gts\`/\`.html\` files are outside the TypeScript program, so this tool CANNOT update them. Classic Ember resolves a component from its file name, so moving the symbol moves that file and breaks every template use with no import statement recording the link — nothing fails until runtime. The result lists the template text matches it left alone.
 
 ## Tips
 - Run with \`dryRun: true\` first when the source file has many co-dependencies to confirm what gets pulled along.

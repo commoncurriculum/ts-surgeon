@@ -142,6 +142,9 @@ function collectTemplateFiles(root: string, extensions: string[]): string[] {
  * - **curly** — `{{foo`, `{{#foo`, `{{/foo`, `{foo}`, `(foo`, `"foo"`. Here a
  *   dot is a path read off a local, nearly always a block param: `{{item.name}}`
  *   inside `{{#each rows as |item|}}` invokes nothing called `item`.
+ * - **call** — `foo(`. An .astro file's frontmatter is ordinary TypeScript, so
+ *   the use that matters there is a plain call (`formatPrice(9.5)`), which
+ *   neither shape above reaches — it has no template punctuation in front of it.
  *
  * Ranking only — never a filter. A shape this does not recognize still gets
  * reported, it just sorts lower.
@@ -153,6 +156,7 @@ export function invocationPatternFor(alternation: string): RegExp {
 		[
 			`<\\/?(?:${alternation})(?![\\w-])`,
 			`(?:\\{\\{[#/]?|\\{|\\(|["'])(?:${alternation})(?![\\w-.])`,
+			`(?<![\\w-.])(?:${alternation})\\s*\\(`,
 		].join("|"),
 	);
 }

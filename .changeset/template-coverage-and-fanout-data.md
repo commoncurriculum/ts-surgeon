@@ -4,6 +4,14 @@
 
 Close the gaps found reviewing the template-aware guard and lookups change.
 
+**Astro is now a recognized template environment**
+
+The sharpest version of this hole, because the invisible code is not markup: an `.astro` file's frontmatter is ordinary TypeScript — imports, calls, anything — that the Astro toolchain compiles and ts-morph never parses. A plain helper called only from a page's frontmatter read as completely unreferenced, so `find_references` answered *"References not found. Status: Success."* and `safe_delete_symbol` would happily remove it. Detected from an `astro/tsconfigs/*` extends (including TypeScript 5 array form), `jsxImportSource: "astro"`, or the `@astrojs/ts-plugin` entry — Astro has no marker key of its own, and the generated config is little more than that one `extends` line. `.astro` and `.mdx` are both scanned.
+
+Match ranking gained a **call** shape (`formatPrice(`) for the same reason: a frontmatter use has no template punctuation in front of it, so neither the angle nor the curly shape reached it and the call that actually breaks ranked below the import line.
+
+*(React needs nothing: `.tsx` is in the TypeScript program, so JSX usage resolves through the checker like any other reference. Verified, not assumed.)*
+
 **Angular is now a recognized template environment**
 
 The feature covered Glint/Ember, Vue and Svelte but not Angular, which has the same hole on a much larger installed base — and reaches further into ordinary code. A component's markup lives in a separate `.html` behind `templateUrl`, and its bindings resolve against the class with no TypeScript reference edge, so `find_references` on a method bound by `(click)="onSave()"` answered *"References not found. Status: Success."* and `rename_symbol` reported success while orphaning `{{ heroName }}`. Detected from `angularCompilerOptions` or the `@angular/language-service` plugin; `.html` is scanned, which is broader than the other dialects because a component template is not distinguishable by path. `Directive` and `Pipe` join the role suffixes stripped when deriving spellings.
