@@ -175,6 +175,32 @@ describe("solution-style tsconfigs (--all-projects)", () => {
 		).toBe(false);
 	});
 
+	it("keeps the tool's own array fields readable at the top of data", async () => {
+		// Fanning out used to replace data with { byProject } alone. Once fan-out
+		// became the default, `data.diagnostics` against a solution config silently
+		// became undefined for every existing --json consumer.
+		writeSolution();
+		const out = createCapture();
+		const err = createCapture();
+
+		const code = await runCli(
+			["call", "get_diagnostics", "--json", "--tsconfig-path", solutionPath],
+			out,
+			err,
+		);
+
+		expect(code).toBe(0);
+		const parsed = JSON.parse(out.text);
+		expect(parsed.data.byProject).toHaveLength(2);
+		// pkg-b's TS2322 is reachable without walking byProject by hand.
+		expect(Array.isArray(parsed.data.diagnostics)).toBe(true);
+		expect(
+			parsed.data.diagnostics.some((d: { code?: number }) => d.code === 2322),
+		).toBe(true);
+		// Scalars are not invented: they have no single value across projects.
+		expect(parsed.data.scannedFiles).toBeUndefined();
+	});
+
 	it("--all-projects text output sections results per project", async () => {
 		writeSolution();
 		const out = createCapture();

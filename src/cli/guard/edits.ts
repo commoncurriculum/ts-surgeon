@@ -150,6 +150,61 @@ const NON_SOURCE_EXTENSIONS = new Set([
 const PATH_TOKEN_RE = /[\w./@~-]*\.([A-Za-z0-9]{1,10})\b/g;
 
 /**
+ * Write calls whose FIRST argument is the destination path, with that path
+ * written as a literal. Only this family can be read back out of a command
+ * string with any confidence — `p.write_text(...)` names its destination on the
+ * receiver and `fwrite($h, ...)` on a handle opened earlier, so neither is here.
+ */
+// Built from strings, not regex literals: the backreferences are numbered
+// across the COMBINED pattern, so each branch's quote-matching group only
+// resolves once they are joined.
+const LITERAL_WRITE_TARGET_RE = new RegExp(
+	[
+		String.raw`\b(?:writeFileSync|writeFile|writeTextFileSync|writeTextFile|outputFileSync|file_put_contents)\s*\(\s*(['"])([^'"]+)\1`,
+		String.raw`\b(?:IO|Bun|File)\.write\s*\(\s*(['"])([^'"]+)\3`,
+		String.raw`\bopen\s*\(\s*(['"])([^'"]+)\5\s*,\s*['"][wa]`,
+	].join("|"),
+	"g",
+);
+
+/** Every write-API occurrence, to tell "one write" from "several". */
+const WRITE_API_GLOBAL_RE = new RegExp(WRITE_API_RE.source, "g");
+
+/** True for a path whose extension is listed as outside the guard's remit. */
+function isNonSourceTarget(target: string): boolean {
+	if (SOURCE_EXT_RE.test(target)) {
+		return false;
+	}
+	const ext = /\.([A-Za-z0-9]{1,10})$/.exec(target)?.[1]?.toLowerCase();
+	return ext !== undefined && NON_SOURCE_EXTENSIONS.has(ext);
+}
+
+/**
+ * True when the script performs exactly ONE file write and that write provably
+ * targets a non-source file.
+ *
+ * Extracting data out of TypeScript is not hand-editing it:
+ * `node -e "fs.writeFileSync('data.json', fs.readFileSync('src/a.ts','utf8').replace(...))"`
+ * reads a source file, but the file it rewrites is a .json. Scanning the whole
+ * command for a source extension called that a source rewrite, which is the same
+ * over-block as the `process.stdout.write` case — an agent denied for extracting
+ * data learns to distrust the guard exactly as fast as one denied for printing.
+ *
+ * The single-write requirement is what keeps this from being an escape hatch:
+ * with two writes, `writeFileSync('a.json', x); writeFileSync('src/x.ts', y)`
+ * would otherwise present its harmless target and hide the real one.
+ */
+function writesOnlyNonSourceFile(script: string): boolean {
+	if ([...script.matchAll(WRITE_API_GLOBAL_RE)].length !== 1) {
+		return false;
+	}
+	const targets = [...script.matchAll(LITERAL_WRITE_TARGET_RE)]
+		.map((match) => match[2] ?? match[4] ?? match[6])
+		.filter((target): target is string => target !== undefined);
+	return targets.length === 1 && isNonSourceTarget(targets[0]);
+}
+
+/**
  * Does the command name a file it is plainly not the guard's business to
  * protect? "source" when a TS/JS path appears, "non-source" when every named
  * file is something else, "unknown" when the target is a variable
@@ -212,6 +267,9 @@ function isInterpreterRewrite(command: string): boolean {
 			WRITE_API_RE.test(script) &&
 			READ_API_RE.test(script) &&
 			REPLACE_API_RE.test(script) &&
+			// A provably non-source write target beats the whole-command scan: the
+			// command mentions a .ts because it READS one.
+			!writesOnlyNonSourceFile(script) &&
 			namedTargetScope(command) !== "non-source"
 		) {
 			return true;

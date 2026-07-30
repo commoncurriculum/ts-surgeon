@@ -127,6 +127,11 @@ dependencies and rewriting all imports/exports.
 - **Gotchas**: **one symbol per call**. **Default exports can't be moved** —
   convert to named first. Deps used only by the moved symbol travel with it;
   shared deps stay put, gain `export`, and are imported back.
+- **Template projects** (tsconfig declaring Glint/Vue/Svelte): moving a symbol
+  moves the file a template resolves it from, and this tool **cannot** update
+  templates. Classic Ember finds a component by file name, so nothing records
+  the link and nothing breaks until runtime. The result lists the template text
+  matches it left alone.
 
 ---
 
@@ -199,6 +204,40 @@ the safe `sed -i` replacement.
 - **Example**: `{ "pattern": "assert.equal($A, $B)", "rewrite": "expect($A).toBe($B)" }`
 - **Gotchas**: textual within each match — imports are untouched; follow with
   `add_missing_imports` / `organize_imports`, then `get_diagnostics`.
+- Over-matching syntactically, and the thing that tells the cases apart is a
+  **type**? Use `rewrite_where`.
+
+---
+
+## `rewrite_where`
+Rewrites a pattern **only where a captured node's checker type satisfies a
+predicate** — the type-aware codemod the plain pattern tools cannot do. Rewrite
+`$X.close()` → `shutdown($X)` only where `$X` is a `DbConnection`, leaving
+`FileHandle.close()` alone.
+
+- **When**: two APIs share a method name, or you are migrating calls on one
+  class but not its look-alikes — anywhere `rewrite_pattern` would hit too much.
+- **Params**: `pattern`, `rewrite`, `where: { capture, type, mode? }`, plus
+  `filePaths?`, `dryRun?`, `fixImports?`. `capture` is the metavariable name
+  **without** the `$` (pattern `$X.close()` → `"X"`).
+- **`where.mode`**: `"is"` (default, exact type by symbol/alias name — a union
+  containing it does not match), `"extends"` (walks the base-type chain),
+  `"assignable"` (structural, so a same-shape type matches; requires
+  `where.typeDeclarationPath`).
+
+```json
+{
+  "tsconfigPath": "/repo/tsconfig.json",
+  "pattern": "$X.close()",
+  "rewrite": "shutdown($X)",
+  "where": { "capture": "X", "type": "DbConnection" },
+  "dryRun": true
+}
+```
+
+- **Tip**: the result reports `matchCount` (syntactic) vs `rewrittenCount`
+  (passed the predicate), so a `dryRun` shows exactly how much the type
+  predicate filtered out — check that gap before running for real.
 
 ---
 
@@ -228,6 +267,10 @@ Returns **candidates, not verdicts**.
   - `[default]` candidates are false-positive-prone; verify each.
   - A **⚠ package-level warning** means a `dist`-publishing workspace package
     produced systematic false positives — treat those as low confidence.
+  - In a **template project** (Glint/Vue/Svelte) a ⚠ warning heads the list: an
+    export used only from `<BasicTooltip />` has no reference the checker can
+    see, so it is reported here as unused. Candidate names a template does
+    mention are listed — treat those as **likely used**, not dead.
 - **Tip**: on large repos start with `"summary"` to see where dead code
   clusters, then narrow with `entryPoints` / `excludeFilePatterns` and switch to
   `"list"`. Always confirm with `find_references` before deleting; or
@@ -341,7 +384,7 @@ partner to `find_unused_exports`.
 - **When**: removing code you believe is dead, with a type-checker guarantee you
   won't break a missed reference.
 - **Params**: `targetFilePath`, `symbolName` (a top-level declaration),
-  `dryRun?`.
+  `dryRun?`, `ignoreTemplateMentions?` (template projects only — see below).
 
 ```json
 {
@@ -358,8 +401,11 @@ partner to `find_unused_exports`.
 - **Template projects** (tsconfig declaring Glint/Vue/Svelte): a `.hbs`/`.vue`/
   `.svelte`/`.gts` file mentioning the symbol also blocks the delete, matched as
   *text* — those files are outside the TypeScript program, so the checker cannot
-  prove the symbol is unused. Verify by hand and delete in your editor if the
-  matches are unrelated.
+  prove the symbol is unused. Matches are listed invocation-shaped first
+  (`<Foo`, `{{foo`). Read them: if none of them use this symbol — likely on a
+  generic name like `index` or `Item`, which text matching cannot tell apart —
+  re-run with `ignoreTemplateMentions: true`. That records the judgement as
+  yours; the type-checker reference check still runs and still blocks.
 - **Gotchas**: if two symbols share the name, the first in the file is targeted.
   Imports left unused by the deletion are **not** removed — follow with
   `organize_imports` / `apply_code_fix` (`remove_unused`).

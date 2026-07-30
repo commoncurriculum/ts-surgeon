@@ -70,7 +70,40 @@ describe("Glint/Ember projects (references outside the TS program)", () => {
 		expect(text).toContain("application.hbs:2");
 	});
 
-	it("rename_symbol says which templates it did not update", async () => {
+	it("does not let incidental matches bury the real invocation", async () => {
+		// `Item` also spells every `{{item.name}}` and `as |item|` in an app. Taking
+		// the first 25 matches in walk order would report block-param noise and drop
+		// the one line that actually resolves the component.
+		fs.writeFileSync(
+			path.join(tempDir, "app/components/item.ts"),
+			"export default class Item {\n  label = 'x';\n}\n",
+		);
+		const noise = Array.from(
+			{ length: 40 },
+			(_, i) => `  <span>{{item.name}} {{item.id}} row ${i}</span>`,
+		).join("\n");
+		fs.writeFileSync(
+			path.join(tempDir, "app/templates/a-noise.hbs"),
+			`{{#each model.rows as |item|}}\n${noise}\n{{/each}}\n`,
+		);
+		fs.writeFileSync(
+			path.join(tempDir, "app/templates/z-real.hbs"),
+			"<div>\n  <Item @label='hi' />\n</div>\n",
+		);
+
+		const result = await registry.call("find_references", {
+			tsconfigPath,
+			targetFilePath: path.join(tempDir, "app/components/item.ts"),
+			symbolName: "Item",
+		});
+		const text = textOf(result);
+		expect(text).toContain("z-real.hbs");
+		expect(text).toContain("<Item");
+		// Nothing is hidden: the count of what was left out is stated.
+		expect(text).toMatch(/showing \d+ of \d+\+? matches/);
+	});
+
+	it("rename_symbol states that it cannot update templates", async () => {
 		const result = await registry.call("rename_symbol", {
 			tsconfigPath,
 			targetFilePath: componentPath,
@@ -109,6 +142,62 @@ describe("Glint/Ember projects (references outside the TS program)", () => {
 		const text = textOf(result);
 		expect(text).toContain("Incomplete edit");
 		expect(text).toContain("application.hbs");
+	});
+
+	it("safe_delete_symbol lets a caller override a text match, on the record", async () => {
+		// Text matching cannot tell a real use from a coincidence, so a generic
+		// name would otherwise be undeletable forever. The override is explicit and
+		// the result says whose judgement it was.
+		const result = await registry.call("safe_delete_symbol", {
+			tsconfigPath,
+			targetFilePath: componentPath,
+			symbolName: "BasicTooltipComponent",
+			ignoreTemplateMentions: true,
+		});
+		const text = textOf(result);
+		expect(text).toContain("Deleted 'BasicTooltipComponent'");
+		expect(text).toContain("ignoreTemplateMentions=true");
+		expect(text).toContain("caller's");
+		expect(fs.readFileSync(componentPath, "utf-8")).not.toContain(
+			"BasicTooltipComponent",
+		);
+	});
+
+	it("find_unused_exports warns that template-only exports look unused here", async () => {
+		// The sharpest version of the blind spot: this tool's whole answer is
+		// "nothing references these", and it is the list an agent sweeps before
+		// deleting. BasicTooltipComponent has exactly one consumer, in an .hbs.
+		const result = await registry.call("find_unused_exports", {
+			tsconfigPath,
+		});
+		const text = textOf(result);
+		expect(text).toContain("Glint (Ember)");
+		// Named, not blanket-disclaimed: this candidate is the false positive.
+		expect(text).toContain("BasicTooltipComponent");
+		expect(text).toContain("LIKELY USED");
+	});
+
+	it("move_symbol_to_file flags the templates it cannot follow", async () => {
+		// A named export, because move_symbol_to_file declines default ones.
+		const panelPath = path.join(tempDir, "app/components/side-panel.ts");
+		fs.writeFileSync(
+			panelPath,
+			"export class SidePanelComponent {\n  open = false;\n}\n",
+		);
+		fs.writeFileSync(
+			path.join(tempDir, "app/templates/panel.hbs"),
+			"<div>\n  <SidePanel />\n</div>\n",
+		);
+
+		const result = await registry.call("move_symbol_to_file", {
+			tsconfigPath,
+			originalFilePath: panelPath,
+			targetFilePath: path.join(tempDir, "app/components/panel/side-panel.ts"),
+			symbolToMove: "SidePanelComponent",
+		});
+		const text = textOf(result);
+		expect(text).toContain("Incomplete edit");
+		expect(text).toContain("panel.hbs");
 	});
 
 	it("stays silent in an ordinary TypeScript project", async () => {

@@ -10,6 +10,7 @@ import {
 	summarizeUnusedExports,
 	type UnusedExportsSummary,
 } from "../ts-morph/find-unused-exports/summarize-unused-exports.js";
+import { findTemplateMentionedNames } from "../ts-morph/_utils/template-references.js";
 import { runTool } from "./_tool-runner.js";
 
 /** Scan cap for summary mode to get a full picture (distinct from the default 100 used in list mode). */
@@ -37,6 +38,62 @@ function formatPackageWarnings(warnings: PackageExportWarning[]): string[] {
 	}
 	lines.push("");
 	return lines;
+}
+
+/**
+ * The template blind spot, stated where it does the most damage.
+ *
+ * This tool answers "what has no references?", and in a Glint/Vue/Svelte project
+ * the type checker cannot see template files at all — so a component used ONLY
+ * from `<BasicTooltip />` is reported here as unused, with nothing on the line
+ * to suggest otherwise. `safe_delete_symbol` refuses such a delete, but this is
+ * the list an agent sweeps to decide what to delete in the first place, so the
+ * warning belongs here too. Names a template does mention are called out by
+ * name: a blanket disclaimer would be true and useless.
+ */
+function formatTemplateWarnings(
+	tsconfigPath: string,
+	candidates: UnusedExport[],
+): { lines: string[]; blindSpot?: Record<string, unknown> } {
+	const names = [...new Set(candidates.map((c) => c.name))];
+	const usage = findTemplateMentionedNames(tsconfigPath, names);
+	if (usage === undefined) {
+		return { lines: [] };
+	}
+	const extensions = usage.environment.extensions.join("/");
+	const lines = [
+		`⚠ This project declares ${usage.environment.label} in its tsconfig. ${extensions} templates are outside the TypeScript program, so an export used only from a template is reported below as unused — ${usage.environment.resolution}.`,
+	];
+	if (usage.mentioned.length > 0) {
+		lines.push(
+			`- Templates mention ${usage.mentioned.length} of these candidate name(s) as text; treat them as LIKELY USED and confirm with find_references before deleting: ${usage.mentioned.sort().join(", ")}`,
+		);
+	} else {
+		lines.push(
+			"- No candidate name matched a template, which is evidence but not proof: a template can reach a symbol through a name this tool cannot predict.",
+		);
+	}
+	if (usage.scannedNames < names.length) {
+		// Every name costs alternation width, so a whole-project summary run is
+		// bounded. Which names went unchecked has to be visible, or the line above
+		// reads as a verdict over all of them.
+		lines.push(
+			`- Only the first ${usage.scannedNames} of ${names.length} candidate names were checked against templates; narrow with entryPoints/excludeFilePatterns, or check the rest with find_references.`,
+		);
+	}
+	lines.push("");
+	// --json consumers get the same facts as the prose: which environment, which
+	// names matched, and how much of the candidate set was actually checked.
+	return {
+		lines,
+		blindSpot: {
+			environment: usage.environment.kind,
+			templateExtensions: usage.environment.extensions,
+			mentionedNames: usage.mentioned,
+			checkedNames: usage.scannedNames,
+			totalCandidateNames: names.length,
+		},
+	};
 }
 
 /** Computes the common prefix of a set of directory paths to shorten the display. */
@@ -166,6 +223,9 @@ Deleting every reported declaration blindly will break the build: the majority a
 ### ⚠ Package-level warnings
 When a package that produced candidates publishes built output (see Known limitations), a ⚠ warnings block is prepended to the result (both list and summary modes) naming the package, its out-of-scan entry points, and how many candidates are affected. Those candidates are likely false positives.
 
+### ⚠ Template-based frameworks (Glint/Ember, Vue, Svelte)
+When the tsconfig declares one of these, \`.hbs\`/\`.vue\`/\`.svelte\`/\`.gts\` files are outside the TypeScript program, so an export used ONLY from a template (\`<BasicTooltip />\`) has no reference the checker can see and is reported here as unused. A ⚠ block is prepended naming the candidates a template mentions as text — treat those as **likely used**, not dead. Absence of a match is evidence, not proof; templates can reach a symbol through a name this tool cannot predict.
+
 Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 		{
 			tsconfigPath: z
@@ -230,24 +290,44 @@ Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 					expandNamespaceImports: args.expandNamespaceImports,
 				});
 
+				if (result.unusedExports.length === 0) {
+					// Nothing was reported, so there is no candidate to be a template
+					// false positive — and no reason to pay for the template walk.
+					const message = isSummary
+						? formatSummary(
+								summarizeUnusedExports(result.unusedExports),
+								result.scannedFiles,
+								result.truncated,
+								result.packageWarnings,
+							)
+						: `No unused exports found.\nScanned files: ${result.scannedFiles}\nTruncated: ${result.truncated}`;
+					return { message, data: result };
+				}
+
+				const template = formatTemplateWarnings(
+					args.tsconfigPath,
+					result.unusedExports,
+				);
+				const data = template.blindSpot
+					? { ...result, templateBlindSpot: template.blindSpot }
+					: result;
+
 				if (isSummary) {
 					return {
-						message: formatSummary(
-							summarizeUnusedExports(result.unusedExports),
-							result.scannedFiles,
-							result.truncated,
-							result.packageWarnings,
-						),
-						data: result,
-					};
-				}
-				if (result.unusedExports.length === 0) {
-					return {
-						message: `No unused exports found.\nScanned files: ${result.scannedFiles}\nTruncated: ${result.truncated}`,
-						data: result,
+						message: [
+							...template.lines,
+							formatSummary(
+								summarizeUnusedExports(result.unusedExports),
+								result.scannedFiles,
+								result.truncated,
+								result.packageWarnings,
+							),
+						].join("\n"),
+						data,
 					};
 				}
 				const lines = [
+					...template.lines,
 					...formatPackageWarnings(result.packageWarnings),
 					`Unused export candidates (${result.unusedExports.length}):`,
 					...result.unusedExports.map(formatUnusedExport),
@@ -255,7 +335,7 @@ Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 					`Scanned files: ${result.scannedFiles}`,
 					`Truncated: ${result.truncated}`,
 				];
-				return { message: lines.join("\n"), data: result };
+				return { message: lines.join("\n"), data };
 			});
 		},
 	);

@@ -19,6 +19,12 @@ export interface TemplateMention {
 	filePath: string;
 	line: number;
 	text: string;
+	/**
+	 * The spelling sits where a template engine RESOLVES a name (`<Foo`,
+	 * `{{foo`, `{{#foo`, `(foo`, `"foo"`), rather than merely appearing on the
+	 * line. A ranking signal, never a filter: see findTemplateMentions.
+	 */
+	invocation: boolean;
 }
 
 /** Directories never worth scanning for project templates. */
@@ -36,7 +42,14 @@ const SKIP_DIRS = new Set([
 
 const MAX_FILES = 5000;
 const MAX_FILE_BYTES = 512 * 1024;
+/** Mentions printed in a tool's message. */
 const MAX_MENTIONS = 25;
+/**
+ * Mentions collected before ranking. Wider than what is printed so a generic
+ * spelling cannot bury the one invocation that matters, but still bounded — a
+ * name like `item` must not turn this into a full-project text index.
+ */
+const MAX_SCANNED_MENTIONS = 200;
 
 /** Role suffixes Ember strips when a class becomes a template-resolvable name. */
 const ROLE_SUFFIXES = ["Component", "Helper", "Modifier", "Service"];
@@ -111,6 +124,14 @@ function collectTemplateFiles(root: string, extensions: string[]): string[] {
  * Template lines mentioning any spelling of the given symbols. Word-ish
  * boundaries keep `<BasicTooltip />` and `{{basic-tooltip}}` in while keeping
  * `basic-tooltip-header` out.
+ *
+ * Matching stays deliberately BROAD — a false positive costs a human one glance,
+ * a false negative silently orphans a template — but the presentation is ranked.
+ * Taking the first 25 in directory-walk order could drop the one line that
+ * mattered: a component called `Item` also matches every `{{item.name}}` and
+ * `as |item|` in the app, and 25 block-param lines from `app/templates/a.hbs`
+ * would bury the `<Item />` in `app/templates/z.hbs`. Invocation-shaped matches
+ * are therefore collected across a wider budget and sorted to the front.
  */
 export function findTemplateMentions(
 	env: TemplateEnvironment,
@@ -123,12 +144,18 @@ export function findTemplateMentions(
 	if (spellings.length === 0) {
 		return [];
 	}
-	const pattern = new RegExp(
-		`(?<![\\w-])(?:${spellings.map(escapeRegExp).join("|")})(?![\\w-])`,
+	const alternation = spellings.map(escapeRegExp).join("|");
+	const pattern = new RegExp(`(?<![\\w-])(?:${alternation})(?![\\w-])`);
+	// `<Foo`, `</Foo`, `{{foo`, `{{#foo`, `{{/foo`, `{foo}`, `(foo`, `"foo"` —
+	// the positions a template engine actually resolves a name from. A trailing
+	// `.` excludes it again: `{{item.name}}` reads a property off a local (very
+	// often a block param), it does not invoke anything called `item`.
+	const invocationPattern = new RegExp(
+		`(?:<\\/?|\\{\\{[#/]?|\\{|\\(|["'])(?:${alternation})(?![\\w-.])`,
 	);
 	const mentions: TemplateMention[] = [];
 	for (const file of collectTemplateFiles(projectRoot, env.extensions)) {
-		if (mentions.length >= MAX_MENTIONS) break;
+		if (mentions.length >= MAX_SCANNED_MENTIONS) break;
 		let contents: string;
 		try {
 			if (fs.statSync(file).size > MAX_FILE_BYTES) continue;
@@ -138,13 +165,32 @@ export function findTemplateMentions(
 		}
 		if (!pattern.test(contents)) continue;
 		const lines = contents.split(/\r?\n/);
-		for (let i = 0; i < lines.length && mentions.length < MAX_MENTIONS; i++) {
+		for (
+			let i = 0;
+			i < lines.length && mentions.length < MAX_SCANNED_MENTIONS;
+			i++
+		) {
 			if (pattern.test(lines[i])) {
-				mentions.push({ filePath: file, line: i + 1, text: lines[i].trim() });
+				mentions.push({
+					filePath: file,
+					line: i + 1,
+					text: lines[i].trim(),
+					invocation: invocationPattern.test(lines[i]),
+				});
 			}
 		}
 	}
 	return mentions;
+}
+
+/**
+ * The mentions worth printing, invocation-shaped first. Ranking only — every
+ * mention collected is still counted, and the caller reports the true total.
+ */
+function rankMentions(mentions: TemplateMention[]): TemplateMention[] {
+	return [...mentions]
+		.sort((a, b) => Number(b.invocation) - Number(a.invocation))
+		.slice(0, MAX_MENTIONS);
 }
 
 function escapeRegExp(value: string): string {
@@ -152,14 +198,104 @@ function escapeRegExp(value: string): string {
 }
 
 function formatMentions(mentions: TemplateMention[]): string {
-	const shown = mentions
+	const ranked = rankMentions(mentions);
+	const shown = ranked
 		.map((m) => `- ${m.filePath}:${m.line}\n  ${m.text}`)
 		.join("\n");
-	const truncated =
-		mentions.length >= MAX_MENTIONS
-			? `\n(stopped at ${MAX_MENTIONS} matches)`
-			: "";
-	return `${shown}${truncated}`;
+	if (ranked.length === mentions.length) {
+		return shown;
+	}
+	// Say what was dropped and on what basis: a silent cut here reads as "these
+	// are all the matches", which is the claim this module exists to avoid.
+	const total =
+		mentions.length >= MAX_SCANNED_MENTIONS
+			? `${MAX_SCANNED_MENTIONS}+`
+			: `${mentions.length}`;
+	return `${shown}\n(showing ${ranked.length} of ${total} matches, invocation-shaped first)`;
+}
+
+/**
+ * Names searched for in one pass. Every name contributes ~3 spellings to a
+ * single alternation, and `find_unused_exports` in summary mode can hold tens of
+ * thousands of candidates: 100k names compiles to a ~7MB pattern that costs over
+ * a second before a single template is read. Bounded, and the caller reports the
+ * bound rather than quietly answering for a subset.
+ */
+const MAX_ATTRIBUTED_NAMES = 500;
+
+/**
+ * Which of `symbolNames` a template mentions anywhere in the project.
+ *
+ * For callers holding MANY names at once — `find_unused_exports` reports up to
+ * a hundred candidates by default — where per-line detail would drown the output
+ * and a per-name scan would re-read the whole template tree once per candidate.
+ * One pass collects every matched spelling and maps it back to the name that
+ * owns it.
+ *
+ * `scannedNames` is how many of the input names were actually searched; anything
+ * past MAX_ATTRIBUTED_NAMES was not, and saying so is the caller's job.
+ */
+export function findTemplateMentionedNames(
+	tsconfigPath: string,
+	symbolNames: string[],
+):
+	| {
+			environment: TemplateEnvironment;
+			mentioned: string[];
+			scannedNames: number;
+	  }
+	| undefined {
+	const environment = detectTemplateEnvironment(tsconfigPath);
+	if (environment === undefined || symbolNames.length === 0) {
+		return undefined;
+	}
+	const searched = [...new Set(symbolNames)].slice(0, MAX_ATTRIBUTED_NAMES);
+	// One spelling can belong to several names (two symbols can dasherize alike),
+	// so a hit credits every owner rather than an arbitrary one.
+	const owners = new Map<string, Set<string>>();
+	for (const name of searched) {
+		for (const spelling of templateSpellings(name)) {
+			if (spelling.length <= 1) continue;
+			const existing = owners.get(spelling);
+			if (existing) {
+				existing.add(name);
+			} else {
+				owners.set(spelling, new Set([name]));
+			}
+		}
+	}
+	if (owners.size === 0) {
+		return undefined;
+	}
+	const pattern = new RegExp(
+		`(?<![\\w-])(?:${[...owners.keys()].map(escapeRegExp).join("|")})(?![\\w-])`,
+		"g",
+	);
+	const projectRoot = path.dirname(path.resolve(tsconfigPath));
+	const mentioned = new Set<string>();
+	for (const file of collectTemplateFiles(
+		projectRoot,
+		environment.extensions,
+	)) {
+		if (mentioned.size === searched.length) break;
+		let contents: string;
+		try {
+			if (fs.statSync(file).size > MAX_FILE_BYTES) continue;
+			contents = fs.readFileSync(file, "utf-8");
+		} catch {
+			continue;
+		}
+		for (const match of contents.matchAll(pattern)) {
+			for (const name of owners.get(match[0]) ?? []) {
+				mentioned.add(name);
+			}
+		}
+	}
+	return {
+		environment,
+		mentioned: [...mentioned],
+		scannedNames: searched.length,
+	};
 }
 
 export interface TemplateCaveat {
@@ -175,9 +311,13 @@ export interface TemplateCaveat {
 
 /**
  * The caveat a tool must print when it runs in a template-bearing project.
- * `mutating` switches the wording from "these were not searched" to "these were
- * not updated" — the difference between an incomplete answer and an incomplete
- * edit.
+ * `mutating` switches the wording between an incomplete ANSWER ("references from
+ * them cannot appear above") and an incomplete EDIT ("this tool cannot update
+ * them"). Both are capability statements; see the note on `headline` for why
+ * neither may describe an action.
+ *
+ * `data.unresolvedMentions` carries every mention collected, not the ranked
+ * subset the message prints — a --json consumer should get the whole set.
  */
 export function templateCaveat({
 	tsconfigPath,

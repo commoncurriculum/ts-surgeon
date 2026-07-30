@@ -33,12 +33,25 @@ interface AnswerLocation {
 	text: string;
 }
 
+/** One declaration's answer, as find_references reports it. */
+interface AnswerDeclaration {
+	definition: AnswerLocation | null;
+	references: AnswerLocation[];
+}
+
 export type PerSymbolResult =
 	| {
 			symbolName: string;
 			status: "found";
 			definition: AnswerLocation | null;
 			references: AnswerLocation[];
+	  }
+	| {
+			symbolName: string;
+			status: "multiple";
+			declarations: AnswerDeclaration[];
+			/** Found but not reference-searched, because find_references caps at 5. */
+			unsearched: AnswerLocation[];
 	  }
 	| { symbolName: string; status: "ambiguous"; message: string }
 	| { symbolName: string; status: "not-found" };
@@ -61,10 +74,26 @@ export function mapBatchResults(
 			data?: {
 				definition?: AnswerLocation | null;
 				references?: AnswerLocation[];
+				declarations?: AnswerDeclaration[];
+				unsearchedDeclarations?: AnswerLocation[];
 			} | null;
 			message?: unknown;
 		};
 		if (e.status === "success" && e.data != null) {
+			// find_references stopped erroring on an ambiguous name and now answers
+			// for every declaration. `data.definition`/`data.references` are the
+			// FIRST declaration's, kept for single-declaration consumers — reading
+			// only those would hand back one of N declarations with nothing saying
+			// so, from a hook whose whole job is to beat the grep it replaced.
+			const declarations = Array.isArray(e.data.declarations)
+				? e.data.declarations
+				: [];
+			const unsearched = Array.isArray(e.data.unsearchedDeclarations)
+				? e.data.unsearchedDeclarations
+				: [];
+			if (declarations.length + unsearched.length > 1) {
+				return { symbolName, status: "multiple", declarations, unsearched };
+			}
 			return {
 				symbolName,
 				status: "found",
@@ -73,6 +102,10 @@ export function mapBatchResults(
 			};
 		}
 		const message = typeof e.message === "string" ? e.message : "";
+		// find_references no longer raises this — it answers for every declaration
+		// instead (handled above). The variant stays because the tsgo answerer
+		// still produces "ambiguous" from its own candidate list; do not delete it
+		// along with this branch.
 		if (message.includes("declarations in the project")) {
 			// Strip the CLI envelope's framing (Error: prefix, Status/timing
 			// footer) — only the candidate list matters here.
@@ -91,6 +124,29 @@ export function mapBatchResults(
 /** Total reference lines shown; split across however many symbols were found. */
 const REFERENCE_DISPLAY_CAP = 40;
 
+/**
+ * The guard's central bargain: intercept a search only when ts-surgeon has
+ * something better to say. A name with no project declaration is not a
+ * TypeScript symbol — a CSS-module class, a string literal, a name from an
+ * untyped dependency — and text search is the right tool for it. Answering
+ * anyway is how the guard strands an agent: it blocks the grep, asks for a
+ * disambiguation, and leads nowhere.
+ *
+ * Every status that renders real content has to be listed here. When
+ * find_references began answering ambiguous names instead of erroring, the new
+ * "multiple" result was a complete answer that this predicate did not recognize,
+ * so the hook would have thrown it away and let the grep run. Also pinned by
+ * hook-answer.e2e.test.ts.
+ */
+export function isAnswerable(results: PerSymbolResult[]): boolean {
+	return results.some(
+		(r) =>
+			r.status === "found" ||
+			r.status === "multiple" ||
+			r.status === "ambiguous",
+	);
+}
+
 /** Renders per-symbol find_references output as the hook's answer. */
 export function formatSearchAnswer(
 	tsconfigPath: string,
@@ -101,7 +157,11 @@ export function formatSearchAnswer(
 	const lines: string[] = [
 		`ts-surgeon: this search hunts the identifier${plural} ${names}, so the hook ran find_references for you (AST-accurate: no comment/string false hits; aliased imports and re-exports included).`,
 	];
-	const foundCount = results.filter((r) => r.status === "found").length;
+	// "multiple" prints reference lists too, so it draws on the same display
+	// budget — leaving it out would give a two-declaration answer the whole cap.
+	const foundCount = results.filter(
+		(r) => r.status === "found" || r.status === "multiple",
+	).length;
 	const perSymbolCap = Math.max(
 		5,
 		Math.floor(REFERENCE_DISPLAY_CAP / Math.max(1, foundCount)),
@@ -133,6 +193,46 @@ export function formatSearchAnswer(
 					);
 				}
 			}
+		} else if (result.status === "multiple") {
+			const total = result.declarations.length + result.unsearched.length;
+			lines.push(
+				`${total} declarations share this name — a text search would have conflated them:`,
+			);
+			// The cap is per declaration here, not per symbol: several declarations
+			// each with references is exactly the case that would blow past it.
+			const perDeclarationCap = Math.max(
+				3,
+				Math.floor(perSymbolCap / Math.max(1, result.declarations.length)),
+			);
+			result.declarations.forEach((declaration, index) => {
+				lines.push(
+					`  ${index + 1}. ${
+						declaration.definition
+							? loc(declaration.definition)
+							: "(definition not reported)"
+					}`,
+				);
+				const references = declaration.references ?? [];
+				if (references.length === 0) {
+					lines.push("     References: none");
+					return;
+				}
+				lines.push(`     References (${references.length}):`);
+				for (const ref of references.slice(0, perDeclarationCap)) {
+					lines.push(`       ${loc(ref)}`);
+				}
+				if (references.length > perDeclarationCap) {
+					lines.push(
+						`       … and ${references.length - perDeclarationCap} more.`,
+					);
+				}
+			});
+			for (const position of result.unsearched) {
+				lines.push(`  - ${loc(position)}  (not reference-searched)`);
+			}
+			lines.push(
+				`  Pass --position to target one: call find_references --tsconfig-path ${tsconfigPath} --target-file-path <file> --position.line <n> --position.column <n>`,
+			);
 		} else if (result.status === "ambiguous") {
 			lines.push(
 				`Multiple declarations — a text search would have conflated them. ${result.message}`,
@@ -289,13 +389,7 @@ export const answerSearchViaCli: SearchAnswerer = (req) => {
 	if (results === undefined) {
 		return { ok: false };
 	}
-	// The guard's central bargain: intercept a search only when ts-surgeon has
-	// something better to say. A name with no project declaration is not a
-	// TypeScript symbol — a CSS-module class, a string literal, a name from an
-	// untyped dependency — and text search is the right tool for it. Answering
-	// anyway is how the guard strands an agent: it blocks the grep, asks for a
-	// disambiguation, and leads nowhere. Pinned by hook-answer.e2e.test.ts.
-	if (!results.some((r) => r.status === "found" || r.status === "ambiguous")) {
+	if (!isAnswerable(results)) {
 		return { ok: false };
 	}
 	return { ok: true, text: formatSearchAnswer(tsconfigPath, results) };

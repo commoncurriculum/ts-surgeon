@@ -64,8 +64,30 @@ describe("detectSourceRewrite", () => {
 			// Not an eval at all.
 			"node scripts/codemod.js",
 			"python3 -m pytest",
+			// Extracts FROM a source file INTO a non-source one. The command names
+			// a .ts because it reads one; the file it rewrites is a .json.
+			`node -e "fs.writeFileSync('data.json', fs.readFileSync('src/a.ts','utf8').replace(/x/g,'y'))"`,
+			`python3 -c "open('out.json','w').write(open('src/a.ts').read().replace('x','y'))"`,
 		]) {
 			expect(detectSourceRewrite(command, emptyDisk), command).toBeUndefined();
+		}
+	});
+
+	// The narrowing above presents its harmless target; these make sure it cannot
+	// be used to smuggle a second write past the check.
+	it("still blocks when a non-source write is not the only write", () => {
+		for (const command of [
+			// The .json write is real, and would be the only literal target found —
+			// but it is not the only write, and the other one rewrites a source file.
+			`node -e "fs.writeFileSync('a.json', x); fs.writeFileSync('src/x.ts', fs.readFileSync('src/x.ts','utf8').replace('a','b'))"`,
+			`node -e "fs.writeFileSync('src/x.ts', fs.readFileSync('src/x.ts','utf8').replace('a','b')); fs.writeFileSync('log.json', y)"`,
+			// One write, but its target is a variable: nothing is proven about it,
+			// so the whole-command scan still has the last word.
+			`node -e "fs.writeFileSync(out, fs.readFileSync('src/a.ts','utf8').replace('a','b'))"`,
+		]) {
+			expect(detectSourceRewrite(command, emptyDisk), command).toBe(
+				"interpreter",
+			);
 		}
 	});
 

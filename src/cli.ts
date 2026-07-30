@@ -279,9 +279,55 @@ const ALL_PROJECTS_TOOLS = new Set([
 ]);
 
 /**
+ * A merged top-level view over the per-project payloads.
+ *
+ * Fanning out replaces `data` with `{ byProject }`, so the moment fan-out became
+ * the DEFAULT for read-only tools, a caller reading `data.references` against a
+ * solution config started getting `undefined` — no error, just a silent empty
+ * read, which is the failure mode this whole change set exists to remove.
+ * Array-valued fields are concatenated in project order, which is the one merge
+ * that needs no interpretation.
+ *
+ * Scalars are deliberately NOT lifted: `scannedFiles` has no single value across
+ * four projects and `truncated` has no single meaning, so inventing one at the
+ * top level would be the same overclaim wearing different clothes. They stay
+ * per-project under `byProject`.
+ */
+function mergeProjectArrays(
+	byProject: Array<{ data: unknown }>,
+): Record<string, unknown[]> {
+	const merged = new Map<string, unknown[]>();
+	for (const entry of byProject) {
+		// An array payload has only index keys, which would merge into nonsense
+		// fields named "0", "1", … rather than anything a consumer asked for.
+		if (
+			entry.data === null ||
+			typeof entry.data !== "object" ||
+			Array.isArray(entry.data)
+		) {
+			continue;
+		}
+		for (const [key, value] of Object.entries(entry.data)) {
+			if (!Array.isArray(value)) {
+				continue;
+			}
+			const existing = merged.get(key);
+			if (existing) {
+				existing.push(...value);
+			} else {
+				merged.set(key, [...value]);
+			}
+		}
+	}
+	// Built through a Map so a payload key like `__proto__` stays a plain entry.
+	return Object.fromEntries(merged);
+}
+
+/**
  * `call <tool> --all-projects` — runs a read-only tool once per referenced
  * project of a solution-style tsconfig and merges the results (data gains
- * byProject). Exit 1 if any project's run reported an error.
+ * byProject plus the concatenated array fields). Exit 1 if any project's run
+ * reported an error.
  */
 async function runAllProjects(
 	registry: ToolRegistry,
@@ -346,7 +392,9 @@ async function runAllProjects(
 				{
 					tool: toolName,
 					status: anyError ? "error" : "success",
-					data: { byProject },
+					// byProject last: it is the authoritative key, and a tool that
+					// happened to return its own `byProject` array must not shadow it.
+					data: { ...mergeProjectArrays(byProject), byProject },
 					message,
 				},
 				null,
