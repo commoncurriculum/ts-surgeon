@@ -35,6 +35,10 @@ parameter, …) across the whole project.
 
 - **Gotchas**: fails if `position`/`symbolName` don't match. Not for renaming
   files (`rename_filesystem_entry`) or moving symbols (`move_symbol_to_file`).
+- **Template projects** (tsconfig declaring Glint/Vue/Svelte): this tool
+  **cannot** update `.hbs`/`.vue`/`.svelte`/`.gts` templates — they are outside
+  the TypeScript program. The result lists the template text matches it left
+  alone; fix those by hand, or the rename orphans them.
 
 ---
 
@@ -61,6 +65,11 @@ Renames/moves files and folders and rewrites every `import`/`export` path.
   barrel imports (`from '../components'`) become explicit index paths
   (`'../components/index.tsx'`). Refuses to run on path conflicts. Bare
   `export default Foo;` references may not update.
+- **Template projects** (tsconfig declaring Glint/Vue/Svelte): the sharpest case
+  of the same blind spot — classic Ember resolves a component from its **file
+  name**, so moving the file breaks every template use with no import statement
+  recording the link. This tool **cannot** update templates; it lists the text
+  matches it left alone.
 
 ---
 
@@ -73,6 +82,15 @@ Lists the definition and every reference of a symbol at a position. Read-only.
   `position {line, column}`.
 - **Tip**: its output gives you `file:line:col` for each site — feed those
   straight into position-taking tools instead of counting columns by hand.
+- **Ambiguous names are answered, not rejected**: a name with several
+  declarations comes back with a definition and reference list for **each**
+  (`--json` data gains `declarations`), so you do not re-run to disambiguate.
+  Resolution is capped at 5; any beyond that are listed as positions under
+  `unsearchedDeclarations` — pass `position` to aim at one of those.
+- **Template projects** (tsconfig declaring Glint/Vue/Svelte): `.hbs`/`.vue`/
+  `.svelte`/`.gts` files are outside the TypeScript program, so references from
+  them **cannot** appear in the list. The result says so and appends matching
+  template lines as *text* — treat the answer as incomplete, not empty.
 
 ---
 

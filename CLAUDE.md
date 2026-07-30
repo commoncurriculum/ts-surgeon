@@ -76,6 +76,10 @@ node dist/index.js call <tool> --params '<json>'
 1. **Entry point**: `src/index.ts`
    - Dispatches to the CLI (`src/cli.ts`): `list` / `describe <tool>` /
      `call <tool>` / `batch` / `guide` (the embedded agent guide, `src/guide.ts`)
+   - `guide` / `--version` / `-v` are answered from `src/cli/constant-commands.ts`
+     **before** `cli.ts` is imported, so they never load the tool registry (and
+     through it ts-morph and the TypeScript compiler): ~1s → ~50ms. `cli.ts`
+     still handles them, so the fast path is purely an optimization
    - `call` params: `--params '<json>'`, `--params-file`, stdin JSON, or
      individual `--field` flags (kebab-case → camelCase, dots nest); relative
      paths resolve against cwd and `tsconfigPath` is auto-discovered

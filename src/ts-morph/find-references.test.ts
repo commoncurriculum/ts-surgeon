@@ -678,6 +678,29 @@ describe("findSymbolReferences with symbolName only (project-wide)", () => {
 		}
 	});
 
+	it("falls back to the default cap on a non-finite one", async () => {
+		write("src/a.ts", "export const render = () => 1;\n");
+		write("src/b.ts", "export function render() {\n  return 2;\n}\n");
+
+		// Math.max(1, NaN) is NaN and slice(0, NaN) is [] — the clamp above would
+		// pass NaN straight through into the contradiction it exists to prevent.
+		for (const maxDeclarations of [
+			Number.NaN,
+			Number.POSITIVE_INFINITY,
+			Number.NEGATIVE_INFINITY,
+		]) {
+			const result = await findSymbolReferences({
+				tsconfigPath,
+				symbolName: "render",
+				maxDeclarations,
+			});
+			expect(
+				result.declarations.length,
+				`cap ${maxDeclarations}`,
+			).toBeGreaterThanOrEqual(1);
+		}
+	});
+
 	it("throws a clear error when no project declaration exists", async () => {
 		write("src/a.ts", "export const x = 1;\n");
 		await expect(

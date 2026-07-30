@@ -63,7 +63,12 @@ export async function findSymbolReferences({
 	// caller passing 0 or a fraction would get an empty `declarations` while
 	// still being told there are unsearched ones — and every consumer reads
 	// declarations[0]. Clamp rather than trust.
-	const cap = Math.max(1, Math.floor(maxDeclarations));
+	// Math.max(1, NaN) is NaN, and slice(0, NaN) is [] — the same empty-but-
+	// reported-as-capped state the clamp exists to prevent, so non-finite input
+	// falls back to the default rather than through it.
+	const cap = Number.isFinite(maxDeclarations)
+		? Math.max(1, Math.floor(maxDeclarations))
+		: MAX_SEARCHED_DECLARATIONS;
 	const project = initializeProject(tsconfigPath);
 
 	// targetFilePath (when given) is expected to be an absolute path

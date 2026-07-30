@@ -61,7 +61,12 @@ function containsSourceFile(root: string): boolean {
 	];
 	let exhausted = false;
 	let found = false;
-	while (queue.length > 0 && !found) {
+	// Both flags are terminal: the result below is `found || exhausted`, so once
+	// either is set nothing further can change the answer. Draining the rest of
+	// the queue anyway cost one readdirSync per queued directory — ~1500 wasted
+	// syscalls on a wide source-less tree, which is exactly the latency this
+	// budget exists to prevent.
+	while (queue.length > 0 && !found && !exhausted) {
 		const { dir, depth } = queue.shift() as { dir: string; depth: number };
 		let entries: fs.Dirent[];
 		try {
