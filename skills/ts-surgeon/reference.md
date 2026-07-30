@@ -35,8 +35,8 @@ parameter, …) across the whole project.
 
 - **Gotchas**: fails if `position`/`symbolName` don't match. Not for renaming
   files (`rename_filesystem_entry`) or moving symbols (`move_symbol_to_file`).
-- **Template projects** (tsconfig declaring Glint/Vue/Svelte): this tool
-  **cannot** update `.hbs`/`.vue`/`.svelte`/`.gts` templates — they are outside
+- **Template projects** (tsconfig declaring Glint/Vue/Svelte/Angular): this tool
+  **cannot** update `.hbs`/`.vue`/`.svelte`/`.gts`/`.html` templates — they are outside
   the TypeScript program. The result lists the template text matches it left
   alone; fix those by hand, or the rename orphans them.
 
@@ -65,7 +65,7 @@ Renames/moves files and folders and rewrites every `import`/`export` path.
   barrel imports (`from '../components'`) become explicit index paths
   (`'../components/index.tsx'`). Refuses to run on path conflicts. Bare
   `export default Foo;` references may not update.
-- **Template projects** (tsconfig declaring Glint/Vue/Svelte): the sharpest case
+- **Template projects** (tsconfig declaring Glint/Vue/Svelte/Angular): the sharpest case
   of the same blind spot — classic Ember resolves a component from its **file
   name**, so moving the file breaks every template use with no import statement
   recording the link. This tool **cannot** update templates; it lists the text
@@ -87,8 +87,8 @@ Lists the definition and every reference of a symbol at a position. Read-only.
   (`--json` data gains `declarations`), so you do not re-run to disambiguate.
   Resolution is capped at 5; any beyond that are listed as positions under
   `unsearchedDeclarations` — pass `position` to aim at one of those.
-- **Template projects** (tsconfig declaring Glint/Vue/Svelte): `.hbs`/`.vue`/
-  `.svelte`/`.gts` files are outside the TypeScript program, so references from
+- **Template projects** (tsconfig declaring Glint/Vue/Svelte/Angular): `.hbs`/`.vue`/
+  `.svelte`/`.gts`/`.html` files are outside the TypeScript program, so references from
   them **cannot** appear in the list. The result says so and appends matching
   template lines as *text* — treat the answer as incomplete, not empty. Matching
   covers the declaring **file** name as well as the symbol's, since Ember reaches
@@ -129,7 +129,7 @@ dependencies and rewriting all imports/exports.
 - **Gotchas**: **one symbol per call**. **Default exports can't be moved** —
   convert to named first. Deps used only by the moved symbol travel with it;
   shared deps stay put, gain `export`, and are imported back.
-- **Template projects** (tsconfig declaring Glint/Vue/Svelte): moving a symbol
+- **Template projects** (tsconfig declaring Glint/Vue/Svelte/Angular): moving a symbol
   moves the file a template resolves it from, and this tool **cannot** update
   templates. Classic Ember finds a component by file name, so nothing records
   the link and nothing breaks until runtime. The result lists the template text
@@ -269,7 +269,7 @@ Returns **candidates, not verdicts**.
   - `[default]` candidates are false-positive-prone; verify each.
   - A **⚠ package-level warning** means a `dist`-publishing workspace package
     produced systematic false positives — treat those as low confidence.
-  - In a **template project** (Glint/Vue/Svelte) a ⚠ warning heads the list: an
+  - In a **template project** (Glint/Vue/Svelte/Angular) a ⚠ warning heads the list: an
     export used only from `<BasicTooltip />` has no reference the checker can
     see, so it is reported here as unused. Candidate names a template does
     mention are listed — treat those as **likely used**, not dead.
@@ -400,8 +400,8 @@ partner to `find_unused_exports`.
   reference — other files, same-file usages, local `export { x }` re-exports —
   blocks the delete and is returned as `file:line:col`. Overload signatures go
   together; one declarator is removed from a multi-variable statement.
-- **Template projects** (tsconfig declaring Glint/Vue/Svelte): a `.hbs`/`.vue`/
-  `.svelte`/`.gts` file mentioning the symbol also blocks the delete, matched as
+- **Template projects** (tsconfig declaring Glint/Vue/Svelte/Angular): a `.hbs`/`.vue`/
+  `.svelte`/`.gts`/`.html` file mentioning the symbol also blocks the delete, matched as
   *text* — those files are outside the TypeScript program, so the checker cannot
   prove the symbol is unused. Matches are listed invocation-shaped first
   (`<Foo`, `{{foo`). Read them: if none of them use this symbol — likely on a

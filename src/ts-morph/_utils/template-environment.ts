@@ -11,7 +11,10 @@ import * as ts from "typescript";
  * find_references reports the Glint registry entry and nothing else, and says
  * "Success" (defect report, 2026-07-29: 865 .hbs against 973 .ts, and the one
  * real consumer was invisible). The same hole exists for Vue SFCs and Svelte
- * components.
+ * components — and, on a far larger installed base, for Angular, where it
+ * reaches ordinary class members: a method bound by `(click)="onSave()"` in a
+ * `templateUrl` file is invisible to the checker, so renaming it reports
+ * success while breaking the template.
  *
  * The tool cannot resolve those references — that needs the framework's own
  * template compiler — but it can know it is in such a project, because the
@@ -22,7 +25,7 @@ import * as ts from "typescript";
 
 export interface TemplateEnvironment {
 	/** Config key that identified the environment. */
-	kind: "glint" | "vue" | "svelte";
+	kind: "glint" | "vue" | "svelte" | "angular";
 	/** How the environment is named in messages. */
 	label: string;
 	/** Extensions of template files outside the TypeScript program. */
@@ -43,6 +46,20 @@ const ENVIRONMENTS: Array<{ key: string; env: TemplateEnvironment }> = [
 			extensions: [".hbs", ".gts", ".gjs"],
 			resolution:
 				"Ember resolves components, helpers, and modifiers from templates by filename convention, so no TypeScript reference edge exists for the type checker to follow",
+		},
+	},
+	{
+		key: "angularCompilerOptions",
+		env: {
+			kind: "angular",
+			label: "Angular",
+			// A component's markup lives in a separate .html reached by
+			// `templateUrl`. Broader than the other dialects — a repo's other HTML
+			// is scanned too — but a component template is not distinguishable by
+			// path, and missing it is the failure that matters.
+			extensions: [".html"],
+			resolution:
+				'a component\'s templateUrl markup is compiled by the Angular compiler, and its bindings ({{heroName}}, (click)="onSave()", *ngIf) resolve against the component class without producing any TypeScript reference edge',
 		},
 	},
 	{
@@ -79,6 +96,7 @@ const PLUGIN_MARKERS: Array<{
 	kind: TemplateEnvironment["kind"];
 }> = [
 	{ match: /^@glint\//, kind: "glint" },
+	{ match: /^@angular\/language-ser(vice|ver)/, kind: "angular" },
 	{ match: /vue.*typescript-plugin|typescript-vue-plugin/, kind: "vue" },
 	{ match: /svelte/, kind: "svelte" },
 ];

@@ -252,3 +252,84 @@ describe("Glint/Ember projects (references outside the TS program)", () => {
 		expect(textOf(result)).not.toContain("Incomplete");
 	});
 });
+
+/**
+ * Angular has the same hole and a far larger installed base: a component's
+ * markup lives in a separate `.html` reached by `templateUrl`, and its bindings
+ * resolve against the class with no TypeScript reference edge. Before this was
+ * detected, `find_references` on a method bound by `(click)="onSave()"` answered
+ * "References not found. Status: Success."
+ */
+describe("Angular projects (templateUrl markup outside the TS program)", () => {
+	let tempDir: string;
+	let tsconfigPath: string;
+	let componentPath: string;
+	let registry: ToolRegistry;
+
+	beforeEach(() => {
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ts-surgeon-ng-"));
+		tsconfigPath = path.join(tempDir, "tsconfig.json");
+		fs.writeFileSync(
+			tsconfigPath,
+			JSON.stringify({
+				compilerOptions: {
+					target: "es2022",
+					module: "esnext",
+					strict: true,
+					experimentalDecorators: true,
+				},
+				include: ["src/**/*"],
+				angularCompilerOptions: { strictTemplates: true },
+			}),
+		);
+		fs.mkdirSync(path.join(tempDir, "src", "app"), { recursive: true });
+		componentPath = path.join(tempDir, "src/app/hero.component.ts");
+		fs.writeFileSync(
+			componentPath,
+			[
+				"export class HeroComponent {",
+				"  heroName = 'Ada';",
+				"  onSave() {",
+				"    return 1;",
+				"  }",
+				"}",
+				"",
+			].join("\n"),
+		);
+		fs.writeFileSync(
+			path.join(tempDir, "src/app/hero.component.html"),
+			'<div>\n  <h1>{{ heroName }}</h1>\n  <button (click)="onSave()">Save</button>\n</div>\n',
+		);
+		registry = createToolRegistry();
+	});
+
+	afterEach(() => {
+		fs.rmSync(tempDir, { recursive: true, force: true });
+	});
+
+	it("find_references reports the binding the checker cannot see", async () => {
+		const result = await registry.call("find_references", {
+			tsconfigPath,
+			targetFilePath: componentPath,
+			symbolName: "onSave",
+		});
+		const text = textOf(result);
+		expect(text).toContain("Incomplete result");
+		expect(text).toContain("Angular");
+		expect(text).toContain("hero.component.html:3");
+	});
+
+	it("rename_symbol says it cannot update the template it just orphaned", async () => {
+		const result = await registry.call("rename_symbol", {
+			tsconfigPath,
+			targetFilePath: componentPath,
+			symbolName: "heroName",
+			newName: "displayName",
+		});
+		const text = textOf(result);
+		expect(text).toContain("Rename successful");
+		expect(text).toContain("Incomplete edit");
+		// `{{ heroName }}` still says heroName, and nothing else will tell you.
+		expect(text).toContain("hero.component.html:2");
+	});
+});

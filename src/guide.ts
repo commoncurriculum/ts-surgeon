@@ -65,9 +65,11 @@ Conveniences:
   files, so read-only tools run across every referenced project by default
   and merge the results; \`--single-project\` opts out. Mutating tools cannot
   fan out — pass them the package's own tsconfig.
-- Template frameworks (Glint/Ember, Vue, Svelte): \`.hbs\`/\`.vue\`/\`.svelte\`
-  files are outside the TypeScript program, so no tool here can resolve
-  references from them. Results say so explicitly and list template text
+- Template frameworks (Glint/Ember, Angular, Vue, Svelte):
+  \`.hbs\`/\`.gts\`/\`.html\`/\`.vue\`/\`.svelte\` files are outside the
+  TypeScript program, so no tool here can resolve references from them.
+  In Angular that includes plain class members — a method bound by
+  \`(click)="onSave()"\` looks unreferenced. Results say so explicitly and list template text
   matches to review; \`safe_delete_symbol\` refuses rather than guess
   (\`ignoreTemplateMentions\` overrides once you have read the matches).
   Watch \`find_unused_exports\` hardest here: a component used only as

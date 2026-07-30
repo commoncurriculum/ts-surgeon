@@ -51,8 +51,19 @@ const MAX_MENTIONS = 25;
  */
 const MAX_SCANNED_MENTIONS = 200;
 
-/** Role suffixes Ember strips when a class becomes a template-resolvable name. */
-const ROLE_SUFFIXES = ["Component", "Helper", "Modifier", "Service"];
+/**
+ * Role suffixes a framework strips when a class becomes a template-resolvable
+ * name — Ember's resolver conventions, plus Angular's `Directive`/`Pipe`, whose
+ * selectors and pipe names likewise drop the suffix.
+ */
+const ROLE_SUFFIXES = [
+	"Component",
+	"Helper",
+	"Modifier",
+	"Service",
+	"Directive",
+	"Pipe",
+];
 
 function dasherize(name: string): string {
 	return name

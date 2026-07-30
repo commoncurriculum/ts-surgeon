@@ -46,6 +46,21 @@ describe("detectTemplateEnvironment", () => {
 				writeConfig("svelte.json", { svelteOptions: {} }),
 			)?.kind,
 		).toBe("svelte");
+		expect(
+			detectTemplateEnvironment(
+				writeConfig("ng.json", {
+					angularCompilerOptions: { strictTemplates: true },
+				}),
+			)?.kind,
+		).toBe("angular");
+	});
+
+	it("scans .html for Angular, where the component markup lives", () => {
+		const env = detectTemplateEnvironment(
+			writeConfig("ng-ext.json", { angularCompilerOptions: {} }),
+		);
+		expect(env?.extensions).toEqual([".html"]);
+		expect(env?.label).toBe("Angular");
 	});
 
 	it("finds environments declared only through a language-service plugin", () => {
@@ -63,6 +78,15 @@ describe("detectTemplateEnvironment", () => {
 				}),
 			)?.kind,
 		).toBe("svelte");
+		expect(
+			detectTemplateEnvironment(
+				writeConfig("ng-plugin.json", {
+					compilerOptions: {
+						plugins: [{ name: "@angular/language-service" }],
+					},
+				}),
+			)?.kind,
+		).toBe("angular");
 	});
 
 	it("follows the extends chain, which does not merge unknown keys", () => {

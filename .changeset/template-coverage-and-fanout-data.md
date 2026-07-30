@@ -4,6 +4,10 @@
 
 Close the gaps found reviewing the template-aware guard and lookups change.
 
+**Angular is now a recognized template environment**
+
+The feature covered Glint/Ember, Vue and Svelte but not Angular, which has the same hole on a much larger installed base — and reaches further into ordinary code. A component's markup lives in a separate `.html` behind `templateUrl`, and its bindings resolve against the class with no TypeScript reference edge, so `find_references` on a method bound by `(click)="onSave()"` answered *"References not found. Status: Success."* and `rename_symbol` reported success while orphaning `{{ heroName }}`. Detected from `angularCompilerOptions` or the `@angular/language-service` plugin; `.html` is scanned, which is broader than the other dialects because a component template is not distinguishable by path. `Directive` and `Pipe` join the role suffixes stripped when deriving spellings.
+
 **The blind-spot detector was blind in its own primary case**
 
 Spellings were derived from the symbol name alone, but classic Ember resolves a component from its **file name**, which the class inside need not match: `export class Panel` in `app/components/side-panel.ts` is invoked as `<SidePanel />`. No spelling of `Panel` reaches that, so every one of these tools reported "no template matched" — and `safe_delete_symbol` deleted a component a template was using, the exact outcome the refusal exists to prevent. The declaring file's basename now contributes spellings too, in the symbol tools and in `find_unused_exports`, where such a candidate is the one most likely to be swept up.

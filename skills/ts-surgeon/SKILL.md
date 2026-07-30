@@ -141,7 +141,7 @@ rhythm:
    `find_references`.
 3. `safe_delete_symbol` — it refuses anything still referenced, so it
    is safe to attempt even when you are unsure. In a template project it
-   also refuses a symbol a `.hbs`/`.vue`/`.svelte` file mentions; that
+   also refuses a symbol a `.hbs`/`.vue`/`.svelte`/`.html` file mentions; that
    match is text, so read the listed lines before overriding with
    `ignoreTemplateMentions`.
 4. `organize_imports` on the touched files to drop now-unused
@@ -181,8 +181,8 @@ resolve consistently; finish with `get_diagnostics`.
   output (`dist`), every one of its exports can be falsely reported unused. The
   tool prepends a package-level warning — treat those candidates as low
   confidence.
-- **Deleting a component used only from a template.** In a Glint/Ember, Vue or
-  Svelte project, `.hbs`/`.vue`/`.svelte`/`.gts` files are outside the
+- **Deleting a component used only from a template.** In a Glint/Ember, Vue, Svelte or
+  Angular project, `.hbs`/`.vue`/`.svelte`/`.gts` files are outside the
   TypeScript program, so a component invoked only as `<BasicTooltip />` shows up
   in `find_unused_exports` with `textHits=0 sameFileRefs=0` — the strongest
   "safe to delete" signal the tool has, on a symbol that is in use. Nothing

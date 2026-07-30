@@ -28,7 +28,7 @@ export function registerSafeDeleteSymbolTool(registry: ToolRegistry): void {
 - Finds the named top-level declaration (and any overload signatures of the same symbol) and resolves all references via the type checker.
 - References inside the declaration itself (its name, recursive self-calls) are ignored; ALL other references (other files, same-file usages, local \`export { x }\` re-exports) block deletion.
 - If there are no blocking references, the declaration is removed (a single declarator is removed from a multi-variable statement). Otherwise nothing changes and the blockers are returned.
-- **Template projects** (tsconfig declaring Glint/Vue/Svelte): a \`.hbs\`/\`.vue\`/\`.svelte\`/\`.gts\` file mentioning the symbol also stops the delete — those files are outside the TypeScript program, so the checker cannot prove the symbol is unused. The match is TEXT, listed invocation-shaped first, so a generic name (\`index\`, \`Item\`) can match lines unrelated to this symbol. Read them; if none of them use it, re-run with \`ignoreTemplateMentions: true\` (the type-checker reference check above still runs and still blocks).
+- **Template projects** (tsconfig declaring Glint/Vue/Svelte/Angular): a \`.hbs\`/\`.vue\`/\`.svelte\`/\`.gts\`/\`.html\` file mentioning the symbol also stops the delete — those files are outside the TypeScript program, so the checker cannot prove the symbol is unused. The match is TEXT, listed invocation-shaped first, so a generic name (\`index\`, \`Item\`) can match lines unrelated to this symbol. Read them; if none of them use it, re-run with \`ignoreTemplateMentions: true\` (the type-checker reference check above still runs and still blocks).
 
 ## Critical constraints
 - All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
@@ -59,7 +59,7 @@ On success: the deleted symbol and the modified file(s). When blocked: the list 
 				.optional()
 				.default(false)
 				.describe(
-					"Only for template projects (Glint/Vue/Svelte). By default a symbol whose name appears in a .hbs/.vue/.svelte template is not deleted, because the type checker cannot see those files. Template matching is text-based, so a generic name (index, Item, title) can match lines that have nothing to do with this symbol. Set true ONLY after reading the reported matches and confirming none of them use it; the type-checker reference check still applies and still blocks.",
+					"Only for template projects (Glint/Vue/Svelte/Angular). By default a symbol whose name appears in a .hbs/.vue/.svelte/.html template is not deleted, because the type checker cannot see those files. Template matching is text-based, so a generic name (index, Item, title) can match lines that have nothing to do with this symbol. Set true ONLY after reading the reported matches and confirming none of them use it; the type-checker reference check still applies and still blocks.",
 				),
 		},
 		(args) =>
