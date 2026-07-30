@@ -10,7 +10,7 @@ Address a nine-point defect report (2026-07-29) about tools reporting more confi
 - Neither the answer nor the teaching hook fires for searches over paths that exist and demonstrably hold no TS/JS (e.g. a `defmodule` grep in an Elixir tree).
 
 **Template-based frameworks (Glint/Ember, Vue, Svelte)**
-- Tools now detect the environment from the tsconfig they already read and stop presenting partial results as complete: `find_references` reports the blind spot and lists matching template lines as text; `rename_symbol` / `rename_filesystem_entry` report which templates they did not update; `safe_delete_symbol` refuses to delete a symbol a template still mentions.
+- Tools now detect the environment from the tsconfig they already read (top-level marker, `compilerOptions.plugins`, or an `extends` chain) and stop presenting partial results as complete: `find_references` reports the blind spot and lists matching template lines as text; `rename_symbol` / `rename_filesystem_entry` state that they cannot update templates and list the matches left alone; `safe_delete_symbol` refuses to delete a symbol a template still mentions.
 
 **Lookups**
 - `find_references` answers every declaration of an ambiguous name instead of erroring and forcing a second process start and project parse (`--json` data gains `declarations`). Reference resolution is capped at 5 declarations — each one costs a full type-checker search — and the rest are reported as positions under `unsearchedDeclarations`.
