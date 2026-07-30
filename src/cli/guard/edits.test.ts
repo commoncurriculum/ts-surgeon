@@ -68,6 +68,8 @@ describe("detectSourceRewrite", () => {
 			// a .ts because it reads one; the file it rewrites is a .json.
 			`node -e "fs.writeFileSync('data.json', fs.readFileSync('src/a.ts','utf8').replace(/x/g,'y'))"`,
 			`python3 -c "open('out.json','w').write(open('src/a.ts').read().replace('x','y'))"`,
+			// Several writes are fine when every destination is proven non-source.
+			`node -e "const s=fs.readFileSync('src/a.ts','utf8'); fs.writeFileSync('names.json', s.replace(/x/g,'y')); fs.writeFileSync('raw.txt', s)"`,
 		]) {
 			expect(detectSourceRewrite(command, emptyDisk), command).toBeUndefined();
 		}
@@ -81,9 +83,13 @@ describe("detectSourceRewrite", () => {
 			// but it is not the only write, and the other one rewrites a source file.
 			`node -e "fs.writeFileSync('a.json', x); fs.writeFileSync('src/x.ts', fs.readFileSync('src/x.ts','utf8').replace('a','b'))"`,
 			`node -e "fs.writeFileSync('src/x.ts', fs.readFileSync('src/x.ts','utf8').replace('a','b')); fs.writeFileSync('log.json', y)"`,
-			// One write, but its target is a variable: nothing is proven about it,
-			// so the whole-command scan still has the last word.
+			// One write, but its target is a variable: nothing is proven about it.
 			`node -e "fs.writeFileSync(out, fs.readFileSync('src/a.ts','utf8').replace('a','b'))"`,
+			// A variable-target write with a harmless non-source path elsewhere in
+			// the command (caught in review, 2026-07-30): the .json must not vouch
+			// for a destination the guard cannot see.
+			`node -e "const f=require('./cfg.json').target; fs.writeFileSync(f, fs.readFileSync(f,'utf8').replace('a','b'))"`,
+			`python3 -c "import sys, pathlib; p=pathlib.Path(sys.argv[1]); p.write_text(p.read_text().replace('a','b'))" out.json`,
 		]) {
 			expect(detectSourceRewrite(command, emptyDisk), command).toBe(
 				"interpreter",

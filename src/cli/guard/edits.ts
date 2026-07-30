@@ -147,8 +147,6 @@ const NON_SOURCE_EXTENSIONS = new Set([
 	"npmrc",
 ]);
 
-const PATH_TOKEN_RE = /[\w./@~-]*\.([A-Za-z0-9]{1,10})\b/g;
-
 /**
  * Write calls whose FIRST argument is the destination path, with that path
  * written as a literal. Only this family can be read back out of a command
@@ -170,6 +168,22 @@ const LITERAL_WRITE_TARGET_RE = new RegExp(
 /** Every write-API occurrence, to tell "one write" from "several". */
 const WRITE_API_GLOBAL_RE = new RegExp(WRITE_API_RE.source, "g");
 
+/**
+ * `p = Path('x')` / `p = pathlib.Path("x")` — the binding a later
+ * `p.write_text(...)` resolves through. Only a string LITERAL argument counts;
+ * `Path(sys.argv[1])` binds the name to nothing provable.
+ */
+const PATH_ASSIGNMENT_RE =
+	/\b(\w+)\s*=\s*(?:pathlib\s*\.\s*)?Path\s*\(\s*(['"])([^'"]+)\2\s*\)/g;
+
+/** `Path('x').write_text(...)` — the receiver names its destination inline. */
+const INLINE_PATH_WRITE_RE =
+	/\bPath\s*\(\s*(['"])([^'"]+)\1\s*\)\s*\.\s*(?:write_text|write_bytes|writelines)\s*\(/g;
+
+/** `p.write_text(...)` — the destination lives on the receiver variable. */
+const RECEIVER_WRITE_RE =
+	/\b(\w+)\s*\.\s*(?:write_text|write_bytes|writelines)\s*\(/g;
+
 /** True for a path whose extension is listed as outside the guard's remit. */
 function isNonSourceTarget(target: string): boolean {
 	if (SOURCE_EXT_RE.test(target)) {
@@ -180,46 +194,61 @@ function isNonSourceTarget(target: string): boolean {
 }
 
 /**
- * True when the script performs exactly ONE file write and that write provably
- * targets a non-source file.
+ * Where the script's file WRITES land, judged per write target — never by
+ * scanning the whole command for path-looking tokens. A whole-command scan
+ * let `fs.writeFileSync(f, ...)` — destination a variable, provably nothing —
+ * borrow innocence from a harmless `cfg.json` mentioned elsewhere in the same
+ * command (caught in review, 2026-07-30).
  *
- * Extracting data out of TypeScript is not hand-editing it:
- * `node -e "fs.writeFileSync('data.json', fs.readFileSync('src/a.ts','utf8').replace(...))"`
- * reads a source file, but the file it rewrites is a .json. Scanning the whole
- * command for a source extension called that a source rewrite, which is the same
- * over-block as the `process.stdout.write` case — an agent denied for extracting
- * data learns to distrust the guard exactly as fast as one denied for printing.
+ * - "source":     some provable target is a TS/JS path.
+ * - "non-source": EVERY write has a provable target and every one of them is
+ *   a known non-source file. Extracting data out of TypeScript is not
+ *   hand-editing it: `fs.writeFileSync('data.json',
+ *   fs.readFileSync('src/a.ts','utf8').replace(...))` reads a source file,
+ *   but the file it rewrites is a .json.
+ * - "unknown":    anything less — a variable target, an unrecognized
+ *   extension, more writes than provable destinations.
  *
- * The single-write requirement is what keeps this from being an escape hatch:
- * with two writes, `writeFileSync('a.json', x); writeFileSync('src/x.ts', y)`
- * would otherwise present its harmless target and hide the real one.
+ * Provable means the destination is a string literal: the first argument of
+ * the literal-target API family, or a receiver traced through
+ * `Path('literal')` (inline or via a simple assignment). Requiring every
+ * write to be proven is what keeps this from being an escape hatch — with two
+ * writes, `writeFileSync('a.json', x); writeFileSync(f, y)` would otherwise
+ * present its harmless target and hide the real one.
  */
-function writesOnlyNonSourceFile(script: string): boolean {
-	if ([...script.matchAll(WRITE_API_GLOBAL_RE)].length !== 1) {
-		return false;
+export function writeTargetScope(
+	script: string,
+): "source" | "non-source" | "unknown" {
+	const writeCount = [...script.matchAll(WRITE_API_GLOBAL_RE)].length;
+	const bindings = new Map<string, string>();
+	for (const match of script.matchAll(PATH_ASSIGNMENT_RE)) {
+		bindings.set(match[1], match[3]);
 	}
 	const targets = [...script.matchAll(LITERAL_WRITE_TARGET_RE)]
 		.map((match) => match[2] ?? match[4] ?? match[6])
 		.filter((target): target is string => target !== undefined);
-	return targets.length === 1 && isNonSourceTarget(targets[0]);
-}
-
-/**
- * Does the command name a file it is plainly not the guard's business to
- * protect? "source" when a TS/JS path appears, "non-source" when every named
- * file is something else, "unknown" when the target is a variable
- * (`fs.writeFileSync(f, ...)`) — the common shape of a computed edit.
- */
-export function namedTargetScope(
-	command: string,
-): "source" | "non-source" | "unknown" {
-	if (SOURCE_EXT_RE.test(command)) {
+	for (const match of script.matchAll(INLINE_PATH_WRITE_RE)) {
+		targets.push(match[2]);
+	}
+	let unresolvedReceivers = 0;
+	for (const match of script.matchAll(RECEIVER_WRITE_RE)) {
+		const bound = bindings.get(match[1]);
+		if (bound === undefined) {
+			unresolvedReceivers += 1;
+		} else {
+			targets.push(bound);
+		}
+	}
+	if (targets.some((target) => SOURCE_EXT_RE.test(target))) {
 		return "source";
 	}
-	for (const match of command.matchAll(PATH_TOKEN_RE)) {
-		if (NON_SOURCE_EXTENSIONS.has(match[1].toLowerCase())) {
-			return "non-source";
-		}
+	if (
+		writeCount > 0 &&
+		unresolvedReceivers === 0 &&
+		targets.length === writeCount &&
+		targets.every(isNonSourceTarget)
+	) {
+		return "non-source";
 	}
 	return "unknown";
 }
@@ -267,10 +296,10 @@ function isInterpreterRewrite(command: string): boolean {
 			WRITE_API_RE.test(script) &&
 			READ_API_RE.test(script) &&
 			REPLACE_API_RE.test(script) &&
-			// A provably non-source write target beats the whole-command scan: the
-			// command mentions a .ts because it READS one.
-			!writesOnlyNonSourceFile(script) &&
-			namedTargetScope(command) !== "non-source"
+			// Only a write whose destination is PROVABLY non-source escapes. A
+			// variable target proves nothing and stays blocked, no matter what
+			// harmless paths appear elsewhere in the command.
+			writeTargetScope(script) !== "non-source"
 		) {
 			return true;
 		}
