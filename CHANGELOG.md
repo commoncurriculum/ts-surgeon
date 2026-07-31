@@ -1,5 +1,103 @@
 # @commoncurriculum/ts-surgeon
 
+## 1.5.0
+
+### Minor Changes
+
+- daa3e7b: Address a nine-point defect report (2026-07-29) about tools reporting more confidence than they have.
+
+  **Guard**
+
+  - Hand-edits of TS/JS are detected by write _effect_ rather than by binary name: interpreter one-liners that read → substitute → write back (`python3 -c`, `node -e`, `ruby -e`, `php -r`, bun/deno, target may be a variable) and redirects/`tee` that overwrite an **existing** source file now block, alongside `sed -i`/`perl -i`. Creating a new file that way stays allowed.
+  - Block messages no longer claim "this guard has no in-session bypass" — a partial denylist cannot promise total coverage, and the false claim invited hunting for the mechanism that slips through.
+  - Neither the answer nor the teaching hook fires for searches over paths that exist and demonstrably hold no TS/JS (e.g. a `defmodule` grep in an Elixir tree).
+
+  **Template-based frameworks (Glint/Ember, Vue, Svelte)**
+
+  - Tools now detect the environment from the tsconfig they already read (top-level marker, `compilerOptions.plugins`, or an `extends` chain) and stop presenting partial results as complete: `find_references` reports the blind spot and lists matching template lines as text; `rename_symbol` / `rename_filesystem_entry` state that they cannot update templates and list the matches left alone; `safe_delete_symbol` refuses to delete a symbol a template still mentions.
+
+  **Lookups**
+
+  - `find_references` answers every declaration of an ambiguous name instead of erroring and forcing a second process start and project parse (`--json` data gains `declarations`). Reference resolution is capped at 5 declarations — each one costs a full type-checker search — and the rest are reported as positions under `unsearchedDeclarations`.
+  - A file that exists on disk but sits outside the tsconfig's include globs now says so, instead of the misleading "File not found".
+  - Read-only tools fan out across a solution-style tsconfig's referenced projects by default; `--single-project` opts out, and the per-invocation warning is gone.
+
+  **Startup**
+
+  - `guide`, `--version` and `-v` no longer load ts-morph and the TypeScript compiler (~1s → ~50ms).
+
+- daa3e7b: Close the gaps found reviewing the template-aware guard and lookups change.
+
+  **Astro is now a recognized template environment**
+
+  The sharpest version of this hole, because the invisible code is not markup: an `.astro` file's frontmatter is ordinary TypeScript — imports, calls, anything — that the Astro toolchain compiles and ts-morph never parses. A plain helper called only from a page's frontmatter read as completely unreferenced, so `find_references` answered _"References not found. Status: Success."_ and `safe_delete_symbol` would happily remove it. Detected from an `astro/tsconfigs/*` extends (including TypeScript 5 array form), `jsxImportSource: "astro"`, or the `@astrojs/ts-plugin` entry — Astro has no marker key of its own, and the generated config is little more than that one `extends` line. `.astro` and `.mdx` are both scanned.
+
+  Match ranking gained a **call** shape (`formatPrice(`) for the same reason: a frontmatter use has no template punctuation in front of it, so neither the angle nor the curly shape reached it and the call that actually breaks ranked below the import line.
+
+  _(React needs nothing: `.tsx` is in the TypeScript program, so JSX usage resolves through the checker like any other reference. Verified, not assumed.)_
+
+  **Angular is now a recognized template environment**
+
+  The feature covered Glint/Ember, Vue and Svelte but not Angular, which has the same hole on a much larger installed base — and reaches further into ordinary code. A component's markup lives in a separate `.html` behind `templateUrl`, and its bindings resolve against the class with no TypeScript reference edge, so `find_references` on a method bound by `(click)="onSave()"` answered _"References not found. Status: Success."_ and `rename_symbol` reported success while orphaning `{{ heroName }}`. Detected from `angularCompilerOptions` or the `@angular/language-service` plugin; `.html` is scanned, which is broader than the other dialects because a component template is not distinguishable by path. `Directive` and `Pipe` join the role suffixes stripped when deriving spellings.
+
+  **The blind-spot detector was blind in its own primary case**
+
+  Spellings were derived from the symbol name alone, but classic Ember resolves a component from its **file name**, which the class inside need not match: `export class Panel` in `app/components/side-panel.ts` is invoked as `<SidePanel />`. No spelling of `Panel` reaches that, so every one of these tools reported "no template matched" — and `safe_delete_symbol` deleted a component a template was using, the exact outcome the refusal exists to prevent. The declaring file's basename now contributes spellings too, in the symbol tools and in `find_unused_exports`, where such a candidate is the one most likely to be swept up.
+
+  **The template blind spot reached the two tools that most needed it**
+
+  - `find_unused_exports` now warns that an export used only from a template is reported there as unused, and names which candidates a template does mention — this is the list an agent sweeps to decide what to delete, so a blanket disclaimer was not enough. One template pass covers every candidate rather than one pass per name.
+  - `move_symbol_to_file` reports the same break `rename_filesystem_entry` does: relocating a component's file orphans the templates that resolve it by name, with no import statement recording the link.
+
+  **The guard hook stopped answering ambiguous searches with one declaration**
+
+  When `find_references` began succeeding on an ambiguous name instead of erroring, the hook's result parser fell through to `data.definition`/`data.references` — which are declaration #1's. An intercepted `grep -rn render` was answered with one of N declarations and nothing saying so, from a hook whose entire justification is beating the grep it replaced. It now reports every declaration, plus the ones past the cap as positions. The gate that decides whether to answer at all is extracted and covered, since it silently discarded the new result shape.
+
+  **Fan-out no longer hides the tool's own payload**
+
+  Running across a solution config's referenced projects replaced `--json` `data` with `{ byProject }`. Once fan-out became the default for read-only tools, `data.references` silently became `undefined` for every existing consumer. Array fields (`references`, `diagnostics`, `unusedExports`, …) are now concatenated at the top level alongside `byProject`. Per-project scalars like `scannedFiles` are not lifted — they have no single value across projects, and inventing one would be the same overclaim in a new place.
+
+  **Template matches are ranked, so a common name cannot bury the real one**
+
+  Matches were printed in directory-walk order and cut at 25. A component called `Item` also matches every `{{item.name}}` and `as |item|` in the app, so 25 lines of block-param noise could push out the one `<Item />` that actually resolves it. Matches are now collected across a wider budget and sorted invocation-shaped first, and the message states how many were left out. Matching itself stays broad on purpose — a false positive costs one glance, a false negative silently orphans a template.
+
+  Relatedly, `<Item.Sub />` is a real invocation of `Item`, but the classifier excluded any dotted name to keep `{{item.name}}` (a block-param path read) from counting. Angle-bracket and curly forms are now judged separately, because the dot means opposite things in each, and the classifier has its own test table of real template shapes.
+
+  **`safe_delete_symbol` refusals are overridable, on the record**
+
+  A text match on a generic name blocked the delete with no way through, making the tool unusable for a whole class of ordinary names. `ignoreTemplateMentions: true` is the explicit per-call override; the result records that the judgement was the caller's, and the type-checker reference check still runs and still blocks.
+
+  **The dead-code recipe warned about the wrong false positive**
+
+  `skills/ts-surgeon/SKILL.md` — the file an agent reads before deleting — listed the monorepo ⚠ warning but not the template one, which is harder: in a Glint/Vue/Svelte project nothing in the type system connects a component to `<BasicTooltip />`, so it is reported with `textHits=0 sameFileRefs=0`, the strongest "safe to delete" signal the tool has, and nothing fails until runtime. Added there and in the embedded `guide`.
+
+  **`rewrite_where` reached the skill**
+
+  It has been a registered tool and a documented one in the README, but appeared nowhere in `skills/ts-surgeon/` — the file that tells an agent which tools exist. 17 of 18 tools were reachable that way. Added, with a pointer from `rewrite_pattern`, which is where you find out you need it.
+
+  **The guard stops blocking extraction out of source**
+
+  A one-liner whose single write provably targets a non-source file — `fs.writeFileSync('data.json', fs.readFileSync('src/a.ts','utf8').replace(…))` — reads a `.ts` but rewrites a `.json`, and scanning the whole command for a source extension called that a source rewrite. Two writes, or a computed target, and the conservative reading applies again, so the narrowing cannot be used to smuggle a second write past the check.
+
+### Patch Changes
+
+- daa3e7b: Review fixes on the template-aware guard and lookups change.
+
+  - `ts-surgeon <name>` no longer crashes with a raw `TypeError` stack when the command happens to be an `Object.prototype` key (`constructor`, `toString`, `valueOf`, …). The fast-path table that routes `guide`/`--version`/`-v` before the compiler loads was an object literal, so those names resolved to an inherited function; it is now a `Map`, and unknown commands reach the CLI's own "Unknown command" report as they should.
+  - The guard's source-presence walk stops as soon as its answer is decided. It kept draining its queue after the entry budget ran out, costing one `readdirSync` per already-queued directory — ~1500 wasted syscalls on a wide source-less tree, in a `PreToolUse` hook whose whole design constraint is to cost less than the grep it adjudicates.
+  - `find_references` falls back to the default declaration cap on a non-finite `maxDeclarations`, closing the one gap in that clamp (`Math.max(1, NaN)` is `NaN`, and `slice(0, NaN)` is the empty-but-reported-as-capped state the clamp exists to prevent).
+  - Docs match the shipped wording: the README described `rename_symbol` / `rename_filesystem_entry` as reporting what they "did not update", the action phrasing those tools deliberately avoid because it is false under `dryRun`. The agent-facing skill reference now also carries the template blind spot for `rename_symbol` / `rename_filesystem_entry` / `find_references`, and `find_references`'s ambiguous-name behavior.
+
+- daa3e7b: Review-round hardening of the guard, the template blind-spot scan, and fan-out:
+
+  - The guard no longer blocks quoted prose containing `->` (e.g. `git commit -m "moved a.ts -> src/index.ts"`): overwrite targets are harvested from the quote-aware tokenizer, never from a raw-string regex. Read-mode `open('Main.java')` no longer matches the write-API pattern (the mode must be its own argument). Heredoc-fed interpreters (`python3 <<'EOF'`) and attached eval flags (`node --eval=…`, `python3 -c"…"`) are now detected.
+  - Angular components are matched by the `selector`/pipe-`name` string in their own decorator, so `ng generate component` defaults (`<app-hero-detail>`) no longer walk past `safe_delete_symbol`'s template refusal or `find_unused_exports`' likely-used warning.
+  - `safe_delete_symbol` under `dryRun` + `ignoreTemplateMentions` says "Would delete despite N template text match(es)" instead of claiming a deletion that never happened, and attaches `templateBlindSpot` to `--json` data on the success path too.
+  - Default fan-out no longer exits 1 when the target file or symbol lives in one referenced project and the others answer "not mine" — those are reported as `skipped` per project; merged arrays drop structurally identical duplicates from files shared between projects; tools outside the fan-out set are no longer accused of "mutating files".
+  - Template-environment detection follows every entry of a TS 5.0 array `extends`, and recognizes create-vue (`@vue/tsconfig`) and SvelteKit (`.svelte-kit/tsconfig.json`) scaffolds by their extends strings.
+  - The template scan keeps collecting invocation-shaped matches after generic noise exhausts its budget, searches every declaring file of a shared export name, and bounds the walk by directories visited.
+  - The hook's search answerer fans its batch out across a solution config's referenced projects instead of parsing the empty solution project and failing open.
+
 ## 1.4.0
 
 ### Minor Changes
