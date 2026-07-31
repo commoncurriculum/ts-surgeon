@@ -1,7 +1,36 @@
 import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
-import { findSymbolReferences } from "../ts-morph/find-references.js";
+import {
+	type DeclarationReferences,
+	findSymbolReferences,
+} from "../ts-morph/find-references.js";
+import { templateCaveat } from "../ts-morph/_utils/template-references.js";
 import { runTool } from "./_tool-runner.js";
+
+/** One declaration's definition line plus its numbered references. */
+function formatDeclaration(declaration: DeclarationReferences): string {
+	let text = "";
+	if (declaration.definition) {
+		const { filePath, line, column } = declaration.definition;
+		text += "Definition:\n";
+		text += `- ${filePath}:${line}:${column}\n`;
+		text += `  \`\`\`typescript\n  ${declaration.definition.text}\n  \`\`\`\n\n`;
+	} else {
+		text += "Definition not found.\n\n";
+	}
+	if (declaration.references.length > 0) {
+		text += `References (${declaration.references.length} found):\n`;
+		text += declaration.references
+			.map(
+				(ref) =>
+					`- ${ref.filePath}:${ref.line}:${ref.column}\n  \`\`\`typescript\n  ${ref.text}\n  \`\`\``,
+			)
+			.join("\n\n");
+	} else {
+		text += "References not found.";
+	}
+	return text.trim();
+}
 
 export function registerFindReferencesTool(registry: ToolRegistry): void {
 	registry.tool(
@@ -18,8 +47,9 @@ export function registerFindReferencesTool(registry: ToolRegistry): void {
 - You already plan to rename -> skip straight to \`rename_symbol\` (it computes the same set internally and supports \`dryRun\`).
 
 ## Critical constraints
-- Target the symbol either with \`position\` (1-based line/column landing on the identifier itself) or with \`symbolName\` (the declaration name, when it is unambiguous in the file). Pass at least one.
-- \`targetFilePath\` is optional: \`symbolName\` alone looks the declaration up project-wide (it must be unambiguous across the project; the error lists every candidate otherwise). You do NOT need to know which file declares a symbol to use this tool.
+- Target the symbol either with \`position\` (1-based line/column landing on the identifier itself) or with \`symbolName\` (the declaration name). Pass at least one.
+- \`targetFilePath\` is optional: \`symbolName\` alone looks the declaration up project-wide. You do NOT need to know which file declares a symbol to use this tool.
+- A name with several declarations is answered for EACH of them (up to 5; the rest come back as positions under \`unsearchedDeclarations\`) — no ambiguity error, no second invocation. Pass \`position\` to target exactly one.
 - All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
 
 ## Result
@@ -47,7 +77,7 @@ Returns the definition (file path, line, column, source line) when found, follow
 				.string()
 				.optional()
 				.describe(
-					"Declaration name to target instead of a position; must be unambiguous in the file. Pass position as well to disambiguate.",
+					"Declaration name to target instead of a position. A name with several declarations reports each of them; pass position to target exactly one.",
 				),
 		},
 		(args) =>
@@ -59,36 +89,69 @@ Returns the definition (file path, line, column, source line) when found, follow
 					symbolName: args.symbolName,
 				},
 				async () => {
-					const { references, definition } = await findSymbolReferences({
+					const { declarations, unsearchedDeclarations } =
+						await findSymbolReferences({
+							tsconfigPath: args.tsconfigPath,
+							targetFilePath: args.targetFilePath,
+							position: args.position,
+							symbolName: args.symbolName,
+						});
+
+					// One declaration reads exactly as before. Several are reported
+					// side by side instead of raising an ambiguity error the caller
+					// would have to pay another full project parse to answer.
+					const total = declarations.length + unsearchedDeclarations.length;
+					const sections =
+						total === 1
+							? formatDeclaration(declarations[0])
+							: [
+									`'${declarations[0].symbolName}' has ${total} declarations; references for each follow. Pass position {line, column} to target just one.`,
+									...declarations.map(
+										(declaration, index) =>
+											`## Declaration ${index + 1} — ${declaration.definition?.filePath ?? "unknown file"}:${declaration.definition?.line ?? "?"}:${declaration.definition?.column ?? "?"}\n${formatDeclaration(declaration)}`,
+									),
+									// Each declaration costs a full type-checker search, so
+									// the rest are listed as positions rather than silently
+									// dropped or paid for.
+									...(unsearchedDeclarations.length > 0
+										? [
+												`## ${unsearchedDeclarations.length} further declaration(s) — positions only, not searched (re-run with position {line, column} for any of these):\n${unsearchedDeclarations
+													.map(
+														(d) =>
+															`- ${d.filePath}:${d.line}:${d.column}\n  \`\`\`typescript\n  ${d.text}\n  \`\`\``,
+													)
+													.join("\n")}`,
+											]
+										: []),
+								].join("\n\n");
+
+					// Templates outside the TypeScript program hold references the
+					// checker cannot see. Reporting a partial answer as "Success" is
+					// what made that omission dangerous.
+					const caveat = templateCaveat({
 						tsconfigPath: args.tsconfigPath,
-						targetFilePath: args.targetFilePath,
-						position: args.position,
-						symbolName: args.symbolName,
+						symbolNames: [...new Set(declarations.map((d) => d.symbolName))],
+						// Ember addresses a component by file name, which the class name
+						// need not match (`class Tooltip` in `basic-tooltip.ts`).
+						filePaths: [
+							...(args.targetFilePath ? [args.targetFilePath] : []),
+							...declarations.flatMap((d) =>
+								d.definition ? [d.definition.filePath] : [],
+							),
+						],
+						mutating: false,
 					});
 
-					let resultText = "";
-					if (definition) {
-						resultText += "Definition:\n";
-						resultText += `- ${definition.filePath}:${definition.line}:${definition.column}\n`;
-						resultText += `  \`\`\`typescript\n  ${definition.text}\n  \`\`\`\n\n`;
-					} else {
-						resultText += "Definition not found.\n\n";
-					}
-
-					if (references.length > 0) {
-						resultText += `References (${references.length} found):\n`;
-						resultText += references
-							.map(
-								(ref) =>
-									`- ${ref.filePath}:${ref.line}:${ref.column}\n  \`\`\`typescript\n  ${ref.text}\n  \`\`\`\``,
-							)
-							.join("\n\n");
-					} else {
-						resultText += "References not found.";
-					}
 					return {
-						message: resultText.trim(),
-						data: { definition, references },
+						message: caveat ? `${sections}\n\n${caveat.text}` : sections,
+						data: {
+							declarations,
+							unsearchedDeclarations,
+							// Retained for single-declaration consumers of --json.
+							definition: declarations[0]?.definition ?? null,
+							references: declarations[0]?.references ?? [],
+							...(caveat ? { templateBlindSpot: caveat.data } : {}),
+						},
 					};
 				},
 			),

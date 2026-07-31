@@ -2,6 +2,7 @@ import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
 import { safeDeleteSymbol } from "../ts-morph/safe-delete-symbol/safe-delete-symbol.js";
 import type { BlockingReference } from "../ts-morph/safe-delete-symbol/types.js";
+import { templateCaveat } from "../ts-morph/_utils/template-references.js";
 import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 function formatBlockers(blockers: BlockingReference[]): string {
@@ -27,6 +28,7 @@ export function registerSafeDeleteSymbolTool(registry: ToolRegistry): void {
 - Finds the named top-level declaration (and any overload signatures of the same symbol) and resolves all references via the type checker.
 - References inside the declaration itself (its name, recursive self-calls) are ignored; ALL other references (other files, same-file usages, local \`export { x }\` re-exports) block deletion.
 - If there are no blocking references, the declaration is removed (a single declarator is removed from a multi-variable statement). Otherwise nothing changes and the blockers are returned.
+- **Template projects** (tsconfig declaring Glint/Astro/Vue/Svelte/Angular): a \`.hbs\`/\`.gts\`/\`.gjs\`/\`.astro\`/\`.mdx\`/\`.vue\`/\`.svelte\`/\`.html\` file mentioning the symbol also stops the delete — those files are outside the TypeScript program, so the checker cannot prove the symbol is unused. The match is TEXT, listed invocation-shaped first, so a generic name (\`index\`, \`Item\`) can match lines unrelated to this symbol. Read them; if none of them use it, re-run with \`ignoreTemplateMentions: true\` (the type-checker reference check above still runs and still blocks).
 
 ## Critical constraints
 - All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
@@ -52,6 +54,13 @@ On success: the deleted symbol and the modified file(s). When blocked: the list 
 				.describe(
 					"If true, only show the intended result without modifying files.",
 				),
+			ignoreTemplateMentions: z
+				.boolean()
+				.optional()
+				.default(false)
+				.describe(
+					"Only for template projects (Glint/Astro/Vue/Svelte/Angular). By default a symbol whose name appears in a .hbs/.gts/.gjs/.astro/.mdx/.vue/.svelte/.html template is not deleted, because the type checker cannot see those files. Template matching is text-based, so a generic name (index, Item, title) can match lines that have nothing to do with this symbol. Set true ONLY after reading the reported matches and confirming none of them use it; the type-checker reference check still applies and still blocks.",
+				),
 		},
 		(args) =>
 			runTool(
@@ -60,8 +69,42 @@ On success: the deleted symbol and the modified file(s). When blocked: the list 
 					targetFilePath: args.targetFilePath,
 					symbolName: args.symbolName,
 					dryRun: args.dryRun,
+					ignoreTemplateMentions: args.ignoreTemplateMentions,
 				},
 				async () => {
+					// This tool's whole promise is "only when unreferenced", and in a
+					// template project the type checker cannot see every reference. A
+					// template match is checked BEFORE the deletion so the promise is
+					// not broken by something the checker never looked at.
+					const caveat = templateCaveat({
+						tsconfigPath: args.tsconfigPath,
+						symbolNames: [args.symbolName],
+						filePaths: [args.targetFilePath],
+						mutating: true,
+					});
+					// The refusal is overridable because the match is TEXT: a component
+					// called `Item` matches every `{{item.name}}` in the app, and without
+					// a way through, this tool would be permanently unusable for a whole
+					// class of ordinary names. The override is explicit and per-call, and
+					// the type-checker check below still runs — it lets a caller discharge
+					// the one question this tool genuinely cannot answer, not skip the
+					// safety it can.
+					const templateMentions = caveat?.data.unresolvedMentions.length ?? 0;
+					if (caveat && templateMentions > 0 && !args.ignoreTemplateMentions) {
+						return {
+							message: `Not deleted: '${args.symbolName}' may still be used from templates this tool cannot resolve.\n\n${caveat.text}\n\nIf you have read these matches and none of them use this symbol, re-run with ignoreTemplateMentions=true.`,
+							log: {
+								deleted: false,
+								templateMentions: caveat.data.unresolvedMentions.length,
+							},
+							data: {
+								deleted: false,
+								blockingReferences: [],
+								changedFiles: [],
+								templateBlindSpot: caveat.data,
+							},
+						};
+					}
 					const result = await safeDeleteSymbol({
 						tsconfigPath: args.tsconfigPath,
 						targetFilePath: args.targetFilePath,
@@ -81,17 +124,39 @@ On success: the deleted symbol and the modified file(s). When blocked: the list 
 					}
 
 					const changedFilesList = formatChangedFiles(result.changedFiles);
-					const message = args.dryRun
+					const deletion = args.dryRun
 						? `Dry run complete: '${args.symbolName}' is safe to delete. Would modify the following files:\n - ${changedFilesList}`
 						: `Deleted '${args.symbolName}'. The following files were modified:\n - ${changedFilesList}`;
+					// Either no template matched — evidence rather than proof, which the
+					// caveat says in those words — or the caller overrode a match, which
+					// has to be recorded as their judgement rather than this tool's.
+					// Under dryRun the override note must stay conditional too: "Deleted
+					// over N matches" describes an action, and no action happened —
+					// which is the defect class this change set exists to fix (caught
+					// in review, 2026-07-31).
+					const overrode = args.ignoreTemplateMentions && templateMentions > 0;
+					const overrideNote = args.dryRun
+						? `\n\nWould delete despite ${templateMentions} template text match(es) because ignoreTemplateMentions=true. That judgement is the caller's; this tool did not verify these are unrelated.`
+						: `\n\nDeleted over ${templateMentions} template text match(es) because ignoreTemplateMentions=true. That judgement was the caller's; this tool did not verify these are unrelated.`;
+					const message = caveat
+						? `${deletion}${overrode ? overrideNote : ""}\n\n${caveat.text}`
+						: deletion;
 
 					return {
 						message,
 						log: {
 							deleted: true,
 							changedFilesCount: result.changedFiles.length,
+							...(overrode ? { ignoredTemplateMentions: true } : {}),
 						},
-						data: result,
+						// --json consumers get the same facts as the prose: the blind-spot
+						// payload rides along whenever a caveat was computed, not only on
+						// the refusal path.
+						data: {
+							...result,
+							...(caveat ? { templateBlindSpot: caveat.data } : {}),
+							...(overrode ? { ignoredTemplateMentions: true } : {}),
+						},
 					};
 				},
 			),

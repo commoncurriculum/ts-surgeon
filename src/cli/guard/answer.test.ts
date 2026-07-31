@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	formatSearchAnswer,
+	isAnswerable,
 	mapBatchResults,
+	mergeProjectSymbolResults,
 	resolveCliRuntime,
 } from "./answer.js";
 
@@ -115,6 +117,40 @@ describe("formatSearchAnswer", () => {
 	});
 });
 
+describe("isAnswerable", () => {
+	// Decides whether the hook intercepts the search or lets it run, and had no
+	// test of its own: a status that renders content but is missing here throws a
+	// complete answer away silently.
+	it("answers for every status that renders real content", () => {
+		expect(isAnswerable([{ symbolName: "a", status: "not-found" }])).toBe(
+			false,
+		);
+		expect(isAnswerable([])).toBe(false);
+		for (const result of [
+			{
+				symbolName: "a",
+				status: "found" as const,
+				definition,
+				references: [ref(1)],
+			},
+			{
+				symbolName: "a",
+				status: "multiple" as const,
+				declarations: [{ definition, references: [ref(1)] }],
+				unsearched: [ref(2)],
+			},
+			{ symbolName: "a", status: "ambiguous" as const, message: "two of them" },
+		]) {
+			expect(isAnswerable([result]), result.status).toBe(true);
+			// Still answerable alongside a symbol that resolved to nothing.
+			expect(
+				isAnswerable([{ symbolName: "b", status: "not-found" }, result]),
+				result.status,
+			).toBe(true);
+		}
+	});
+});
+
 describe("mapBatchResults", () => {
 	it("zips batch entries back onto the requested symbols", () => {
 		const results = mapBatchResults(
@@ -144,11 +180,108 @@ describe("mapBatchResults", () => {
 		]);
 	});
 
+	/**
+	 * find_references stopped erroring on an ambiguous name and now succeeds with
+	 * a `declarations` array. Reading only the flattened `definition`/`references`
+	 * (which are declaration #1's) handed the agent one of N declarations with
+	 * nothing saying so — from a hook that intercepted a grep which would have
+	 * shown them all.
+	 */
+	it("reports every declaration when a successful answer has several", () => {
+		const results = mapBatchResults(
+			["render"],
+			[
+				{
+					status: "success",
+					data: {
+						definition,
+						references: [ref(1)],
+						declarations: [
+							{ definition, references: [ref(1)] },
+							{ definition: ref(7), references: [ref(8), ref(9)] },
+						],
+						unsearchedDeclarations: [ref(12)],
+					},
+					message: "ok",
+				},
+			],
+		);
+		expect(results?.[0]?.status).toBe("multiple");
+
+		const text = formatSearchAnswer("/repo/tsconfig.json", results ?? []);
+		expect(text).toContain("3 declarations share this name");
+		// Declaration #2 is present, not silently dropped in favour of #1.
+		expect(text).toContain(":8:");
+		expect(text).toContain("not reference-searched");
+	});
+
 	it("rejects output that is not the expected shape", () => {
 		expect(mapBatchResults(["foo"], "nope")).toBeUndefined();
 		expect(
 			mapBatchResults(["foo", "bar"], [{ status: "success" }]),
 		).toBeUndefined();
+	});
+
+	it("merges per-project answers: shared declarations once, distinct ones side by side", () => {
+		// The answerer fans a solution config's batch out across its referenced
+		// projects. A file included by two projects answers from both — that is
+		// one declaration, its references unioned, not two rival declarations.
+		const merged = mergeProjectSymbolResults([
+			[
+				{
+					symbolName: "calculateSum",
+					status: "found",
+					definition,
+					references: [ref(1)],
+				},
+				{ symbolName: "helper", status: "not-found" },
+			],
+			[
+				{
+					symbolName: "calculateSum",
+					status: "found",
+					definition,
+					references: [ref(1), ref(2)],
+				},
+				{
+					symbolName: "helper",
+					status: "found",
+					definition: ref(7),
+					references: [],
+				},
+			],
+		]);
+		expect(merged[0]).toMatchObject({
+			status: "found",
+			references: [ref(1), ref(2)],
+		});
+		// A symbol one project cannot see is answered by the project that can.
+		expect(merged[1]).toMatchObject({ status: "found", definition: ref(7) });
+	});
+
+	it("reports declarations from different projects as multiple, not first-wins", () => {
+		const merged = mergeProjectSymbolResults([
+			[
+				{
+					symbolName: "render",
+					status: "found",
+					definition,
+					references: [ref(1)],
+				},
+			],
+			[
+				{
+					symbolName: "render",
+					status: "found",
+					definition: ref(7),
+					references: [ref(8)],
+				},
+			],
+		]);
+		expect(merged[0].status).toBe("multiple");
+		if (merged[0].status === "multiple") {
+			expect(merged[0].declarations).toHaveLength(2);
+		}
 	});
 
 	it("strips the CLI envelope framing from ambiguity messages", () => {

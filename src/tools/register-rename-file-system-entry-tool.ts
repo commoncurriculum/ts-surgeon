@@ -2,6 +2,10 @@ import * as path from "node:path";
 import type { ToolRegistry } from "./registry.js";
 import { z } from "zod";
 import { TimeoutError } from "../errors/timeout-error.js";
+import {
+	templateCaveat,
+	withTemplateCaveat,
+} from "../ts-morph/_utils/template-references.js";
 import { initializeProject } from "../ts-morph/_utils/ts-morph-project.js";
 import { renameFileSystemEntry } from "../ts-morph/rename-file-system/rename-file-system-entry.js";
 import { formatChangedFiles, runTool } from "./_tool-runner.js";
@@ -115,11 +119,25 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					const message = dryRun
 						? `Dry run complete: Renaming [${renameSummary}] would modify the following files:\n - ${changedFilesList}`
 						: `Rename successful: Renamed [${renameSummary}]. The following files were modified:\n - ${changedFilesList}`;
-					return {
-						message,
-						log: { changedFilesCount: result.changedFiles.length },
-						data: result,
-					};
+
+					// The sharpest case of the template blind spot: frameworks that
+					// resolve a component from its FILE NAME (classic Ember) lose every
+					// template reference the moment the file moves, and no import
+					// statement records the link.
+					return withTemplateCaveat(
+						{
+							message,
+							log: { changedFilesCount: result.changedFiles.length },
+							data: result,
+						},
+						templateCaveat({
+							tsconfigPath,
+							symbolNames: renames.map((r) =>
+								path.basename(r.oldPath, path.extname(r.oldPath)),
+							),
+							mutating: true,
+						}),
+					);
 				} catch (error) {
 					// Map cancellation into friendly messages; the harness prefixes "Error:".
 					if (error instanceof TimeoutError) {

@@ -9,6 +9,7 @@ import {
 	evaluateBashCommand,
 	installClaudeHook,
 	installOpencodeHook,
+	realGuardEnvironment,
 	type SearchAnswerRequest,
 	type SearchAnswerer,
 } from "./hook.js";
@@ -373,6 +374,102 @@ done < /tmp/exports.txt`;
 	it("allows every must-allow corpus command", () => {
 		for (const command of MUST_ALLOW) {
 			expect(evaluateBashCommand(command).kind, command).toBe("allow");
+		}
+	});
+});
+
+describe("guard scope: languages ts-surgeon has nothing to say about", () => {
+	// Defect report, 2026-07-29: a grep for `defmodule` under an Elixir
+	// directory came back advising find_references/search_pattern. Advice about
+	// a toolchain the searched code does not use is noise.
+	function polyglotRepo() {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "ts-surgeon-scope-"));
+		fs.mkdirSync(path.join(root, "lib", "my_app"), { recursive: true });
+		fs.writeFileSync(
+			path.join(root, "lib", "my_app", "worker.ex"),
+			"defmodule MyApp.Worker do\nend\n",
+		);
+		fs.mkdirSync(path.join(root, "assets"), { recursive: true });
+		fs.writeFileSync(
+			path.join(root, "assets", "app.ts"),
+			"export const a = 1;",
+		);
+		return root;
+	}
+
+	it("neither answers nor teaches for a directory holding no TS/JS", () => {
+		const root = polyglotRepo();
+		try {
+			const env = realGuardEnvironment(root);
+			const command = "grep -rn defmodule lib/";
+			expect(evaluateBashCommand(command, env).kind).toBe("allow");
+			expect(buildSearchTeaching("Bash", { command }, env)).toBeUndefined();
+			expect(
+				buildSearchTeaching("Grep", { pattern: "defmodule", path: "lib" }, env),
+			).toBeUndefined();
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("still answers when the same repo's TS directory is searched", () => {
+		const root = polyglotRepo();
+		try {
+			const env = realGuardEnvironment(root);
+			const verdict = evaluateBashCommand("grep -rn calculateSum assets/", env);
+			expect(verdict.kind).toBe("answer-search");
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps its opinion when the searched path does not exist on disk", () => {
+		// Absence of a directory proves nothing; only a directory that exists and
+		// demonstrably holds no TS/JS silences the guard.
+		const env = realGuardEnvironment(os.tmpdir());
+		expect(
+			evaluateBashCommand("grep -rn calculateSum no/such/dir/", env).kind,
+		).toBe("answer-search");
+	});
+});
+
+describe("block messages", () => {
+	// Defect report, 2026-07-29: the footer asserted "This guard has no
+	// in-session bypass", which a python3 rewrite disproved on the first try. A
+	// denylist may not claim to be a sandbox.
+	it("state the norm without claiming coverage the check does not have", () => {
+		const verdict = evaluateBashCommand("sed -i 's/a/b/' src/x.ts", {
+			cwd: "/repo",
+			exists: () => false,
+			hasSources: () => true,
+		});
+		expect(verdict.kind).toBe("block");
+		if (verdict.kind !== "block") return;
+		expect(verdict.reason).not.toMatch(/no in-session bypass/);
+		expect(verdict.reason).toMatch(/policy decision/);
+	});
+
+	it("names the mechanism that was actually detected", () => {
+		const disk = {
+			cwd: "/repo",
+			exists: (p: string) => p === "/repo/src/app.ts",
+			hasSources: () => true,
+		};
+		const interpreted = evaluateBashCommand(
+			`python3 -c "p=pathlib.Path('a.ts'); p.write_text(p.read_text().replace('x','y'))"`,
+			disk,
+		);
+		expect(interpreted.kind).toBe("block");
+		if (interpreted.kind === "block") {
+			expect(interpreted.reason).toContain("interpreter one-liner");
+		}
+		const overwritten = evaluateBashCommand(
+			"cat > src/app.ts <<'EOF'\nx\nEOF",
+			disk,
+		);
+		expect(overwritten.kind).toBe("block");
+		if (overwritten.kind === "block") {
+			expect(overwritten.reason).toContain("overwrites an existing");
 		}
 	});
 });

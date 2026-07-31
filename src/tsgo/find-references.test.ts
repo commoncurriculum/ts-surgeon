@@ -99,10 +99,12 @@ describe("tsgo agrees with ts-morph", () => {
 	});
 
 	it("finds the same locations for an exported function", async () => {
-		const viaTsMorph = await findSymbolReferences({
-			tsconfigPath: path.join(projectDir, "tsconfig.json"),
-			symbolName: "splitTitle",
-		});
+		const [viaTsMorph] = (
+			await findSymbolReferences({
+				tsconfigPath: path.join(projectDir, "tsconfig.json"),
+				symbolName: "splitTitle",
+			})
+		).declarations;
 		const viaTsgo = await findReferencesViaTsgo({
 			rootDir: projectDir,
 			symbolName: "splitTitle",

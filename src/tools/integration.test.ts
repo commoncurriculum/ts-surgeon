@@ -912,6 +912,58 @@ console.log(Btn());
 			expect(result.content[0]?.text).toContain("Error");
 		});
 
+		it("distinguishes a file outside the project from a file that is not there", async () => {
+			// Defect report, 2026-07-29: "File not found" was reported for a probe
+			// file that existed and was readable but sat outside the include globs,
+			// sending the caller to hunt for a typo in a correct path.
+			const outsidePath = path.join(tempDir, "probe.ts");
+			fs.writeFileSync(outsidePath, "export const probe = 1;\n");
+
+			const result = await registry.call("find_references", {
+				tsconfigPath,
+				targetFilePath: outsidePath,
+				symbolName: "probe",
+			});
+
+			expect(result).toHaveProperty("isError", true);
+			const text = result.content[0]?.text ?? "";
+			expect(text).toContain("exists on disk");
+			expect(text).toContain("not part of the TypeScript project");
+			expect(text).not.toContain("File not found");
+		});
+
+		it("reports references for every declaration when a name is ambiguous", async () => {
+			// A read-only lookup knows both positions already; erroring would charge
+			// the caller a second process start and a second full project parse.
+			const ambiguousPath = path.join(srcDir, "ambiguous.ts");
+			fs.writeFileSync(
+				ambiguousPath,
+				[
+					"export class Widget {",
+					"  render() { return 1; }",
+					"}",
+					"export interface Options {",
+					"  render: () => number;",
+					"}",
+					"const opts: Options = { render: () => 2 };",
+					"export const used = opts.render();",
+					"",
+				].join("\n"),
+			);
+
+			const result = await registry.call("find_references", {
+				tsconfigPath,
+				targetFilePath: ambiguousPath,
+				symbolName: "render",
+			});
+
+			expect(result).toHaveProperty("isError", false);
+			const text = result.content[0]?.text ?? "";
+			expect(text).toContain("has 2 declarations");
+			expect(text).toContain("Declaration 1");
+			expect(text).toContain("Declaration 2");
+		});
+
 		it("returns an error for an invalid symbol name", async () => {
 			const testPath = path.join(srcDir, "test.ts");
 

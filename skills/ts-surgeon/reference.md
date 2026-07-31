@@ -35,6 +35,10 @@ parameter, …) across the whole project.
 
 - **Gotchas**: fails if `position`/`symbolName` don't match. Not for renaming
   files (`rename_filesystem_entry`) or moving symbols (`move_symbol_to_file`).
+- **Template projects** (tsconfig declaring Glint/Astro/Vue/Svelte/Angular): this tool
+  **cannot** update `.hbs`/`.gts`/`.gjs`/`.astro`/`.mdx`/`.vue`/`.svelte`/`.html` templates — they are outside
+  the TypeScript program. The result lists the template text matches it left
+  alone; fix those by hand, or the rename orphans them.
 
 ---
 
@@ -61,6 +65,11 @@ Renames/moves files and folders and rewrites every `import`/`export` path.
   barrel imports (`from '../components'`) become explicit index paths
   (`'../components/index.tsx'`). Refuses to run on path conflicts. Bare
   `export default Foo;` references may not update.
+- **Template projects** (tsconfig declaring Glint/Astro/Vue/Svelte/Angular): the sharpest case
+  of the same blind spot — classic Ember resolves a component from its **file
+  name**, so moving the file breaks every template use with no import statement
+  recording the link. This tool **cannot** update templates; it lists the text
+  matches it left alone.
 
 ---
 
@@ -73,6 +82,17 @@ Lists the definition and every reference of a symbol at a position. Read-only.
   `position {line, column}`.
 - **Tip**: its output gives you `file:line:col` for each site — feed those
   straight into position-taking tools instead of counting columns by hand.
+- **Ambiguous names are answered, not rejected**: a name with several
+  declarations comes back with a definition and reference list for **each**
+  (`--json` data gains `declarations`), so you do not re-run to disambiguate.
+  Resolution is capped at 5; any beyond that are listed as positions under
+  `unsearchedDeclarations` — pass `position` to aim at one of those.
+- **Template projects** (tsconfig declaring Glint/Astro/Vue/Svelte/Angular): `.hbs`/`.gts`/`.gjs`/`.astro`/`.mdx`/
+  `.vue`/`.svelte`/`.html` files are outside the TypeScript program, so references from
+  them **cannot** appear in the list. The result says so and appends matching
+  template lines as *text* — treat the answer as incomplete, not empty. Matching
+  covers the declaring **file** name as well as the symbol's, since Ember reaches
+  `export class Panel` in `side-panel.ts` as `<SidePanel />`.
 
 ---
 
@@ -109,6 +129,11 @@ dependencies and rewriting all imports/exports.
 - **Gotchas**: **one symbol per call**. **Default exports can't be moved** —
   convert to named first. Deps used only by the moved symbol travel with it;
   shared deps stay put, gain `export`, and are imported back.
+- **Template projects** (tsconfig declaring Glint/Astro/Vue/Svelte/Angular): moving a symbol
+  moves the file a template resolves it from, and this tool **cannot** update
+  templates. Classic Ember finds a component by file name, so nothing records
+  the link and nothing breaks until runtime. The result lists the template text
+  matches it left alone.
 
 ---
 
@@ -181,6 +206,40 @@ the safe `sed -i` replacement.
 - **Example**: `{ "pattern": "assert.equal($A, $B)", "rewrite": "expect($A).toBe($B)" }`
 - **Gotchas**: textual within each match — imports are untouched; follow with
   `add_missing_imports` / `organize_imports`, then `get_diagnostics`.
+- Over-matching syntactically, and the thing that tells the cases apart is a
+  **type**? Use `rewrite_where`.
+
+---
+
+## `rewrite_where`
+Rewrites a pattern **only where a captured node's checker type satisfies a
+predicate** — the type-aware codemod the plain pattern tools cannot do. Rewrite
+`$X.close()` → `shutdown($X)` only where `$X` is a `DbConnection`, leaving
+`FileHandle.close()` alone.
+
+- **When**: two APIs share a method name, or you are migrating calls on one
+  class but not its look-alikes — anywhere `rewrite_pattern` would hit too much.
+- **Params**: `pattern`, `rewrite`, `where: { capture, type, mode? }`, plus
+  `filePaths?`, `dryRun?`, `fixImports?`. `capture` is the metavariable name
+  **without** the `$` (pattern `$X.close()` → `"X"`).
+- **`where.mode`**: `"is"` (default, exact type by symbol/alias name — a union
+  containing it does not match), `"extends"` (walks the base-type chain),
+  `"assignable"` (structural, so a same-shape type matches; requires
+  `where.typeDeclarationPath`).
+
+```json
+{
+  "tsconfigPath": "/repo/tsconfig.json",
+  "pattern": "$X.close()",
+  "rewrite": "shutdown($X)",
+  "where": { "capture": "X", "type": "DbConnection" },
+  "dryRun": true
+}
+```
+
+- **Tip**: the result reports `matchCount` (syntactic) vs `rewrittenCount`
+  (passed the predicate), so a `dryRun` shows exactly how much the type
+  predicate filtered out — check that gap before running for real.
 
 ---
 
@@ -210,6 +269,10 @@ Returns **candidates, not verdicts**.
   - `[default]` candidates are false-positive-prone; verify each.
   - A **⚠ package-level warning** means a `dist`-publishing workspace package
     produced systematic false positives — treat those as low confidence.
+  - In a **template project** (Glint/Astro/Vue/Svelte/Angular) a ⚠ warning heads the list: an
+    export used only from `<BasicTooltip />` has no reference the checker can
+    see, so it is reported here as unused. Candidate names a template does
+    mention are listed — treat those as **likely used**, not dead.
 - **Tip**: on large repos start with `"summary"` to see where dead code
   clusters, then narrow with `entryPoints` / `excludeFilePatterns` and switch to
   `"list"`. Always confirm with `find_references` before deleting; or
@@ -323,7 +386,7 @@ partner to `find_unused_exports`.
 - **When**: removing code you believe is dead, with a type-checker guarantee you
   won't break a missed reference.
 - **Params**: `targetFilePath`, `symbolName` (a top-level declaration),
-  `dryRun?`.
+  `dryRun?`, `ignoreTemplateMentions?` (template projects only — see below).
 
 ```json
 {
@@ -337,6 +400,14 @@ partner to `find_unused_exports`.
   reference — other files, same-file usages, local `export { x }` re-exports —
   blocks the delete and is returned as `file:line:col`. Overload signatures go
   together; one declarator is removed from a multi-variable statement.
+- **Template projects** (tsconfig declaring Glint/Astro/Vue/Svelte/Angular): a `.hbs`/`.gts`/`.gjs`/`.astro`/`.mdx`/
+  `.vue`/`.svelte`/`.html` file mentioning the symbol also blocks the delete, matched as
+  *text* — those files are outside the TypeScript program, so the checker cannot
+  prove the symbol is unused. Matches are listed invocation-shaped first
+  (`<Foo`, `{{foo`). Read them: if none of them use this symbol — likely on a
+  generic name like `index` or `Item`, which text matching cannot tell apart —
+  re-run with `ignoreTemplateMentions: true`. That records the judgement as
+  yours; the type-checker reference check still runs and still blocks.
 - **Gotchas**: if two symbols share the name, the first in the file is targeted.
   Imports left unused by the deletion are **not** removed — follow with
   `organize_imports` / `apply_code_fix` (`remove_unused`).

@@ -1,4 +1,6 @@
+import * as fs from "node:fs";
 import { type Identifier, type Node, type Project, SyntaxKind } from "ts-morph";
+import type { SourceFile } from "ts-morph";
 
 /**
  * Locating the Identifier a tool should operate on — by explicit position,
@@ -6,14 +8,46 @@ import { type Identifier, type Node, type Project, SyntaxKind } from "ts-morph";
  * change_signature, and get_type_at_position.
  */
 
+/**
+ * The file, or an error that names the actual cause.
+ *
+ * "File not found" was reported for files that exist and are readable, when
+ * the real problem was that the tsconfig's include/files globs do not cover
+ * them (defect report, 2026-07-29: a probe file next to the sources). A wrong
+ * cause sends the caller looking for a typo in a path that is perfectly
+ * correct, so the two cases are distinguished here.
+ */
+export function getProjectSourceFile(
+	project: Project,
+	targetFilePath: string,
+): SourceFile {
+	const sourceFile = project.getSourceFile(targetFilePath);
+	if (sourceFile) {
+		return sourceFile;
+	}
+	if (existsOnDisk(targetFilePath)) {
+		throw new Error(
+			`File exists on disk but is not part of the TypeScript project: ${targetFilePath}. The project is defined by the tsconfig's "files"/"include"/"references"; this path matches none of them (an "exclude" entry, a different tsconfig, or a file outside the project root will all do it). Pass the tsconfig that covers this file, or add it to that config's include globs.`,
+		);
+	}
+	throw new Error(`File not found: ${targetFilePath}`);
+}
+
+function existsOnDisk(p: string): boolean {
+	try {
+		return fs.statSync(p).isFile();
+	} catch {
+		return false;
+	}
+}
+
 /** Finds an Identifier node at the specified file and position (1-based). */
 export function findIdentifierNode(
 	project: Project,
 	targetFilePath: string,
 	position: { line: number; column: number },
 ): Identifier {
-	const sourceFile = project.getSourceFile(targetFilePath);
-	if (!sourceFile) throw new Error(`File not found: ${targetFilePath}`);
+	const sourceFile = getProjectSourceFile(project, targetFilePath);
 
 	let positionOffset: number;
 	try {
@@ -141,9 +175,7 @@ export function findDeclarationIdentifiersByName(
 	targetFilePath: string,
 	symbolName: string,
 ): Identifier[] {
-	const sourceFile = project.getSourceFile(targetFilePath);
-	if (!sourceFile) throw new Error(`File not found: ${targetFilePath}`);
-	return sourceFile
+	return getProjectSourceFile(project, targetFilePath)
 		.getDescendantsOfKind(SyntaxKind.Identifier)
 		.filter((id) => id.getText() === symbolName && isDeclarationName(id));
 }
@@ -174,6 +206,26 @@ export function resolveProjectWideDeclaration(
 	project: Project,
 	symbolName: string,
 ): Identifier {
+	const unique = resolveProjectWideDeclarationCandidates(project, symbolName);
+	if (unique.length === 1) {
+		return unique[0];
+	}
+	throw new Error(
+		`'${symbolName}' has ${unique.length} declarations in the project; pass targetFilePath (and position if needed) to disambiguate:\n${formatCandidates(unique)}`,
+	);
+}
+
+/**
+ * Every distinct declaration of a name in the project. Throws when there are
+ * none; returns all of them otherwise, so a READ-ONLY tool can report against
+ * each instead of making the caller pay for a second process start and a
+ * second full project parse just to say which one it meant (defect report,
+ * 2026-07-29).
+ */
+export function resolveProjectWideDeclarationCandidates(
+	project: Project,
+	symbolName: string,
+): Identifier[] {
 	const matches: Identifier[] = [];
 	for (const sourceFile of project.getSourceFiles()) {
 		if (sourceFile.isDeclarationFile() || sourceFile.isInNodeModules()) {
@@ -195,23 +247,22 @@ export function resolveProjectWideDeclaration(
 		}
 	}
 	const unique = dedupeByDeclaration(matches);
-	if (unique.length === 1) {
-		return unique[0];
-	}
 	if (unique.length === 0) {
 		throw new Error(
 			`No declaration named '${symbolName}' found in the project. Pass targetFilePath (and position if needed) to target a symbol this lookup cannot see.`,
 		);
 	}
-	const locations = unique
+	return unique;
+}
+
+/** `  - file:line:column`, one per candidate — the shape both errors use. */
+function formatCandidates(candidates: Identifier[], filePath?: string): string {
+	return candidates
 		.map((match) => {
 			const { line, column } = getIdentifierPosition(match);
-			return `  - ${match.getSourceFile().getFilePath()}:${line}:${column}`;
+			return `  - ${filePath ?? match.getSourceFile().getFilePath()}:${line}:${column}`;
 		})
 		.join("\n");
-	throw new Error(
-		`'${symbolName}' has ${unique.length} declarations in the project; pass targetFilePath (and position if needed) to disambiguate:\n${locations}`,
-	);
 }
 
 /** The 1-based {line, column} of an identifier's start. */
@@ -252,27 +303,51 @@ export function resolveTargetIdentifier(
 		}
 		return identifier;
 	}
+	const matches = resolveTargetIdentifierCandidates(project, targetFilePath, {
+		symbolName,
+	});
+	if (matches.length === 1) {
+		return matches[0];
+	}
+	throw new Error(
+		`'${symbolName}' has ${matches.length} declarations in ${targetFilePath}; disambiguate with position {line, column}:\n${formatCandidates(matches, targetFilePath)}`,
+	);
+}
+
+/**
+ * Same resolution as resolveTargetIdentifier, but every candidate comes back
+ * instead of an ambiguity error. A position resolves to exactly one identifier;
+ * a bare symbolName can legitimately match several, and a read-only tool should
+ * answer for all of them rather than making the caller invoke it again.
+ */
+export function resolveTargetIdentifierCandidates(
+	project: Project,
+	targetFilePath: string,
+	{
+		position,
+		symbolName,
+	}: {
+		position?: { line: number; column: number };
+		symbolName?: string;
+	},
+): Identifier[] {
+	if (position) {
+		const identifier = findIdentifierNode(project, targetFilePath, position);
+		if (symbolName !== undefined) {
+			validateSymbol(identifier, symbolName);
+		}
+		return [identifier];
+	}
 	if (symbolName === undefined) {
 		throw new Error("Pass position {line, column}, symbolName, or both.");
 	}
 	const matches = dedupeByDeclaration(
 		findDeclarationIdentifiersByName(project, targetFilePath, symbolName),
 	);
-	if (matches.length === 1) {
-		return matches[0];
-	}
 	if (matches.length === 0) {
 		throw new Error(
 			`No declaration named '${symbolName}' found in ${targetFilePath}. Pass position {line, column} to target it explicitly.`,
 		);
 	}
-	const locations = matches
-		.map((match) => {
-			const { line, column } = getIdentifierPosition(match);
-			return `  - ${targetFilePath}:${line}:${column}`;
-		})
-		.join("\n");
-	throw new Error(
-		`'${symbolName}' has ${matches.length} declarations in ${targetFilePath}; disambiguate with position {line, column}:\n${locations}`,
-	);
+	return matches;
 }

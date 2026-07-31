@@ -5,6 +5,18 @@ import * as path from "node:path";
 import * as os from "node:os";
 
 /**
+ * The one declaration these cases target. findSymbolReferences reports every
+ * declaration of a name (a read-only lookup answers rather than demanding a
+ * second call), so a test aimed at a single symbol asks for its first entry.
+ */
+async function firstDeclaration(
+	args: Parameters<typeof findSymbolReferences>[0],
+) {
+	const { declarations } = await findSymbolReferences(args);
+	return declarations[0];
+}
+
+/**
  * Creates a temporary directory for test use.
  */
 function createTempDir(): string {
@@ -80,7 +92,7 @@ const result = helperFunction();
 		);
 
 		// Search for references to myVariable (at its definition position)
-		const result = await findSymbolReferences({
+		const result = await firstDeclaration({
 			tsconfigPath,
 			targetFilePath: utilsPath,
 			position: { line: 1, column: 14 }, // position of "myVariable"
@@ -163,7 +175,7 @@ processData();
 		);
 
 		// Search for references to the calculate function
-		const result = await findSymbolReferences({
+		const result = await firstDeclaration({
 			tsconfigPath,
 			targetFilePath: functionsPath,
 			position: { line: 1, column: 17 }, // position of "calculate"
@@ -249,7 +261,7 @@ console.log(user.greet());
 		);
 
 		// Search for references to the User class
-		const result = await findSymbolReferences({
+		const result = await firstDeclaration({
 			tsconfigPath,
 			targetFilePath: modelsPath,
 			position: { line: 1, column: 14 }, // position of "User"
@@ -372,7 +384,7 @@ console.log(utilHelper());
 		);
 
 		// Search for references to the helper function
-		const result = await findSymbolReferences({
+		const result = await firstDeclaration({
 			tsconfigPath,
 			targetFilePath: utilsPath,
 			position: { line: 1, column: 17 }, // position of "helper"
@@ -452,7 +464,7 @@ export function useA() {
 		);
 
 		// Search for references to functionA
-		const result = await findSymbolReferences({
+		const result = await firstDeclaration({
 			tsconfigPath,
 			targetFilePath: moduleAPath,
 			position: { line: 3, column: 17 }, // position of "functionA"
@@ -539,7 +551,7 @@ processUser(adminData);
 		);
 
 		// Search for references to the UserData interface
-		const result = await findSymbolReferences({
+		const result = await firstDeclaration({
 			tsconfigPath,
 			targetFilePath: typesPath,
 			position: { line: 1, column: 18 }, // position of "UserData"
@@ -601,7 +613,7 @@ describe("findSymbolReferences with symbolName only (project-wide)", () => {
 			'import { calculateSum } from "./math";\nexport const total = calculateSum(1, 2);\n',
 		);
 
-		const result = await findSymbolReferences({
+		const result = await firstDeclaration({
 			tsconfigPath,
 			symbolName: "calculateSum",
 		});
@@ -624,20 +636,69 @@ describe("findSymbolReferences with symbolName only (project-wide)", () => {
 		);
 		write("src/use.ts", 'import { fmt } from "./fmt";\nfmt(1);\n');
 
-		const result = await findSymbolReferences({
+		const result = await firstDeclaration({
 			tsconfigPath,
 			symbolName: "fmt",
 		});
 		expect(result.references.length).toBeGreaterThanOrEqual(1);
 	});
 
-	it("lists every candidate when the name is declared in several files", async () => {
+	it("reports every candidate when the name is declared in several files", async () => {
+		// A read-only lookup that already knows both positions has no reason to
+		// error and charge the caller a second process start plus a second full
+		// project parse to say which one it meant (defect report, 2026-07-29).
 		write("src/a.ts", "export const render = () => 1;\n");
 		write("src/b.ts", "export function render() {\n  return 2;\n}\n");
 
-		await expect(
-			findSymbolReferences({ tsconfigPath, symbolName: "render" }),
-		).rejects.toThrow(/2 declarations[\s\S]*a\.ts[\s\S]*b\.ts/);
+		const { declarations } = await findSymbolReferences({
+			tsconfigPath,
+			symbolName: "render",
+		});
+		expect(declarations).toHaveLength(2);
+		expect(declarations.map((d) => d.definition?.filePath)).toEqual([
+			path.join(tempDir, "src/a.ts"),
+			path.join(tempDir, "src/b.ts"),
+		]);
+	});
+
+	it("clamps a nonsensical declaration cap instead of returning nothing", async () => {
+		write("src/a.ts", "export const render = () => 1;\n");
+		write("src/b.ts", "export function render() {\n  return 2;\n}\n");
+
+		for (const maxDeclarations of [0, -3, 1.5]) {
+			const result = await findSymbolReferences({
+				tsconfigPath,
+				symbolName: "render",
+				maxDeclarations,
+			});
+			// Consumers read declarations[0]; an empty list alongside "there are
+			// more" would be a contradiction.
+			expect(result.declarations.length, `cap ${maxDeclarations}`).toBe(1);
+			expect(result.unsearchedDeclarations.length).toBe(1);
+		}
+	});
+
+	it("falls back to the default cap on a non-finite one", async () => {
+		write("src/a.ts", "export const render = () => 1;\n");
+		write("src/b.ts", "export function render() {\n  return 2;\n}\n");
+
+		// Math.max(1, NaN) is NaN and slice(0, NaN) is [] — the clamp above would
+		// pass NaN straight through into the contradiction it exists to prevent.
+		for (const maxDeclarations of [
+			Number.NaN,
+			Number.POSITIVE_INFINITY,
+			Number.NEGATIVE_INFINITY,
+		]) {
+			const result = await findSymbolReferences({
+				tsconfigPath,
+				symbolName: "render",
+				maxDeclarations,
+			});
+			expect(
+				result.declarations.length,
+				`cap ${maxDeclarations}`,
+			).toBeGreaterThanOrEqual(1);
+		}
 	});
 
 	it("throws a clear error when no project declaration exists", async () => {

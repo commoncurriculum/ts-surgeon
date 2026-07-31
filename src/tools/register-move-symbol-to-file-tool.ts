@@ -7,6 +7,10 @@ import {
 	initializeProject,
 } from "../ts-morph/_utils/ts-morph-project.js";
 import { moveSymbolToFile } from "../ts-morph/move-symbol-to-file/move-symbol-to-file.js";
+import {
+	templateCaveat,
+	withTemplateCaveat,
+} from "../ts-morph/_utils/template-references.js";
 import { formatChangedFiles, runTool } from "./_tool-runner.js";
 
 const declarationKindNames = [
@@ -90,6 +94,7 @@ export function registerMoveSymbolToFileTool(registry: ToolRegistry): void {
   - Dependencies also used by other symbols in the source file stay put, gain \`export\` if missing, and are imported back into the destination file.
 - All paths (\`tsconfigPath\`, \`originalFilePath\`, \`targetFilePath\`) MUST be absolute.
 - \`targetFilePath\` may point to a non-existent file; it will be created.
+- **Template projects** (tsconfig declaring Glint/Astro/Vue/Svelte/Angular): \`.hbs\`/\`.gts\`/\`.gjs\`/\`.astro\`/\`.mdx\`/\`.vue\`/\`.svelte\`/\`.html\` files are outside the TypeScript program, so this tool CANNOT update them. Classic Ember resolves a component from its file name, so moving the symbol moves that file and breaks every template use with no import statement recording the link — nothing fails until runtime. The result lists the template text matches it left alone.
 
 ## Tips
 - Run with \`dryRun: true\` first when the source file has many co-dependencies to confirm what gets pulled along.
@@ -149,11 +154,23 @@ Returns the list of modified (or to-be-modified, in dryRun) file paths, plus sta
 					? `Dry run: ${baseMessage}\nFiles that would be modified:\n - ${changedFilesList}`
 					: `${baseMessage}\nThe following files were modified:\n - ${changedFilesList}`;
 
-				return {
-					message,
-					log: { changedFilesCount: changedFiles.length },
-					data: { changedFiles },
-				};
+				// Moving a symbol relocates the file a template resolves it from, the
+				// same break rename_filesystem_entry warns about: classic Ember finds
+				// a component by file name, so no import statement records the link
+				// and the move leaves nothing behind for the checker to follow.
+				return withTemplateCaveat(
+					{
+						message,
+						log: { changedFilesCount: changedFiles.length },
+						data: { changedFiles },
+					},
+					templateCaveat({
+						tsconfigPath,
+						symbolNames: [symbolToMove],
+						filePaths: [originalFilePath],
+						mutating: true,
+					}),
+				);
 			});
 		},
 	);
