@@ -141,7 +141,7 @@ rhythm:
    `find_references`.
 3. `safe_delete_symbol` — it refuses anything still referenced, so it
    is safe to attempt even when you are unsure. In a template project it
-   also refuses a symbol a `.hbs`/`.astro`/`.vue`/`.svelte`/`.html` file mentions; that
+   also refuses a symbol a `.hbs`/`.gts`/`.gjs`/`.astro`/`.mdx`/`.vue`/`.svelte`/`.html` file mentions; that
    match is text, so read the listed lines before overriding with
    `ignoreTemplateMentions`.
 4. `organize_imports` on the touched files to drop now-unused

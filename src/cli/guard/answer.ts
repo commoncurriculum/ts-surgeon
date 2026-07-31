@@ -121,6 +121,101 @@ export function mapBatchResults(
 	});
 }
 
+/**
+ * Folds per-project answers (one PerSymbolResult list per referenced project)
+ * back into one answer per symbol. A solution-style tsconfig includes no
+ * sources of its own, so batching against it alone parsed an empty project and
+ * answered "not-found" for every symbol — the guard failed open in exactly the
+ * monorepo shape the CLI's default fan-out exists for (caught in review,
+ * 2026-07-31). Declarations are keyed by definition position so a file shared
+ * between two referenced projects answers once, with its reference lists
+ * unioned; a declaration one project searched and another only listed as a
+ * position counts as searched.
+ */
+export function mergeProjectSymbolResults(
+	perProject: PerSymbolResult[][],
+): PerSymbolResult[] {
+	if (perProject.length === 1) {
+		return perProject[0];
+	}
+	const symbolCount = perProject[0]?.length ?? 0;
+	const merged: PerSymbolResult[] = [];
+	for (let s = 0; s < symbolCount; s++) {
+		merged.push(mergeOneSymbol(perProject.map((results) => results[s])));
+	}
+	return merged;
+}
+
+function mergeOneSymbol(results: PerSymbolResult[]): PerSymbolResult {
+	const symbolName = results[0].symbolName;
+	const byDefinition = new Map<
+		string,
+		{ declaration: AnswerDeclaration; referenceKeys: Set<string> }
+	>();
+	let anonymous = 0;
+	const positionKey = (l: AnswerLocation) =>
+		`${l.filePath}:${l.line}:${l.column}`;
+	const addDeclaration = (declaration: AnswerDeclaration) => {
+		const key = declaration.definition
+			? positionKey(declaration.definition)
+			: `(no definition #${anonymous++})`;
+		let entry = byDefinition.get(key);
+		if (entry === undefined) {
+			entry = {
+				declaration: { definition: declaration.definition, references: [] },
+				referenceKeys: new Set(),
+			};
+			byDefinition.set(key, entry);
+		}
+		for (const reference of declaration.references ?? []) {
+			const referenceKey = positionKey(reference);
+			if (entry.referenceKeys.has(referenceKey)) continue;
+			entry.referenceKeys.add(referenceKey);
+			entry.declaration.references.push(reference);
+		}
+	};
+	const unsearchedByKey = new Map<string, AnswerLocation>();
+	for (const result of results) {
+		if (result.status === "found") {
+			addDeclaration({
+				definition: result.definition,
+				references: result.references,
+			});
+		} else if (result.status === "multiple") {
+			for (const declaration of result.declarations) {
+				addDeclaration(declaration);
+			}
+			for (const position of result.unsearched) {
+				unsearchedByKey.set(positionKey(position), position);
+			}
+		}
+	}
+	for (const key of byDefinition.keys()) {
+		unsearchedByKey.delete(key);
+	}
+	const declarations = [...byDefinition.values()].map(
+		(entry) => entry.declaration,
+	);
+	const unsearched = [...unsearchedByKey.values()];
+	if (declarations.length + unsearched.length > 1) {
+		return { symbolName, status: "multiple", declarations, unsearched };
+	}
+	if (declarations.length === 1) {
+		return {
+			symbolName,
+			status: "found",
+			definition: declarations[0].definition,
+			references: declarations[0].references,
+		};
+	}
+	return (
+		results.find((result) => result.status === "ambiguous") ?? {
+			symbolName,
+			status: "not-found",
+		}
+	);
+}
+
 /** Total reference lines shown; split across however many symbols were found. */
 const REFERENCE_DISPLAY_CAP = 40;
 
@@ -320,7 +415,7 @@ function resolveBatchInvocation(
  * built CLI, crash, or timeout → ok:false, and the caller lets the search
  * run.
  */
-export const answerSearchViaCli: SearchAnswerer = (req) => {
+export const answerSearchViaCli: SearchAnswerer = async (req) => {
 	if (req.symbolNames.length === 0) {
 		return { ok: false };
 	}
@@ -343,10 +438,30 @@ export const answerSearchViaCli: SearchAnswerer = (req) => {
 	if (tsconfigPath === undefined) {
 		return { ok: false };
 	}
-	const ops = req.symbolNames.map((symbolName) => ({
-		tool: "find_references",
-		params: { tsconfigPath, symbolName },
-	}));
+	// A solution-style config includes no sources of its own; batching against
+	// it alone parses an empty project. Fan the batch out across the referenced
+	// projects, the same default the CLI applies. Imported dynamically so the
+	// TypeScript compiler (which the reader needs for commented JSON) loads
+	// only on this already-expensive path, never on the hook's fast path — and
+	// a compiled guard that cannot resolve it keeps the single-config floor.
+	let targets = [tsconfigPath];
+	try {
+		const { solutionReferences } = await import("../solution-references.js");
+		const references = solutionReferences(tsconfigPath).filter((reference) =>
+			existsSync(reference),
+		);
+		if (references.length > 0) {
+			targets = references;
+		}
+	} catch {
+		// Single-config behavior is the safe floor.
+	}
+	const ops = targets.flatMap((target) =>
+		req.symbolNames.map((symbolName) => ({
+			tool: "find_references",
+			params: { tsconfigPath: target, symbolName },
+		})),
+	);
 	const batchArgs = [
 		"batch",
 		"--continue-on-error",
@@ -385,10 +500,26 @@ export const answerSearchViaCli: SearchAnswerer = (req) => {
 	} catch {
 		return { ok: false };
 	}
-	const results = mapBatchResults(req.symbolNames, parsed);
-	if (results === undefined) {
+	if (!Array.isArray(parsed) || parsed.length !== ops.length) {
 		return { ok: false };
 	}
+	// The batch ran the symbols once per target project, in op order; slice per
+	// project, map each slice back onto the symbols, then merge across projects.
+	const perProject: PerSymbolResult[][] = [];
+	for (let i = 0; i < targets.length; i++) {
+		const mapped = mapBatchResults(
+			req.symbolNames,
+			parsed.slice(
+				i * req.symbolNames.length,
+				(i + 1) * req.symbolNames.length,
+			),
+		);
+		if (mapped === undefined) {
+			return { ok: false };
+		}
+		perProject.push(mapped);
+	}
+	const results = mergeProjectSymbolResults(perProject);
 	if (!isAnswerable(results)) {
 		return { ok: false };
 	}

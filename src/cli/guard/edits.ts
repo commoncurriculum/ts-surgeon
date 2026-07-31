@@ -74,9 +74,15 @@ const EVAL_FLAGS: Record<string, ReadonlySet<string>> = {
  * blocked (caught in review, 2026-07-29). Every alternative below names a
  * file API or an `open()` in a writing mode; a python file handle's `.write()`
  * is reached through that `open(..., 'w')` instead of a generic method name.
+ *
+ * The `open()` branch requires the mode as its own quoted argument after a
+ * comma. Matching any quote-adjacent `w`/`a` inside the parens made the
+ * FILENAME satisfy it — `open('Main.java').read()` and `open('schema.prisma')`
+ * are read-mode opens whose names merely end in the right letter (caught in
+ * review, 2026-07-31; the same false-positive class as the bare `.write(`).
  */
 const WRITE_API_RE =
-	/\b(?:write_text|write_bytes|writelines|writeFileSync|writeFile|writeTextFile|writeTextFileSync|outputFileSync|file_put_contents|fwrite|fputs)\b|\bFile\.(?:write|open)\b|\b(?:IO|Bun)\.write\b|\bopen\s*\([^)]*['"][^'"]*[wa]\+?['"]/;
+	/\b(?:write_text|write_bytes|writelines|writeFileSync|writeFile|writeTextFile|writeTextFileSync|outputFileSync|file_put_contents|fwrite|fputs)\b|\bFile\.(?:write|open)\b|\b(?:IO|Bun)\.write\b|\bopen\s*\([^)]*,\s*['"][wa][bt+]*['"]/;
 
 /**
  * A generic `.read(` is kept: on its own it cannot trigger anything, because a
@@ -269,38 +275,90 @@ function commandWord(tokens: string[]): { name: string; args: string[] } {
 }
 
 /**
+ * A heredoc feeding one of the recognized interpreters: `python3 <<'EOF'`.
+ * Unlike a script file, the program IS in the command string — refusing to
+ * look at it would concede an edit the guard can plainly see.
+ */
+const HEREDOC_INTERPRETER_RE =
+	/\b(?:python3?|node|bun|deno|ruby|php|perl)\b[^\n|;&]*<<-?\s*/;
+
+/**
+ * The program text of an eval invocation, or undefined when the args carry
+ * none. Handles the flag as its own token (`-c 'prog'`, after shell quote
+ * removal `-c prog`) and ATTACHED to the program — `-c'prog'` tokenizes to
+ * `-cprog`, and node accepts `--eval=prog` (caught in review, 2026-07-31:
+ * exact-equality matching let both attached forms through). Attachment is
+ * only recognized on single-dash flags and `--flag=`, so deno's bare `eval`
+ * subcommand cannot false-positive on an argument like `evaluate.ts`.
+ */
+function evalScript(
+	args: string[],
+	evalFlags: ReadonlySet<string>,
+): string | undefined {
+	for (let i = 0; i < args.length; i++) {
+		const arg = args[i];
+		if (evalFlags.has(arg)) {
+			const script = args.slice(i + 1).join(" ");
+			return script === "" ? undefined : script;
+		}
+		for (const flag of evalFlags) {
+			if (flag.startsWith("--")) {
+				if (arg.startsWith(`${flag}=`)) {
+					return [arg.slice(flag.length + 1), ...args.slice(i + 1)].join(" ");
+				}
+			} else if (
+				flag.startsWith("-") &&
+				arg.length > flag.length &&
+				arg.startsWith(flag)
+			) {
+				return [arg.slice(flag.length), ...args.slice(i + 1)].join(" ");
+			}
+		}
+	}
+	return undefined;
+}
+
+/** The shared three-effect test: reads a file, substitutes, writes one back. */
+function isRewriteScript(script: string): boolean {
+	return (
+		WRITE_API_RE.test(script) &&
+		READ_API_RE.test(script) &&
+		REPLACE_API_RE.test(script) &&
+		// Only a write whose destination is PROVABLY non-source escapes. A
+		// variable target proves nothing and stays blocked, no matter what
+		// harmless paths appear elsewhere in the command.
+		writeTargetScope(script) !== "non-source"
+	);
+}
+
+/**
  * A read → substitute → write one-liner. Requires all three effects so that
  * generating a brand-new file (write only) and dumping one (read only) stay
  * allowed; the overwrite rule below covers writes over files that exist.
  */
 function isInterpreterRewrite(command: string): boolean {
+	// A heredoc-fed interpreter has no eval flag, but its program sits right in
+	// the command string. The body is not delimited out; the whole command is
+	// scanned, and the three-effect requirement plus per-target write scoping
+	// still gate the verdict.
+	if (HEREDOC_INTERPRETER_RE.test(command) && isRewriteScript(command)) {
+		return true;
+	}
 	for (const tokens of splitSimpleCommands(command)) {
 		const { name, args } = commandWord(tokens);
-		const evalFlags =
-			name === "perl" ? undefined : (EVAL_FLAGS[name] as ReadonlySet<string>);
 		let script: string | undefined;
 		if (name === "perl") {
 			// perl -e / -pe / -ne: any flag cluster containing `e` takes a program.
 			const flagIndex = args.findIndex((a) => /^-[a-zA-Z]*e[a-zA-Z]*$/.test(a));
 			if (flagIndex === -1) continue;
 			script = args.slice(flagIndex + 1).join(" ");
-		} else if (evalFlags) {
-			const flagIndex = args.findIndex((a) => evalFlags.has(a));
-			if (flagIndex === -1) continue;
-			script = args.slice(flagIndex + 1).join(" ");
 		} else {
-			continue;
+			const evalFlags = EVAL_FLAGS[name] as ReadonlySet<string> | undefined;
+			if (!evalFlags) continue;
+			script = evalScript(args, evalFlags);
 		}
 		if (script === undefined || script === "") continue;
-		if (
-			WRITE_API_RE.test(script) &&
-			READ_API_RE.test(script) &&
-			REPLACE_API_RE.test(script) &&
-			// Only a write whose destination is PROVABLY non-source escapes. A
-			// variable target proves nothing and stays blocked, no matter what
-			// harmless paths appear elsewhere in the command.
-			writeTargetScope(script) !== "non-source"
-		) {
+		if (isRewriteScript(script)) {
 			return true;
 		}
 	}
@@ -309,17 +367,31 @@ function isInterpreterRewrite(command: string): boolean {
 
 // ── overwrites of files that already exist ──────────────────────────────────
 
-/** `> file`, `>> file` — an fd prefix (`2>`) or `>&2` is not a file target. */
-const REDIRECT_RE = /(?:^|[^0-9<>&|])>{1,2}\s*(['"]?)([^\s'"<>|;&()]+)\1/g;
-const TEE_RE = /\btee\b((?:\s+-[a-zA-Z-]+)*)\s+(['"]?)([^\s'"<>|;&()]+)\2/g;
-
+/**
+ * Where this command's redirects and `tee` invocations write. Harvested from
+ * the quote-aware tokenizer, never from a raw-string regex: a regex saw the
+ * arrow inside `git commit -m "moved foo -> src/index.ts"` — quoted prose, no
+ * redirect anywhere — and hard-blocked the commit an agent writes right after
+ * using this package's own rename tools (caught in review, 2026-07-31). Only
+ * the tokenizer knows which `>` is shell syntax.
+ */
 function overwriteTargets(command: string): string[] {
 	const targets: string[] = [];
-	for (const match of command.matchAll(REDIRECT_RE)) {
-		targets.push(match[2]);
-	}
-	for (const match of command.matchAll(TEE_RE)) {
-		targets.push(match[3]);
+	const commands = splitSimpleCommands(command, (target) =>
+		targets.push(target),
+	);
+	for (const tokens of commands) {
+		const { name, args } = commandWord(tokens);
+		if (name !== "tee") {
+			continue;
+		}
+		for (const arg of args) {
+			// Every non-flag argument is a file tee writes (`-a` appends, but to
+			// the same files).
+			if (!arg.startsWith("-")) {
+				targets.push(arg);
+			}
+		}
 	}
 	return targets;
 }

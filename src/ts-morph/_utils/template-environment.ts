@@ -123,27 +123,40 @@ const PLUGIN_MARKERS: Array<{
 	{ match: /svelte/, kind: "svelte" },
 ];
 
-/** Guards against a cyclic or pathological `extends` chain. */
-const MAX_EXTENDS_DEPTH = 16;
+/** Total configs read — guards a cyclic or pathological `extends` graph. */
+const MAX_EXTENDS_CONFIGS = 16;
 
 /**
  * The raw tsconfig objects of a config and everything it extends, nearest
  * first. Unknown top-level keys (which is what every marker here is) are not
  * merged by the TypeScript config reader, so the chain is walked by hand.
+ *
+ * `extends` accepts an ARRAY since TypeScript 5.0, so this is a breadth-first
+ * walk over a graph, not a single chain — treating a non-string `extends` as
+ * the end of the line hid a `vueCompilerOptions`/`glint` marker sitting one
+ * array entry away (caught in review, 2026-07-31), which is precisely the
+ * blind spot this module exists to report.
  */
 function readConfigChain(tsconfigPath: string): unknown[] {
 	const chain: unknown[] = [];
 	const seen = new Set<string>();
-	let current: string | undefined = path.resolve(tsconfigPath);
-	for (let depth = 0; current && depth < MAX_EXTENDS_DEPTH; depth++) {
-		if (seen.has(current)) break;
+	const queue: string[] = [path.resolve(tsconfigPath)];
+	while (queue.length > 0 && chain.length < MAX_EXTENDS_CONFIGS) {
+		const current = queue.shift() as string;
+		if (seen.has(current)) continue;
 		seen.add(current);
 		const { config } = ts.readConfigFile(current, ts.sys.readFile);
-		if (config === undefined) break;
+		if (config === undefined) continue;
 		chain.push(config);
 		const extendsValue = (config as { extends?: unknown }).extends;
-		if (typeof extendsValue !== "string") break;
-		current = resolveExtends(extendsValue, current);
+		const entries = Array.isArray(extendsValue) ? extendsValue : [extendsValue];
+		for (const entry of entries) {
+			if (typeof entry !== "string") continue;
+			const resolved = resolveExtends(entry, current);
+			if (resolved !== undefined) {
+				queue.push(resolved);
+			}
+		}
 	}
 	return chain;
 }
@@ -173,35 +186,54 @@ function resolveExtends(
 }
 
 /**
- * Astro, which declares itself by what it extends rather than by a marker key.
+ * Frameworks that declare themselves by WHAT a config extends rather than by
+ * a marker key of their own:
  *
- * A generated Astro tsconfig is `{"extends": "astro/tsconfigs/strict"}` and
- * little else, so there is no `astroOptions` block to look for. The `extends`
- * STRING is read here rather than the file it resolves to: that string sits in
- * the project's own config, while the file lives in node_modules, which this
- * module deliberately does not treat as evidence about the project.
- * `jsxImportSource: "astro"` catches a hand-rolled config that extends nothing.
+ * - A generated Astro tsconfig is `{"extends": "astro/tsconfigs/strict"}` and
+ *   little else — there is no `astroOptions` block to look for.
+ * - A create-vue scaffold extends `@vue/tsconfig/tsconfig.dom.json`.
+ * - A SvelteKit project extends the generated `./.svelte-kit/tsconfig.json`;
+ *   neither config carries an `svelteOptions` key.
+ *
+ * The `extends` STRING is inspected directly so detection works even when
+ * node_modules (or the generated .svelte-kit directory) is not installed —
+ * the string in the project's own config is evidence enough. When the
+ * extended file IS resolvable, readConfigChain still walks it and any marker
+ * keys it carries count too; both routes lead to the same verdict.
  */
-function environmentFromAstro(
+const EXTENDS_MARKERS: Array<{
+	match: RegExp;
+	kind: TemplateEnvironment["kind"];
+}> = [
+	{ match: /^astro\/tsconfigs\//, kind: "astro" },
+	{ match: /^@vue\/tsconfig(\/|$)/, kind: "vue" },
+	{ match: /(^|\/)\.svelte-kit\//, kind: "svelte" },
+];
+
+function environmentFromExtends(
 	config: Record<string, unknown>,
 ): TemplateEnvironment | undefined {
-	const astro = ENVIRONMENTS.find((e) => e.env.kind === "astro")?.env;
 	const extendsValue = config.extends;
 	// `extends` accepts an array since TypeScript 5.0.
 	const extendsList = Array.isArray(extendsValue)
 		? extendsValue
 		: [extendsValue];
-	if (
-		extendsList.some(
-			(entry) => typeof entry === "string" && /^astro\/tsconfigs\//.test(entry),
-		)
-	) {
-		return astro;
+	for (const entry of extendsList) {
+		if (typeof entry !== "string") continue;
+		for (const { match, kind } of EXTENDS_MARKERS) {
+			if (match.test(entry)) {
+				return ENVIRONMENTS.find((e) => e.env.kind === kind)?.env;
+			}
+		}
 	}
+	// `jsxImportSource: "astro"` catches a hand-rolled Astro config that
+	// extends nothing.
 	const compilerOptions = config.compilerOptions as
 		| { jsxImportSource?: unknown }
 		| undefined;
-	return compilerOptions?.jsxImportSource === "astro" ? astro : undefined;
+	return compilerOptions?.jsxImportSource === "astro"
+		? ENVIRONMENTS.find((e) => e.env.kind === "astro")?.env
+		: undefined;
 }
 
 /** The environment implied by `compilerOptions.plugins`, if any. */
@@ -253,7 +285,7 @@ export function detectTemplateEnvironment(
 					break;
 				}
 			}
-			found ??= environmentFromAstro(config as Record<string, unknown>);
+			found ??= environmentFromExtends(config as Record<string, unknown>);
 			found ??= environmentFromPlugins(config as Record<string, unknown>);
 			if (found) break;
 		}

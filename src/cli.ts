@@ -296,7 +296,7 @@ const ALL_PROJECTS_TOOLS = new Set([
 function mergeProjectArrays(
 	byProject: Array<{ data: unknown }>,
 ): Record<string, unknown[]> {
-	const merged = new Map<string, unknown[]>();
+	const merged = new Map<string, { items: unknown[]; seen: Set<string> }>();
 	for (const entry of byProject) {
 		// An array payload has only index keys, which would merge into nonsense
 		// fields named "0", "1", … rather than anything a consumer asked for.
@@ -311,27 +311,61 @@ function mergeProjectArrays(
 			if (!Array.isArray(value)) {
 				continue;
 			}
-			const existing = merged.get(key);
-			if (existing) {
-				// Appended one at a time, not `push(...value)`: spreading an array
-				// of ~100k (a monorepo's diagnostics) overflows the call stack.
-				for (const item of value) {
-					existing.push(item);
+			let bucket = merged.get(key);
+			if (bucket === undefined) {
+				bucket = { items: [], seen: new Set() };
+				merged.set(key, bucket);
+			}
+			// Appended one at a time, not `push(...value)`: spreading an array
+			// of ~100k (a monorepo's diagnostics) overflows the call stack.
+			// Structurally identical items are kept once: a file included by two
+			// referenced projects reports the same declaration/diagnostic from
+			// each, and concatenating both makes one symbol read as two.
+			for (const item of value) {
+				const fingerprint = JSON.stringify(item) ?? "undefined";
+				if (bucket.seen.has(fingerprint)) {
+					continue;
 				}
-			} else {
-				merged.set(key, [...value]);
+				bucket.seen.add(fingerprint);
+				bucket.items.push(item);
 			}
 		}
 	}
 	// Built through a Map so a payload key like `__proto__` stays a plain entry.
-	return Object.fromEntries(merged);
+	return Object.fromEntries(
+		[...merged].map(([key, bucket]) => [key, bucket.items]),
+	);
+}
+
+/**
+ * Errors that are EXPECTED from individual projects when a file- or
+ * symbol-scoped lookup fans out: the target belongs to one referenced
+ * project, so the others answer "not mine". Matched against the per-project
+ * message to downgrade those entries — but only when some project succeeded;
+ * see runAllProjects.
+ */
+const FAN_OUT_MISS_RE =
+	/is not part of the TypeScript project|No declaration named '[^']*' found in/;
+
+/** The error's own first line, without the envelope's framing or footer. */
+function coreErrorLine(message: string): string {
+	return (
+		message
+			.replace(/^Error:\s*/, "")
+			.split("\n")
+			.map((line) => line.trim())
+			.find(
+				(line) => line !== "" && !/^(Status:|Processing time:)/.test(line),
+			) ?? message.trim()
+	);
 }
 
 /**
  * `call <tool> --all-projects` — runs a read-only tool once per referenced
  * project of a solution-style tsconfig and merges the results (data gains
  * byProject plus the concatenated array fields). Exit 1 if any project's run
- * reported an error.
+ * reported an error, except expected per-project misses of a fan-out (see
+ * FAN_OUT_MISS_RE).
  */
 async function runAllProjects(
 	registry: ToolRegistry,
@@ -344,7 +378,7 @@ async function runAllProjects(
 ): Promise<number> {
 	if (!ALL_PROJECTS_TOOLS.has(toolName)) {
 		throw new CliUsageError(
-			`--all-projects supports read-only tools only (${[...ALL_PROJECTS_TOOLS].join(", ")}). '${toolName}' mutates files — a file shared between referenced projects would be edited once per project.`,
+			`--all-projects supports ${[...ALL_PROJECTS_TOOLS].join(", ")} only. '${toolName}' must run against a single project's tsconfig — pass a referenced (leaf) config directly. (Mutating tools can never fan out: a file shared between referenced projects would be edited once per project.)`,
 		);
 	}
 	if (references.length === 0) {
@@ -369,14 +403,12 @@ async function runAllProjects(
 		data: unknown;
 		message: string;
 	}> = [];
-	let anyError = false;
 	for (const refPath of existing) {
 		const outcome = await callToolOnce(
 			toolName,
 			{ ...prepared, tsconfigPath: refPath },
 			registry,
 		);
-		anyError = anyError || outcome.isError;
 		byProject.push({
 			tsconfigPath: refPath,
 			status: outcome.isError ? "error" : "success",
@@ -384,6 +416,23 @@ async function runAllProjects(
 			message: outcome.text,
 		});
 	}
+	// A file- or symbol-scoped lookup fanned out across N references is
+	// EXPECTED to miss in N-1 of them: the target belongs to one project, and
+	// "not mine" from the others is a property of fanning out, not a failure
+	// of the call. Counting those as errors made the most common monorepo
+	// lookup — solution tsconfig plus a targetFilePath — exit 1 around a fully
+	// correct answer (caught in review, 2026-07-31). The misses stay errors
+	// when NO project succeeds: "not mine" from everyone is then exactly the
+	// news the caller needs, with each project's full message intact.
+	if (byProject.some((entry) => entry.status === "success")) {
+		for (const entry of byProject) {
+			if (entry.status === "error" && FAN_OUT_MISS_RE.test(entry.message)) {
+				entry.status = "skipped";
+				entry.message = `Skipped: ${coreErrorLine(entry.message)}`;
+			}
+		}
+	}
+	const anyError = byProject.some((entry) => entry.status === "error");
 
 	// One message and one { tool, status, data, message } envelope — the same
 	// shape every other `call` emits, with the per-project detail under data.
@@ -578,7 +627,11 @@ export async function runCli(
 					err.write(
 						singleProject
 							? `Warning: ${String(prepared.tsconfigPath)} is a solution-style tsconfig ("references" with ${references.length} project(s)); --single-project means only files this config itself includes are in scope.\n`
-							: `Warning: ${String(prepared.tsconfigPath)} is a solution-style tsconfig ("references" with ${references.length} project(s)), and '${tool.name}' mutates files, so it cannot be fanned out. Pass a leaf tsconfig (e.g. ${references[0]}).\n`,
+							: // "does not fan out", not "mutates files": read-only tools
+								// outside the fan-out set (get_type_at_position) land here
+								// too, and accusing them of mutation would be its own
+								// false claim.
+								`Warning: ${String(prepared.tsconfigPath)} is a solution-style tsconfig ("references" with ${references.length} project(s)), and '${tool.name}' does not fan out (only ${[...ALL_PROJECTS_TOOLS].join(", ")} do). Pass a leaf tsconfig (e.g. ${references[0]}).\n`,
 					);
 				}
 				const outcome = await callToolOnce(tool.name, prepared, registry);

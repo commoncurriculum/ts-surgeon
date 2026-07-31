@@ -147,6 +147,37 @@ describe("detectTemplateEnvironment", () => {
 		expect(detectTemplateEnvironment(leaf)?.kind).toBe("glint");
 	});
 
+	it("follows every entry of an array extends, not just a string one", () => {
+		// TS 5.0 array form: treating a non-string `extends` as the end of the
+		// walk hid a marker sitting one array entry away.
+		writeConfig("strictness.json", { compilerOptions: { strict: true } });
+		writeConfig("vue-base.json", { vueCompilerOptions: { target: 3 } });
+		const leaf = writeConfig("array-extends.json", {
+			extends: ["./strictness.json", "./vue-base.json"],
+		});
+		expect(detectTemplateEnvironment(leaf)?.kind).toBe("vue");
+	});
+
+	it("recognizes the scaffolds that declare themselves only by what they extend", () => {
+		// create-vue and SvelteKit configs carry no marker key of their own; the
+		// extends string is the evidence, and it must count even when the file it
+		// names is not installed on disk.
+		expect(
+			detectTemplateEnvironment(
+				writeConfig("vue-scaffold.json", {
+					extends: "@vue/tsconfig/tsconfig.dom.json",
+				}),
+			)?.kind,
+		).toBe("vue");
+		expect(
+			detectTemplateEnvironment(
+				writeConfig("sveltekit.json", {
+					extends: "./.svelte-kit/tsconfig.json",
+				}),
+			)?.kind,
+		).toBe("svelte");
+	});
+
 	it("says nothing for an ordinary TypeScript project", () => {
 		expect(
 			detectTemplateEnvironment(

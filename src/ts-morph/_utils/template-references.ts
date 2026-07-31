@@ -45,9 +45,11 @@ const MAX_FILE_BYTES = 512 * 1024;
 /** Mentions printed in a tool's message. */
 const MAX_MENTIONS = 25;
 /**
- * Mentions collected before ranking. Wider than what is printed so a generic
- * spelling cannot bury the one invocation that matters, but still bounded — a
- * name like `item` must not turn this into a full-project text index.
+ * Mentions collected before ranking — one budget for generic matches and one
+ * for invocation-shaped ones (see findTemplateMentions). Wider than what is
+ * printed so a generic spelling cannot bury the one invocation that matters,
+ * but still bounded — a name like `item` must not turn this into a
+ * full-project text index.
  */
 const MAX_SCANNED_MENTIONS = 200;
 
@@ -105,10 +107,64 @@ export function templateSpellings(symbolName: string): string[] {
 	return [...spellings];
 }
 
+/**
+ * Directories read before the walk gives up. MAX_FILES bounds what is FOUND,
+ * not what is visited: an Angular project (extensions [".html"]) with few
+ * templates would otherwise readdir the entire tree on every tool call.
+ */
+const MAX_DIRS = 2000;
+
+/**
+ * `selector: 'app-hero-detail'` / `name: 'currencyFormat'` inside an Angular
+ * decorator. Loose by design: scoping the match to the decorator's own parens
+ * would need a parser, and an extra spelling costs one glance while a missed
+ * one deletes a used component.
+ */
+const DECORATOR_NAME_RE = /\b(?:selector|name)\s*:\s*['"]([^'"]+)['"]/g;
+
+/**
+ * The names Angular resolves a class by: the string literals its decorators
+ * declare. `templateSpellings` predicts spellings from the CLASS name, and
+ * Angular's default scaffold defeats every prediction — `ng generate component
+ * hero-detail` yields `HeroDetailComponent` invoked as `<app-hero-detail>`,
+ * where the `app-` prefix comes from angular.json, not from any name this
+ * module can see. But the real selector is not unknowable: it sits in the
+ * component's own `@Component({ selector: ... })`, in a file the caller
+ * already holds. Read the authoritative string instead of guessing
+ * (caught in review, 2026-07-31: the default-scaffold component walked
+ * straight past safe_delete_symbol's refusal). Attribute selectors
+ * (`[appHighlight]`) and comma-separated lists contribute each bare name;
+ * `@Pipe({ name: ... })` covers pipe invocations (`{{ x | currencyFormat }}`).
+ */
+export function decoratorDeclaredNames(filePath: string): string[] {
+	let contents: string;
+	try {
+		if (fs.statSync(filePath).size > MAX_FILE_BYTES) return [];
+		contents = fs.readFileSync(filePath, "utf-8");
+	} catch {
+		return [];
+	}
+	if (!/@(?:Component|Directive|Pipe)\b/.test(contents)) {
+		return [];
+	}
+	const names: string[] = [];
+	for (const match of contents.matchAll(DECORATOR_NAME_RE)) {
+		for (const part of match[1].split(",")) {
+			const cleaned = part.trim().replace(/^\[/, "").replace(/\]$/, "");
+			if (cleaned.length > 1) {
+				names.push(cleaned);
+			}
+		}
+	}
+	return names;
+}
+
 function collectTemplateFiles(root: string, extensions: string[]): string[] {
 	const files: string[] = [];
 	const queue = [root];
-	while (queue.length > 0 && files.length < MAX_FILES) {
+	let dirsRead = 0;
+	while (queue.length > 0 && files.length < MAX_FILES && dirsRead < MAX_DIRS) {
+		dirsRead += 1;
 		const dir = queue.shift() as string;
 		let entries: fs.Dirent[];
 		try {
@@ -189,8 +245,15 @@ export function findTemplateMentions(
 	const pattern = new RegExp(`(?<![\\w-])(?:${alternation})(?![\\w-])`);
 	const invocationPattern = invocationPatternFor(alternation);
 	const mentions: TemplateMention[] = [];
+	// Budgeted separately: once generic matches hit the cap, the walk keeps
+	// going but collects only invocation-shaped lines. With a single budget,
+	// 200 `{{item.name}}` block-param lines in a walk-order-earlier file
+	// exhausted it before the one `<Item />` in a later file was ever read —
+	// nothing left for the invocation-first ranking to rank (caught in
+	// review, 2026-07-31).
+	let invocationCount = 0;
 	for (const file of collectTemplateFiles(projectRoot, env.extensions)) {
-		if (mentions.length >= MAX_SCANNED_MENTIONS) break;
+		if (invocationCount >= MAX_SCANNED_MENTIONS) break;
 		let contents: string;
 		try {
 			if (fs.statSync(file).size > MAX_FILE_BYTES) continue;
@@ -202,17 +265,22 @@ export function findTemplateMentions(
 		const lines = contents.split(/\r?\n/);
 		for (
 			let i = 0;
-			i < lines.length && mentions.length < MAX_SCANNED_MENTIONS;
+			i < lines.length && invocationCount < MAX_SCANNED_MENTIONS;
 			i++
 		) {
-			if (pattern.test(lines[i])) {
-				mentions.push({
-					filePath: file,
-					line: i + 1,
-					text: lines[i].trim(),
-					invocation: invocationPattern.test(lines[i]),
-				});
+			if (!pattern.test(lines[i])) continue;
+			const invocation = invocationPattern.test(lines[i]);
+			if (invocation) {
+				invocationCount += 1;
+			} else if (mentions.length - invocationCount >= MAX_SCANNED_MENTIONS) {
+				continue;
 			}
+			mentions.push({
+				filePath: file,
+				line: i + 1,
+				text: lines[i].trim(),
+				invocation,
+			});
 		}
 	}
 	return mentions;
@@ -284,25 +352,50 @@ export function findTemplateMentionedNames(
 	if (environment === undefined || candidates.length === 0) {
 		return undefined;
 	}
-	const byName = new Map<string, string | undefined>();
+	// EVERY declaring file of a name contributes spellings: two same-named
+	// exports in different files (`Button` in button.ts and legacy-button.ts)
+	// each resolve from their own file name, and keeping only the first file
+	// made the second invisible in exactly the file-name-resolution case this
+	// scan exists for (caught in review, 2026-07-31).
+	const byName = new Map<string, Set<string>>();
 	for (const candidate of candidates) {
-		if (!byName.has(candidate.name)) {
-			byName.set(candidate.name, candidate.filePath);
+		const files = byName.get(candidate.name);
+		if (files === undefined) {
+			byName.set(
+				candidate.name,
+				new Set(candidate.filePath === undefined ? [] : [candidate.filePath]),
+			);
+		} else if (candidate.filePath !== undefined) {
+			files.add(candidate.filePath);
 		}
 	}
 	const searched = [...byName].slice(0, MAX_ATTRIBUTED_NAMES);
 	// One spelling can belong to several names (two symbols can dasherize alike),
 	// so a hit credits every owner rather than an arbitrary one.
 	const owners = new Map<string, Set<string>>();
-	for (const [name, filePath] of searched) {
+	// A file read (for Angular decorator selectors) happens once, however many
+	// same-file exports are candidates.
+	const decoratorNamesByFile = new Map<string, string[]>();
+	const decoratorNames = (filePath: string): string[] => {
+		let names = decoratorNamesByFile.get(filePath);
+		if (names === undefined) {
+			names = decoratorDeclaredNames(filePath);
+			decoratorNamesByFile.set(filePath, names);
+		}
+		return names;
+	};
+	for (const [name, filePaths] of searched) {
 		// The declaring file's name counts as a spelling of the symbol: Ember
 		// resolves `<SidePanel />` to side-panel.ts whatever the class inside is
 		// called, so a name-only search misses the component's only real use.
+		// In Angular the authoritative spelling is the decorator's own selector
+		// string — read it rather than predict it.
 		const spellings = [
 			...templateSpellings(name),
-			...(filePath
-				? templateSpellings(path.basename(filePath, path.extname(filePath)))
-				: []),
+			...[...filePaths].flatMap((filePath) => [
+				...templateSpellings(path.basename(filePath, path.extname(filePath))),
+				...(environment.kind === "angular" ? decoratorNames(filePath) : []),
+			]),
 		];
 		for (const spelling of spellings) {
 			if (spelling.length <= 1) continue;
@@ -426,6 +519,12 @@ export function templateCaveat({
 		...new Set([
 			...symbolNames,
 			...filePaths.map((file) => path.basename(file, path.extname(file))),
+			// Angular resolves by the decorator's selector/pipe-name string, which
+			// no spelling of the class or file name predicts (`app-` prefixes come
+			// from angular.json). The literal is in the declaring file — read it.
+			...(env.kind === "angular"
+				? filePaths.flatMap((file) => decoratorDeclaredNames(file))
+				: []),
 		]),
 	];
 	const mentions = findTemplateMentions(env, projectRoot, names);

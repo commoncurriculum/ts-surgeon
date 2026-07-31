@@ -47,8 +47,9 @@ export function registerFindReferencesTool(registry: ToolRegistry): void {
 - You already plan to rename -> skip straight to \`rename_symbol\` (it computes the same set internally and supports \`dryRun\`).
 
 ## Critical constraints
-- Target the symbol either with \`position\` (1-based line/column landing on the identifier itself) or with \`symbolName\` (the declaration name, when it is unambiguous in the file). Pass at least one.
-- \`targetFilePath\` is optional: \`symbolName\` alone looks the declaration up project-wide (it must be unambiguous across the project; the error lists every candidate otherwise). You do NOT need to know which file declares a symbol to use this tool.
+- Target the symbol either with \`position\` (1-based line/column landing on the identifier itself) or with \`symbolName\` (the declaration name). Pass at least one.
+- \`targetFilePath\` is optional: \`symbolName\` alone looks the declaration up project-wide. You do NOT need to know which file declares a symbol to use this tool.
+- A name with several declarations is answered for EACH of them (up to 5; the rest come back as positions under \`unsearchedDeclarations\`) — no ambiguity error, no second invocation. Pass \`position\` to target exactly one.
 - All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
 
 ## Result
@@ -76,7 +77,7 @@ Returns the definition (file path, line, column, source line) when found, follow
 				.string()
 				.optional()
 				.describe(
-					"Declaration name to target instead of a position; must be unambiguous in the file. Pass position as well to disambiguate.",
+					"Declaration name to target instead of a position. A name with several declarations reports each of them; pass position to target exactly one.",
 				),
 		},
 		(args) =>

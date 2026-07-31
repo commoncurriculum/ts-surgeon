@@ -71,9 +71,6 @@ ${alternative}
 ${NO_BYPASS_FOOTER}`;
 }
 
-/** The stream-editor wording, kept as a constant for callers that want it. */
-export const EDIT_BLOCK_MESSAGE = editBlockMessage("stream-editor");
-
 export const DYNAMIC_SEARCH_BLOCK_MESSAGE = `ts-surgeon: this command loops a recursive text search over TS/JS sources with a runtime-computed pattern.
 Text search misses aliased imports/re-exports and matches unrelated same-name tokens. Use the AST-aware lookups instead — no need to know the declaring file:
   npx -y @commoncurriculum/ts-surgeon call find_references --symbol-name <name>   # per symbol; tsconfig is auto-discovered

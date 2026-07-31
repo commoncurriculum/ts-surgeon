@@ -7,11 +7,19 @@
  * Quoting is honored with POSIX semantics — in double quotes a backslash
  * escapes only `$`, backquote, `"`, `\`, and newline; before anything else
  * both characters survive (BRE patterns like `\|` depend on this). Redirects
- * and their targets are dropped. This is deliberately an approximation — it
- * only has to be good enough to find every search invocation, never to
- * execute.
+ * and their targets are dropped from the token lists; `onRedirectTarget`
+ * observes each `>`/`>>` file target as it is dropped, so a policy can reason
+ * about overwrite destinations without re-scanning the raw string (a raw-regex
+ * scan blocked `git commit -m "moved a.ts -> b.ts"` — the arrow lives inside
+ * quotes, which only this tokenizer can see; caught in review, 2026-07-31).
+ * fd-redirects (`2>`, `>&2`) and heredocs (`<<`) are not file targets and are
+ * not reported. This is deliberately an approximation — it only has to be good
+ * enough to find every search invocation, never to execute.
  */
-export function splitSimpleCommands(command: string): string[][] {
+export function splitSimpleCommands(
+	command: string,
+	onRedirectTarget?: (target: string) => void,
+): string[][] {
 	const commands: string[][] = [];
 	const collect = (input: string): void => {
 		let current: string[] = [];
@@ -106,15 +114,29 @@ export function splitSimpleCommands(command: string): string[][] {
 				i++;
 			} else if (c === "<" || c === ">") {
 				// Redirect: drop an fd prefix ("2>"), the operator run, and its target.
-				if (/^\d+$/.test(tok)) {
+				const fdPrefixed = /^\d+$/.test(tok);
+				if (fdPrefixed) {
 					tok = "";
 					hasTok = false;
 				} else {
 					pushTok();
 				}
+				const operatorStart = i;
 				while (i < input.length && /[<>&]/.test(input[i])) i++;
+				const operator = input.slice(operatorStart, i);
 				while (i < input.length && /\s/.test(input[i])) i++;
+				const targetStart = i;
 				while (i < input.length && !/[\s|;&()<>]/.test(input[i])) i++;
+				// Only a plain `>`/`>>` writes a file: `2>` targets a stream the
+				// caller chose to discard, `>&2` names an fd, `<<` opens a heredoc.
+				if (onRedirectTarget && !fdPrefixed && /^>{1,2}$/.test(operator)) {
+					const target = input
+						.slice(targetStart, i)
+						.replace(/^['"]|['"]$/g, "");
+					if (target !== "") {
+						onRedirectTarget(target);
+					}
+				}
 			} else {
 				tok += c;
 				hasTok = true;

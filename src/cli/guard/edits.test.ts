@@ -70,8 +70,44 @@ describe("detectSourceRewrite", () => {
 			`python3 -c "open('out.json','w').write(open('src/a.ts').read().replace('x','y'))"`,
 			// Several writes are fine when every destination is proven non-source.
 			`node -e "const s=fs.readFileSync('src/a.ts','utf8'); fs.writeFileSync('names.json', s.replace(/x/g,'y')); fs.writeFileSync('raw.txt', s)"`,
+			// Read-mode open() whose FILENAME merely ends in w/a — the mode has
+			// to be its own argument, or these transforms-that-print get blocked
+			// (caught in review, 2026-07-31).
+			`python3 -c "print(open('Main.java').read().replace('x','y'))"`,
+			`python3 -c "s=open('schema.prisma').read().replace('x','y'); print(s)"`,
 		]) {
 			expect(detectSourceRewrite(command, emptyDisk), command).toBeUndefined();
+		}
+	});
+
+	// The eval flag does not have to be its own token, and a heredoc carries
+	// the program with no eval flag at all — both are the same edit as
+	// `sed -i`, sitting in plain sight in the command string.
+	it("blocks attached eval flags and heredoc-fed interpreters", () => {
+		for (const command of [
+			`node --eval="fs.writeFileSync('src/x.ts', fs.readFileSync('src/x.ts','utf8').replace('a','b'))"`,
+			`python3 -c"open('src/x.ts','w').write(open('src/x.ts').read().replace('a','b'))"`,
+			`python3 <<'EOF'\nimport pathlib\np = pathlib.Path('src/x.ts')\np.write_text(p.read_text().replace('a','b'))\nEOF`,
+		]) {
+			expect(detectSourceRewrite(command, emptyDisk), command).toBe(
+				"interpreter",
+			);
+		}
+	});
+
+	// A `>` inside quotes is prose, not a redirect. Only the quote-aware
+	// tokenizer can tell, and a raw-regex scan blocked the exact commit
+	// message an agent writes after using this package's own rename tools
+	// (caught in review, 2026-07-31).
+	it("leaves quoted arrows and quoted paths alone", () => {
+		const disk = diskWith("/repo/src/index.ts");
+		for (const command of [
+			`git commit -m "refactor: move foo -> src/index.ts"`,
+			`gh pr create --body "renamed a.ts -> src/index.ts"`,
+			`node -e "console.log(items.map(i => 'src/index.ts'))"`,
+			`echo "output goes to > src/index.ts eventually"`,
+		]) {
+			expect(detectSourceRewrite(command, disk), command).toBeUndefined();
 		}
 	});
 

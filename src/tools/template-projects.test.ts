@@ -103,6 +103,58 @@ describe("Glint/Ember projects (references outside the TS program)", () => {
 		expect(text).toMatch(/showing \d+ of \d+\+? matches/);
 	});
 
+	it("keeps collecting invocations after generic noise exhausts its budget", async () => {
+		// 250 block-param lines in a walk-order-earlier file exceed the whole
+		// 200-mention generic budget. With one shared budget the scan stopped
+		// before ever reading z-real.hbs, so the one real `<Item />` was absent
+		// from message AND payload — nothing left for ranking to rank.
+		fs.writeFileSync(
+			path.join(tempDir, "app/components/item.ts"),
+			"export default class Item {\n  label = 'x';\n}\n",
+		);
+		const noise = Array.from(
+			{ length: 250 },
+			(_, i) => `  <span>{{item.name}} row ${i}</span>`,
+		).join("\n");
+		fs.writeFileSync(
+			path.join(tempDir, "app/templates/a-noise.hbs"),
+			`{{#each model.rows as |item|}}\n${noise}\n{{/each}}\n`,
+		);
+		fs.writeFileSync(
+			path.join(tempDir, "app/templates/z-real.hbs"),
+			"<div>\n  <Item @label='hi' />\n</div>\n",
+		);
+
+		const result = await registry.call("find_references", {
+			tsconfigPath,
+			targetFilePath: path.join(tempDir, "app/components/item.ts"),
+			symbolName: "Item",
+		});
+		const text = textOf(result);
+		expect(text).toContain("z-real.hbs");
+		expect(text).toContain("<Item");
+	});
+
+	it("safe_delete_symbol does not claim a deletion under dryRun + override", async () => {
+		// "Deleted over N template text matches" describes an action; under
+		// dryRun no action happened, and implying one is the defect class this
+		// change set exists to fix.
+		const result = await registry.call("safe_delete_symbol", {
+			tsconfigPath,
+			targetFilePath: componentPath,
+			symbolName: "BasicTooltipComponent",
+			ignoreTemplateMentions: true,
+			dryRun: true,
+		});
+		const text = textOf(result);
+		expect(text).toContain("Dry run complete");
+		expect(text).toContain("Would delete despite");
+		expect(text).not.toContain("Deleted over");
+		expect(fs.readFileSync(componentPath, "utf-8")).toContain(
+			"BasicTooltipComponent",
+		);
+	});
+
 	it("rename_symbol states that it cannot update templates", async () => {
 		const result = await registry.call("rename_symbol", {
 			tsconfigPath,
@@ -210,6 +262,30 @@ describe("Glint/Ember projects (references outside the TS program)", () => {
 		// Named, not blanket-disclaimed: this candidate is the false positive.
 		expect(text).toContain("BasicTooltipComponent");
 		expect(text).toContain("LIKELY USED");
+	});
+
+	it("find_unused_exports searches every declaring file of a shared name", async () => {
+		// Two same-named exports in different files: each resolves from its OWN
+		// file name. Keeping only the first file's spellings made the second
+		// invisible in exactly the file-name-resolution case this scan exists for.
+		fs.writeFileSync(
+			path.join(tempDir, "app/components/button.ts"),
+			"export class Button {}\n",
+		);
+		fs.writeFileSync(
+			path.join(tempDir, "app/components/legacy-button.ts"),
+			"export class Button {}\n",
+		);
+		fs.writeFileSync(
+			path.join(tempDir, "app/templates/legacy.hbs"),
+			"<div>\n  <LegacyButton />\n</div>\n",
+		);
+
+		const result = await registry.call("find_unused_exports", {
+			tsconfigPath,
+		});
+		const text = textOf(result);
+		expect(text).toMatch(/LIKELY USED[^\n]*\bButton\b/);
 	});
 
 	it("move_symbol_to_file flags the templates it cannot follow", async () => {
@@ -422,5 +498,64 @@ describe("Angular projects (templateUrl markup outside the TS program)", () => {
 		expect(text).toContain("Incomplete edit");
 		// `{{ heroName }}` still says heroName, and nothing else will tell you.
 		expect(text).toContain("hero.component.html:2");
+	});
+
+	it("safe_delete_symbol reads the decorator's selector — no spelling of the class name predicts it", async () => {
+		// The Angular CLI's DEFAULT output: `ng generate component hero-detail`
+		// yields HeroDetailComponent invoked as <app-hero-detail>, where `app-`
+		// comes from angular.json. Guessed spellings never produce it; the
+		// authoritative string sits in the @Component decorator itself.
+		const detailPath = path.join(tempDir, "src/app/hero-detail.component.ts");
+		fs.writeFileSync(
+			detailPath,
+			[
+				"const Component = (o: object) => (t: unknown) => t;",
+				"@Component({",
+				"  selector: 'app-hero-detail',",
+				"  templateUrl: './hero-detail.component.html',",
+				"})",
+				"export class HeroDetailComponent {}",
+				"",
+			].join("\n"),
+		);
+		fs.writeFileSync(
+			path.join(tempDir, "src/app/app.component.html"),
+			"<main>\n  <app-hero-detail></app-hero-detail>\n</main>\n",
+		);
+
+		const result = await registry.call("safe_delete_symbol", {
+			tsconfigPath,
+			targetFilePath: detailPath,
+			symbolName: "HeroDetailComponent",
+		});
+		const text = textOf(result);
+		expect(text).toContain("Not deleted");
+		expect(text).toContain("app.component.html:2");
+		expect(fs.readFileSync(detailPath, "utf-8")).toContain(
+			"HeroDetailComponent",
+		);
+	});
+
+	it("find_unused_exports flags a component used only through its selector", async () => {
+		const detailPath = path.join(tempDir, "src/app/hero-detail.component.ts");
+		fs.writeFileSync(
+			detailPath,
+			[
+				"const Component = (o: object) => (t: unknown) => t;",
+				"@Component({ selector: 'app-hero-detail' })",
+				"export class HeroDetailComponent {}",
+				"",
+			].join("\n"),
+		);
+		fs.writeFileSync(
+			path.join(tempDir, "src/app/app.component.html"),
+			"<main>\n  <app-hero-detail></app-hero-detail>\n</main>\n",
+		);
+
+		const result = await registry.call("find_unused_exports", {
+			tsconfigPath,
+		});
+		const text = textOf(result);
+		expect(text).toMatch(/LIKELY USED[^\n]*HeroDetailComponent/);
 	});
 });

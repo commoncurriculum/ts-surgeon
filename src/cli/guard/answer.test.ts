@@ -3,6 +3,7 @@ import {
 	formatSearchAnswer,
 	isAnswerable,
 	mapBatchResults,
+	mergeProjectSymbolResults,
 	resolveCliRuntime,
 } from "./answer.js";
 
@@ -219,6 +220,68 @@ describe("mapBatchResults", () => {
 		expect(
 			mapBatchResults(["foo", "bar"], [{ status: "success" }]),
 		).toBeUndefined();
+	});
+
+	it("merges per-project answers: shared declarations once, distinct ones side by side", () => {
+		// The answerer fans a solution config's batch out across its referenced
+		// projects. A file included by two projects answers from both — that is
+		// one declaration, its references unioned, not two rival declarations.
+		const merged = mergeProjectSymbolResults([
+			[
+				{
+					symbolName: "calculateSum",
+					status: "found",
+					definition,
+					references: [ref(1)],
+				},
+				{ symbolName: "helper", status: "not-found" },
+			],
+			[
+				{
+					symbolName: "calculateSum",
+					status: "found",
+					definition,
+					references: [ref(1), ref(2)],
+				},
+				{
+					symbolName: "helper",
+					status: "found",
+					definition: ref(7),
+					references: [],
+				},
+			],
+		]);
+		expect(merged[0]).toMatchObject({
+			status: "found",
+			references: [ref(1), ref(2)],
+		});
+		// A symbol one project cannot see is answered by the project that can.
+		expect(merged[1]).toMatchObject({ status: "found", definition: ref(7) });
+	});
+
+	it("reports declarations from different projects as multiple, not first-wins", () => {
+		const merged = mergeProjectSymbolResults([
+			[
+				{
+					symbolName: "render",
+					status: "found",
+					definition,
+					references: [ref(1)],
+				},
+			],
+			[
+				{
+					symbolName: "render",
+					status: "found",
+					definition: ref(7),
+					references: [ref(8)],
+				},
+			],
+		]);
+		expect(merged[0].status).toBe("multiple");
+		if (merged[0].status === "multiple") {
+			expect(merged[0].declarations).toHaveLength(2);
+		}
 	});
 
 	it("strips the CLI envelope framing from ambiguity messages", () => {
